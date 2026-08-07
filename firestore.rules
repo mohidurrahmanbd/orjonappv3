@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Questions collection
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Bookmarks collection
+    match /bookmarks/{bookmarkId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Attempts collection
+    match /attempts/{attemptId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Subcategories collection
+    match /subcategories/{subcategoryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Notices collection
+    match /notices/{noticeId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Routines collection
+    match /routines/{routineId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Live Exams collection
+    match /live_exams/{liveExamId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Upload History collection
+    match /upload_history/{uploadId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Test connection collection
+    match /test/{testId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Default deny for unhandled paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

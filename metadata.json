@@ -1,0 +1,6 @@
+{
+  "name": "Orjon MCQ",
+  "description": "An interactive MCQ platform for exams, preparation, and job solutions with bookmarks, notice boards, and admin controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

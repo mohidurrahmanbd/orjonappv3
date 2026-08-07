@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "Question": {
+      "title": "Question",
+      "description": "MCQ Question entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "number" },
+        "explanation": { "type": "string" },
+        "category": { "type": "string" },
+        "subcategory": { "type": "string" },
+        "csvCategory": { "type": "string" },
+        "subject": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["question", "options", "correctAnswer"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User account entity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "isBlocked": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["phone", "name"]
+    },
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "User question bookmark",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "questionId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "Exam result attempt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "userName": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "score": { "type": "number" },
+        "date": { "type": "string" }
+      }
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Exam Category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "Subcategory": {
+      "title": "Subcategory",
+      "description": "Exam Subcategory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "categoryName": { "type": "string" }
+      }
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "System Notice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "date": { "type": "string" }
+      }
+    },
+    "Routine": {
+      "title": "Routine",
+      "description": "Exam Routine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" }
+      }
+    },
+    "LiveExam": {
+      "title": "LiveExam",
+      "description": "Live Exam Schedule",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" }
+      }
+    },
+    "UploadHistory": {
+      "title": "UploadHistory",
+      "description": "CSV or PDF upload log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fileName": { "type": "string" },
+        "uploadedAt": { "type": "string" }
+      }
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Test doc for verifying Firestore connection",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Question collection"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User collection"
+    },
+    "/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "Bookmarks collection"
+    },
+    "/attempts/{attemptId}": {
+      "schema": "Attempt",
+      "description": "Exam attempts collection"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Categories collection"
+    },
+    "/subcategories/{subcategoryId}": {
+      "schema": "Subcategory",
+      "description": "Subcategories collection"
+    },
+    "/notices/{noticeId}": {
+      "schema": "Notice",
+      "description": "Notices collection"
+    },
+    "/routines/{routineId}": {
+      "schema": "Routine",
+      "description": "Routines collection"
+    },
+    "/live_exams/{liveExamId}": {
+      "schema": "LiveExam",
+      "description": "Live exams collection"
+    },
+    "/upload_history/{uploadId}": {
+      "schema": "UploadHistory",
+      "description": "Upload history collection"
+    },
+    "/test/{testId}": {
+      "schema": "TestConnection",
+      "description": "Test collection for connectivity check"
+    }
+  }
+}
