@@ -24,7 +24,8 @@ import {
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
-  subscribeQuestionsFromFirestore
+  subscribeQuestionsFromFirestore,
+  fetchQuestionsLazyFromFirestore
 } from './lib/indexedDB';
 import { 
   createUserWithEmailAndPassword, 
@@ -254,6 +255,99 @@ export default function App() {
   const [newAdminPasswordInput, setNewAdminPasswordInput] = useState('');
   const [confirmAdminPasswordInput, setConfirmAdminPasswordInput] = useState('');
 
+  // Guest Live Exam states
+  const [directExamId, setDirectExamId] = useState<string | null>(null);
+  const [guestEmailModalOpen, setGuestEmailModalOpen] = useState(false);
+  const [guestExamTarget, setGuestExamTarget] = useState<LiveExam | null>(null);
+  const [guestEmailInput, setGuestEmailInput] = useState('');
+  const [guestError, setGuestError] = useState<string | null>(null);
+
+  // Security Session Timeout states
+  const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(null);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState<number>(() => {
+    const stored = localStorage.getItem('orjon_session_timeout_minutes');
+    return stored ? parseInt(stored, 10) : 15;
+  });
+
+  const handleUpdateSessionTimeout = (mins: number) => {
+    setSessionTimeoutMinutes(mins);
+    localStorage.setItem('orjon_session_timeout_minutes', mins.toString());
+    localStorage.setItem('orjon_last_activity', Date.now().toString());
+    addAuditLog('সেশন সিকিউরিটি', `সেশন ইনঅ্যাক্টিভিটি টাইমআউট ${mins} মিনিটে সেট করা হয়েছে`, 'other');
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const examParam = params.get('examId') || params.get('liveExam');
+    if (examParam) {
+      setDirectExamId(examParam);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (directExamId && !currentUser && liveExams.length > 0) {
+      const targetExam = liveExams.find(e => e.id === directExamId);
+      if (targetExam) {
+        setGuestExamTarget(targetExam);
+        setGuestEmailModalOpen(true);
+      }
+    }
+  }, [directExamId, currentUser, liveExams]);
+
+  const handleStartGuestExam = (exam: LiveExam, email: string) => {
+    const trimmed = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmed || !emailRegex.test(trimmed)) {
+      setGuestError('অনুগ্রহ করে সঠিক ইমেইল এড্রেস প্রদান করুন (যেমন: student@gmail.com)');
+      return;
+    }
+
+    const guestObj: User = {
+      userId: `GUEST-${Date.now().toString(36).toUpperCase()}`,
+      name: `গেস্ট (${trimmed.split('@')[0]})`,
+      phone: trimmed,
+      email: trimmed,
+      password: '',
+      gender: 'অন্যান্য',
+      education: 'গেস্ট পরীক্ষার্থী',
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(trimmed)}`,
+      lifetimeAnswered: 0,
+      lifetimeCorrect: 0,
+      lifetimeWrong: 0,
+      createdAt: new Date().toISOString(),
+      isGuest: true
+    };
+
+    setCurrentUser(guestObj);
+    setGuestEmailModalOpen(false);
+    setGuestExamTarget(null);
+    setGuestError(null);
+  };
+
+  const associateGuestAttemptsWithUser = (userObj: User) => {
+    const emailLower = userObj.email?.toLowerCase();
+    if (!emailLower) return;
+
+    const userIdentifier = userObj.phone || userObj.userId || userObj.email;
+    const updatedAttempts = attempts.map(a => {
+      const aEmailLower = a.userEmail?.toLowerCase();
+      const aPhoneLower = a.userPhone?.toLowerCase();
+      if (aEmailLower === emailLower || aPhoneLower === emailLower) {
+        return {
+          ...a,
+          userPhone: userIdentifier,
+          userEmail: userObj.email,
+          username: userObj.name,
+          isGuestAttempt: false
+        };
+      }
+      return a;
+    });
+
+    updateAttemptsDB(updatedAttempts);
+  };
+
   // 1. Load database on mount with IndexedDB for instant startup & Firestore Real-Time Sync
   useEffect(() => {
     let activeUnsubscribe: (() => void) | null = null;
@@ -286,7 +380,7 @@ export default function App() {
 
     setQuestions(normalizedQ);
 
-    // Instant startup load from IndexedDB (overrides if indexedDB contains fuller dataset)
+    // Instant startup load from IndexedDB (Cache-First)
     getQuestionsFromIDB().then((idbQuestions) => {
       if (idbQuestions && idbQuestions.length > 0) {
         normalizedQ = idbQuestions.map(q => {
@@ -306,50 +400,26 @@ export default function App() {
       } else {
         saveQuestionsToIDB(normalizedQ);
       }
-
-      // Real-Time Firestore Sync Listener (maintains sync when admin updates occur)
-      activeUnsubscribe = subscribeQuestionsFromFirestore((fetchedDocs) => {
-        if (fetchedDocs && fetchedDocs.length > 0) {
-          const firestoreQ = fetchedDocs.map(q => {
-            let cat = q.category || '';
-            if (isJobSolutionVariation(cat)) {
-              cat = 'জব সলিউশন পরীক্ষা';
-            } else if (isYearJobSolutionVariation(cat)) {
-              cat = 'সাল ভিত্তিক জব সলিউশন';
-            }
-            return {
-              ...q,
-              category: cat
-            } as Question;
-          });
-          const dedupedSyncQ = dedupeQuestions(firestoreQ);
-          setQuestions(dedupedSyncQ);
-          saveQuestionsToIDB(dedupedSyncQ); // Persists to IndexedDB in background
-          console.log(`Real-time synced ${firestoreQ.length} MCQs via Firestore & IndexedDB`);
-        }
-      }, (err) => {
-        console.warn("Firestore real-time sync notice (using IndexedDB offline cache):", err);
-      });
     }).catch(err => {
       console.warn("IndexedDB initialization notice:", err);
     });
 
-    // Notices seed
+    // Notices seed (Cache-First)
     const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
     if (storedN) {
       setNotices(JSON.parse(storedN));
     } else {
       localStorage.setItem('orjon_notices', JSON.stringify(INITIAL_NOTICES));
       setNotices(INITIAL_NOTICES);
+      fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
+        if (fsN && fsN.length > 0) {
+          setNotices(fsN);
+          localStorage.setItem('orjon_notices', JSON.stringify(fsN));
+        }
+      }).catch(() => {});
     }
-    fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
-      if (fsN && fsN.length > 0) {
-        setNotices(fsN);
-        localStorage.setItem('orjon_notices', JSON.stringify(fsN));
-      }
-    }).catch(() => {});
 
-    // Routines seed
+    // Routines seed (Cache-First)
     const storedR = localStorage.getItem('orjon_routines') || localStorage.getItem('medha_routines');
     if (storedR) {
       try {
@@ -360,16 +430,16 @@ export default function App() {
     } else {
       localStorage.setItem('orjon_routines', JSON.stringify(dedupeRoutines(INITIAL_ROUTINES)));
       setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+      fetchCollectionFromFirestore<Routine>('routines').then(fsR => {
+        if (fsR && fsR.length > 0) {
+          const deduped = dedupeRoutines(fsR);
+          setRoutines(deduped);
+          localStorage.setItem('orjon_routines', JSON.stringify(deduped));
+        }
+      }).catch(() => {});
     }
-    fetchCollectionFromFirestore<Routine>('routines').then(fsR => {
-      if (fsR && fsR.length > 0) {
-        const deduped = dedupeRoutines(fsR);
-        setRoutines(deduped);
-        localStorage.setItem('orjon_routines', JSON.stringify(deduped));
-      }
-    }).catch(() => {});
 
-    // Live exams seed
+    // Live exams seed (Cache-First)
     const storedLE = localStorage.getItem('orjon_live_exams') || localStorage.getItem('medha_live_exams');
     if (storedLE) {
       try {
@@ -380,30 +450,24 @@ export default function App() {
     } else {
       localStorage.setItem('orjon_live_exams', JSON.stringify(dedupeLiveExams(INITIAL_LIVE_EXAMS)));
       setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
+      fetchCollectionFromFirestore<LiveExam>('live_exams').then(fsLE => {
+        if (fsLE && fsLE.length > 0) {
+          const deduped = dedupeLiveExams(fsLE);
+          setLiveExams(deduped);
+          localStorage.setItem('orjon_live_exams', JSON.stringify(deduped));
+        }
+      }).catch(() => {});
     }
-    fetchCollectionFromFirestore<LiveExam>('live_exams').then(fsLE => {
-      if (fsLE && fsLE.length > 0) {
-        const deduped = dedupeLiveExams(fsLE);
-        setLiveExams(deduped);
-        localStorage.setItem('orjon_live_exams', JSON.stringify(deduped));
-      }
-    }).catch(() => {});
 
-    // Audit logs initial seed
+    // Audit logs initial seed (Local Cache)
     const storedAudit = localStorage.getItem('orjon_audit_logs');
     if (storedAudit) {
       try {
         setAuditLogs(JSON.parse(storedAudit));
       } catch {}
     }
-    fetchCollectionFromFirestore<AuditLog>('audit_logs').then(fsAudit => {
-      if (fsAudit && fsAudit.length > 0) {
-        setAuditLogs(fsAudit);
-        localStorage.setItem('orjon_audit_logs', JSON.stringify(fsAudit));
-      }
-    }).catch(() => {});
 
-    // Users database seed & Migration for Auto User ID & Email
+    // Users database seed (Local Cache)
     const storedU = localStorage.getItem('orjon_users') || localStorage.getItem('medha_users');
     let rawUsers: User[] = [];
     if (storedU) {
@@ -440,20 +504,7 @@ export default function App() {
     setUsers(dedupedMigratedUsers);
     localStorage.setItem('orjon_users', JSON.stringify(dedupedMigratedUsers));
 
-    fetchCollectionFromFirestore<User>('users').then(fsUsers => {
-      if (fsUsers && fsUsers.length > 0) {
-        const fsMap = new Map<string, User>();
-        fsUsers.forEach(u => {
-          const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
-          if (k) fsMap.set(k, u);
-        });
-        const dedupedFsUsers = Array.from(fsMap.values());
-        setUsers(dedupedFsUsers);
-        localStorage.setItem('orjon_users', JSON.stringify(dedupedFsUsers));
-      }
-    }).catch(() => {});
-
-    // Attempts database
+    // Attempts database (Local Cache)
     const storedAttempts = localStorage.getItem('orjon_attempts') || localStorage.getItem('medha_attempts');
     if (storedAttempts) {
       try {
@@ -476,28 +527,18 @@ export default function App() {
       setAttempts([]);
     }
 
-    fetchCollectionFromFirestore<Attempt>('attempts').then(fsAttempts => {
-      if (fsAttempts && fsAttempts.length > 0) {
-        setAttempts(fsAttempts);
-        localStorage.setItem('orjon_attempts', JSON.stringify(fsAttempts));
-      }
-    }).catch(() => {});
-
-    // Bookmarks database
+    // Bookmarks database (Local Cache)
     const storedBookmarks = localStorage.getItem('orjon_bookmarks') || localStorage.getItem('medha_bookmarks');
     if (storedBookmarks) {
-      setBookmarks(JSON.parse(storedBookmarks));
+      try {
+        setBookmarks(JSON.parse(storedBookmarks));
+      } catch {
+        setBookmarks([]);
+      }
     } else {
       localStorage.setItem('orjon_bookmarks', JSON.stringify([]));
       setBookmarks([]);
     }
-
-    fetchCollectionFromFirestore<Bookmark>('bookmarks').then(fsBookmarks => {
-      if (fsBookmarks && fsBookmarks.length > 0) {
-        setBookmarks(fsBookmarks);
-        localStorage.setItem('orjon_bookmarks', JSON.stringify(fsBookmarks));
-      }
-    }).catch(() => {});
 
     // Categories database seed
     const storedCat = localStorage.getItem('orjon_categories') || localStorage.getItem('medha_categories');
@@ -725,36 +766,61 @@ export default function App() {
     localStorage.setItem('medha_subcategories', JSON.stringify(loadedSubcats));
     setSubcategories(loadedSubcats);
 
-    fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSubcats => {
-      if (fsSubcats && fsSubcats.length > 0) {
-        const sanitized = sanitizeSubcategoriesList([...loadedSubcats, ...fsSubcats]);
-        const seenKeys = new Set<string>();
-        const seenIds = new Set<string>();
-        const deduped: SubcategoryItem[] = [];
-        for (const s of sanitized) {
-          const key = `${s.name.trim().toLowerCase()}|${(s.parentCategory || '').trim().toLowerCase()}`;
-          if (!seenKeys.has(key) && !seenIds.has(s.id)) {
-            seenKeys.add(key);
-            seenIds.add(s.id);
-            deduped.push(s);
+    // Cache-First: Fetch from Firestore only if stored subcategories were empty
+    if (!storedSubcat) {
+      fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSubcats => {
+        if (fsSubcats && fsSubcats.length > 0) {
+          const sanitized = sanitizeSubcategoriesList([...loadedSubcats, ...fsSubcats]);
+          const seenKeys = new Set<string>();
+          const seenIds = new Set<string>();
+          const deduped: SubcategoryItem[] = [];
+          for (const s of sanitized) {
+            const key = `${s.name.trim().toLowerCase()}|${(s.parentCategory || '').trim().toLowerCase()}`;
+            if (!seenKeys.has(key) && !seenIds.has(s.id)) {
+              seenKeys.add(key);
+              seenIds.add(s.id);
+              deduped.push(s);
+            }
           }
+          setSubcategories(deduped);
+          localStorage.setItem('orjon_subcategories', JSON.stringify(deduped));
         }
-        setSubcategories(deduped);
-        localStorage.setItem('orjon_subcategories', JSON.stringify(deduped));
-      }
-    }).catch(() => {});
+      }).catch(() => {});
+    }
 
-    // Check active login sessions (localStorage or sessionStorage)
+    // Check active login sessions (localStorage or sessionStorage) with Inactivity Session Timeout check
     const activeUserPhone = localStorage.getItem('orjon_session_user') || sessionStorage.getItem('orjon_session_user') || localStorage.getItem('medha_session_user');
     const activeAdmin = localStorage.getItem('orjon_session_admin') || sessionStorage.getItem('orjon_session_admin') || localStorage.getItem('medha_session_admin');
 
-    if (activeAdmin === 'true') {
+    const lastActStr = localStorage.getItem('orjon_last_activity');
+    const storedTimeoutMins = parseInt(localStorage.getItem('orjon_session_timeout_minutes') || '15', 10);
+    const timeoutMs = storedTimeoutMins * 60 * 1000;
+    const lastAct = lastActStr ? parseInt(lastActStr, 10) : 0;
+    const nowMs = Date.now();
+
+    const isSessionTimedOut = lastAct > 0 && (nowMs - lastAct > timeoutMs);
+
+    if (isSessionTimedOut && (activeAdmin === 'true' || activeUserPhone)) {
+      localStorage.removeItem('orjon_session_user');
+      localStorage.removeItem('medha_session_user');
+      localStorage.removeItem('orjon_session_admin');
+      localStorage.removeItem('medha_session_admin');
+      sessionStorage.removeItem('orjon_session_user');
+      sessionStorage.removeItem('orjon_session_admin');
+      setSessionTimeoutNotice(`দীর্ঘক্ষণ (${storedTimeoutMins} মিনিট) নিষ্ক্রিয় থাকার কারণে সিকিউরিটি পলিসি অনুযায়ী আপনার সেশনটি অটোমেটিক টাইমআউট হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।`);
+    } else if (activeAdmin === 'true') {
       setIsAdmin(true);
+      localStorage.setItem('orjon_last_activity', nowMs.toString());
     } else if (activeUserPhone) {
       const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || localStorage.getItem('medha_users') || '[]');
-      const found = allUsers.find(u => u.phone === activeUserPhone);
+      const found = allUsers.find(u => 
+        (u.phone && u.phone === activeUserPhone) || 
+        (u.userId && u.userId === activeUserPhone) || 
+        (u.email && u.email.toLowerCase() === activeUserPhone.toLowerCase())
+      );
       if (found) {
         setCurrentUser(found);
+        localStorage.setItem('orjon_last_activity', nowMs.toString());
       }
     }
 
@@ -764,6 +830,68 @@ export default function App() {
       }
     };
   }, []);
+
+  // Real-time Session Inactivity Monitoring & Auto-Logout Effect
+  useEffect(() => {
+    if (!currentUser && !isAdmin) {
+      setShowInactivityWarning(false);
+      return;
+    }
+
+    let lastWriteTime = Date.now();
+    if (!localStorage.getItem('orjon_last_activity')) {
+      localStorage.setItem('orjon_last_activity', lastWriteTime.toString());
+    }
+
+    const handleUserActivity = () => {
+      const now = Date.now();
+      // Throttle localStorage updates to once every 5 seconds for optimal performance
+      if (now - lastWriteTime > 5000) {
+        lastWriteTime = now;
+        localStorage.setItem('orjon_last_activity', now.toString());
+        setShowInactivityWarning(false);
+      }
+    };
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'focus'];
+    activityEvents.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
+
+    const intervalId = setInterval(() => {
+      const lastActStr = localStorage.getItem('orjon_last_activity');
+      const lastAct = lastActStr ? parseInt(lastActStr, 10) : lastWriteTime;
+      const now = Date.now();
+      const timeoutMinutes = parseInt(localStorage.getItem('orjon_session_timeout_minutes') || '15', 10);
+      const timeoutMs = timeoutMinutes * 60 * 1000;
+      const warningMs = Math.max(0, timeoutMs - 60000); // 1 minute warning window
+
+      const elapsed = now - lastAct;
+
+      if (elapsed >= timeoutMs) {
+        // Force Auto Logout due to session inactivity
+        const sessionType = isAdmin ? 'এডমিন' : 'ব্যবহারকারী';
+        setCurrentUser(null);
+        setIsAdmin(false);
+        localStorage.removeItem('orjon_session_user');
+        localStorage.removeItem('medha_session_user');
+        localStorage.removeItem('orjon_session_admin');
+        localStorage.removeItem('medha_session_admin');
+        sessionStorage.removeItem('orjon_session_user');
+        sessionStorage.removeItem('orjon_session_admin');
+        setShowInactivityWarning(false);
+        setSessionTimeoutNotice(`⚠️ সেশন টাইমআউট! ${timeoutMinutes} মিনিট কোনো কার্যক্রম না থাকায় নিরাপত্তার স্বার্থে আপনার ${sessionType} অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে।`);
+        setAuthScreen('login');
+      } else if (elapsed >= warningMs) {
+        setShowInactivityWarning(true);
+      } else {
+        setShowInactivityWarning(false);
+      }
+    }, 5000);
+
+    return () => {
+      activityEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity));
+      clearInterval(intervalId);
+    };
+  }, [currentUser, isAdmin]);
 
   // Helper functions to update state and persistence together
   const updateCategoriesDB = (newC: CategoryItem[]) => {
@@ -1036,6 +1164,9 @@ export default function App() {
 
       if (pass === adminPassword || firebaseAdminSuccess) {
         setIsAdmin(true);
+        localStorage.setItem('orjon_last_activity', Date.now().toString());
+        setSessionTimeoutNotice(null);
+        setShowInactivityWarning(false);
         if (rememberMe) {
           localStorage.setItem('orjon_session_admin', 'true');
           localStorage.setItem('orjon_remember_me', 'true');
@@ -1143,6 +1274,10 @@ export default function App() {
     }
 
     setCurrentUser(activeUser);
+    associateGuestAttemptsWithUser(activeUser);
+    localStorage.setItem('orjon_last_activity', Date.now().toString());
+    setSessionTimeoutNotice(null);
+    setShowInactivityWarning(false);
 
     if (rememberMe) {
       localStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
@@ -1267,6 +1402,7 @@ export default function App() {
               updatedUsers.push(verifiedUser);
             }
             updateUsersDB(updatedUsers);
+            associateGuestAttemptsWithUser(verifiedUser);
           }
           setOtpDeliveryMessage({
             text: 'Your email has been verified successfully!',
@@ -1431,6 +1567,9 @@ export default function App() {
     if (adminPassInput.trim() === adminPassword) {
       setIsAdmin(true);
       localStorage.setItem('orjon_session_admin', 'true');
+      localStorage.setItem('orjon_last_activity', Date.now().toString());
+      setSessionTimeoutNotice(null);
+      setShowInactivityWarning(false);
       setAdminPassInput('');
     } else {
       alert('ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।');
@@ -1509,6 +1648,10 @@ export default function App() {
     localStorage.removeItem('medha_session_user');
     localStorage.removeItem('orjon_session_admin');
     localStorage.removeItem('medha_session_admin');
+    localStorage.removeItem('orjon_last_activity');
+    sessionStorage.removeItem('orjon_session_user');
+    sessionStorage.removeItem('orjon_session_admin');
+    setShowInactivityWarning(false);
     setAuthScreen('login');
   };
 
@@ -1553,6 +1696,63 @@ export default function App() {
 
     if (changed) {
       updateSubcategoriesDB(updatedSubcats);
+    }
+  };
+
+  const handleFetchQuestionsLazy = async (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }): Promise<Question[]> => {
+    const fetched = await fetchQuestionsLazyFromFirestore(filter);
+    if (fetched && fetched.length > 0) {
+      setQuestions(prev => {
+        const map = new Map<string, Question>();
+        prev.forEach(q => map.set(q.id, q));
+        fetched.forEach(q => map.set(q.id, q));
+        const merged = Array.from(map.values());
+        saveQuestionsToIDB(merged);
+        return merged;
+      });
+    }
+    return fetched;
+  };
+
+  const handleLoadUsersOnDemand = async () => {
+    try {
+      const fsUsers = await fetchCollectionFromFirestore<User>('users');
+      if (fsUsers && fsUsers.length > 0) {
+        const fsMap = new Map<string, User>();
+        fsUsers.forEach(u => {
+          const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
+          if (k) fsMap.set(k, u);
+        });
+        const dedupedFsUsers = Array.from(fsMap.values());
+        setUsers(dedupedFsUsers);
+        localStorage.setItem('orjon_users', JSON.stringify(dedupedFsUsers));
+      }
+    } catch (e) {
+      console.warn('On-demand users load notice:', e);
+    }
+  };
+
+  const handleLoadAttemptsOnDemand = async () => {
+    try {
+      const fsAttempts = await fetchCollectionFromFirestore<Attempt>('attempts');
+      if (fsAttempts && fsAttempts.length > 0) {
+        setAttempts(fsAttempts);
+        localStorage.setItem('orjon_attempts', JSON.stringify(fsAttempts));
+      }
+    } catch (e) {
+      console.warn('On-demand attempts load notice:', e);
+    }
+  };
+
+  const handleLoadAuditLogsOnDemand = async () => {
+    try {
+      const fsAudit = await fetchCollectionFromFirestore<AuditLog>('audit_logs');
+      if (fsAudit && fsAudit.length > 0) {
+        setAuditLogs(fsAudit);
+        localStorage.setItem('orjon_audit_logs', JSON.stringify(fsAudit));
+      }
+    } catch (e) {
+      console.warn('On-demand audit logs load notice:', e);
     }
   };
 
@@ -2199,7 +2399,27 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50 text-slate-800 antialiased font-sans flex flex-col justify-between">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50 text-slate-800 antialiased font-sans flex flex-col justify-between relative">
+      {/* Real-time Session Inactivity Warning Banner */}
+      {showInactivityWarning && (currentUser || isAdmin) && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] max-w-md w-[92%] bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 text-slate-950 font-black text-xs sm:text-sm p-3.5 rounded-2xl shadow-2xl border-2 border-amber-200 flex items-center justify-between gap-3 animate-bounce">
+          <div className="flex items-center gap-2">
+            <span className="text-xl shrink-0">⏳</span>
+            <span className="leading-tight">নিষ্ক্রিয়তার কারণে ১ মিনিটের মধ্যে সেশন টাইমআউট হবে!</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem('orjon_last_activity', Date.now().toString());
+              setShowInactivityWarning(false);
+            }}
+            className="bg-slate-950 hover:bg-slate-800 text-amber-300 font-extrabold text-[11px] px-3 py-1.5 rounded-xl shrink-0 cursor-pointer transition shadow-md border border-amber-400/30"
+          >
+            সেশন সচল রাখুন
+          </button>
+        </div>
+      )}
+
       {/* Dynamic Shell Grid Layout */}
       <div className="w-full max-w-5xl mx-auto p-1 sm:p-2 md:p-2.5 flex-grow flex flex-col overflow-x-hidden">
         
@@ -2211,7 +2431,12 @@ export default function App() {
             liveExams={liveExams}
             notices={notices}
             routines={routines}
-            attempts={attempts.filter(a => a.userPhone === currentUser.phone)}
+            attempts={attempts.filter(a => {
+              if (currentUser.phone && a.userPhone === currentUser.phone) return true;
+              if (currentUser.email && a.userEmail && a.userEmail.toLowerCase() === currentUser.email.toLowerCase()) return true;
+              if (currentUser.email && a.userPhone && a.userPhone.toLowerCase() === currentUser.email.toLowerCase()) return true;
+              return false;
+            })}
             bookmarks={bookmarks.filter(b => b.userPhone === currentUser.phone)}
             categories={categories}
             subcategories={subcategories}
@@ -2223,6 +2448,16 @@ export default function App() {
             onLogout={requestLogoutConfirmation}
             allowUserExplanation={allowUserExplanation}
             showMcqCount={showMcqCount}
+            directExamId={directExamId}
+            onFetchQuestionsLazy={handleFetchQuestionsLazy}
+            onRegisterPrompt={() => {
+              const guestEmail = currentUser.email || '';
+              setCurrentUser(null);
+              setAuthScreen('register');
+              if (guestEmail) {
+                setRegEmail(guestEmail);
+              }
+            }}
           />
         )}
 
@@ -2266,6 +2501,12 @@ export default function App() {
             auditLogs={auditLogs}
             onAddAuditLog={addAuditLog}
             onClearAuditLogs={handleClearAuditLogs}
+            sessionTimeoutMinutes={sessionTimeoutMinutes}
+            onUpdateSessionTimeout={handleUpdateSessionTimeout}
+            onFetchQuestionsLazy={handleFetchQuestionsLazy}
+            onLoadUsersOnDemand={handleLoadUsersOnDemand}
+            onLoadAttemptsOnDemand={handleLoadAttemptsOnDemand}
+            onLoadAuditLogsOnDemand={handleLoadAuditLogsOnDemand}
           />
         )}
 
@@ -2281,6 +2522,34 @@ export default function App() {
                 </div>
                 <h1 className="text-base font-bold text-gray-900 tracking-tight">Quiz & Exam Portal</h1>
               </div>
+
+              {/* Live Exam Quick Callout for Guests */}
+              {liveExams.length > 0 && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-amber-300/80 rounded-2xl p-3.5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-amber-900 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      ⏱️ লাইভ পরীক্ষা চলছে
+                    </span>
+                    <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-md">
+                      গেস্ট মোড
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-700 font-medium leading-tight">
+                    লগইন ছাড়া শুধু ইমেইল আইডি দিয়ে সরাসরি লাইভ পরীক্ষায় অংশ নিতে পারবেন!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGuestExamTarget(liveExams[0]);
+                      setGuestEmailModalOpen(true);
+                    }}
+                    className="w-full py-2 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>🎯</span> গেস্ট হিসেবে পরীক্ষা দিন ➔
+                  </button>
+                </div>
+              )}
 
               {/* View Switchers: Login | Register */}
               <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs font-bold">
@@ -2367,6 +2636,23 @@ export default function App() {
                       Remember me
                     </label>
                   </div>
+
+                  {sessionTimeoutNotice && (
+                    <div className="p-3 bg-amber-50 border border-amber-300/90 rounded-xl text-amber-950 text-xs font-semibold leading-relaxed flex items-start gap-2.5 shadow-2xs">
+                      <span className="text-lg shrink-0">🔒</span>
+                      <div className="flex-1">
+                        <p className="font-extrabold text-amber-950 text-[12px]">সেশন টাইমআউট!</p>
+                        <p className="text-[11px] text-amber-900 font-medium mt-0.5">{sessionTimeoutNotice}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSessionTimeoutNotice(null)}
+                        className="text-amber-700 hover:text-amber-950 font-bold text-xs p-0.5 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
 
                   {loginErrorMessage && (
                     <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-medium">
@@ -3154,6 +3440,86 @@ export default function App() {
                 className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3 rounded-2xl text-xs transition shadow-md shadow-rose-100 cursor-pointer"
               >
                 হ্যাঁ, লগআউট করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Guest Email Modal Overlay */}
+      {guestEmailModalOpen && guestExamTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[99999] animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 border border-gray-100 shadow-2xl flex flex-col gap-4 text-xs">
+            <div className="flex justify-between items-center border-b pb-3 border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                  লাইভ পরীক্ষা (গেস্ট মোড)
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setGuestEmailModalOpen(false);
+                  setGuestExamTarget(null);
+                  setGuestError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-extrabold text-base p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3.5 space-y-1">
+              <h4 className="font-black text-indigo-950 text-sm">{guestExamTarget.title}</h4>
+              <div className="flex flex-wrap gap-2 text-[10.5px] text-indigo-700 font-bold pt-0.5">
+                <span>প্রস্তুতি বিষয়: {guestExamTarget.category === 'ALL' ? 'সব বিষয়' : guestExamTarget.category}</span>
+                <span>•</span>
+                <span>প্রশ্ন: {guestExamTarget.qLimit}টি</span>
+                <span>•</span>
+                <span>সময়: {guestExamTarget.timeLimit} মিনিট</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-slate-800 font-bold text-xs">
+                আপনার ইমেইল এড্রেস প্রদান করুন: <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="email"
+                required
+                value={guestEmailInput}
+                onChange={(e) => {
+                  setGuestEmailInput(e.target.value);
+                  setGuestError(null);
+                }}
+                placeholder="যেমন: student@gmail.com"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+              />
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                💡 পাসওয়ার্ড বা ইমেইল ভেরিফিকেশনের প্রয়োজন নেই। পরীক্ষা শেষে অর্জিত নম্বর দেখতে পাবেন। পরবর্তীতে অ্যাকাউন্ট রেজিস্ট্রেশন করলে আপনার সকল আগের গেস্ট পরীক্ষার বিস্তারিত সমাধান ও PDF রেজাল্ট কার্ড আনলক হয়ে যাবে।
+              </p>
+              {guestError && (
+                <p className="text-[11px] text-rose-600 font-extrabold bg-rose-50 border border-rose-200 p-2 rounded-lg">
+                  ⚠️ {guestError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => handleStartGuestExam(guestExamTarget, guestEmailInput)}
+                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>🎯</span> পরীক্ষা শুরু করুন ➔
+              </button>
+              <button
+                onClick={() => {
+                  setGuestEmailModalOpen(false);
+                  setAuthScreen('login');
+                }}
+                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                লগইন করুন
               </button>
             </div>
           </div>

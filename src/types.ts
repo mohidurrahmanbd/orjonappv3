@@ -51,6 +51,7 @@ export interface User {
   lifetimeCorrect: number;
   lifetimeWrong: number;
   createdAt: string;
+  isGuest?: boolean;      // Flag if user is participating as guest
 }
 
 export const generateAutoUserId = (): string => {
@@ -77,6 +78,8 @@ export interface Attempt {
   userSelectedAnswers: Record<number, string>; // index -> selected option key or 'Skipped'
   activeQuizQuestions: Question[]; // Snapshots of questions at that exam
   submittedAt: string;
+  userEmail?: string;     // Guest or registered user email
+  isGuestAttempt?: boolean; // Flag indicating if attempt was taken as a guest
 }
 
 export interface Notice {

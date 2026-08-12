@@ -292,6 +292,93 @@ export async function performIncrementalSyncFromFirestore(
 }
 
 /**
+ * Lazy-load questions for a specific category, subcategory, topic, or examId.
+ * Cache-First: Checks IndexedDB cache first. If found locally, returns immediately with 0 Firestore reads.
+ * If missing, queries Firestore for ONLY the specific requested category, subcategory, or examId.
+ */
+export async function fetchQuestionsLazyFromFirestore(filter: {
+  category?: string;
+  subcategory?: string;
+  topic?: string;
+  examId?: string;
+  forceRefresh?: boolean;
+}): Promise<Question[]> {
+  try {
+    const cached = await getQuestionsFromIDB();
+    
+    // Filter local cache first
+    let localMatches = cached;
+    if (filter.category) {
+      const targetCat = filter.category.trim().toLowerCase();
+      localMatches = localMatches.filter(q => 
+        (q.category && q.category.trim().toLowerCase() === targetCat) ||
+        (q.csvCategory && q.csvCategory.trim().toLowerCase() === targetCat) ||
+        (q.categories && q.categories.some(c => c.trim().toLowerCase() === targetCat))
+      );
+    }
+    if (filter.subcategory) {
+      const targetSub = filter.subcategory.trim().toLowerCase();
+      localMatches = localMatches.filter(q => 
+        (q.subcategory && q.subcategory.trim().toLowerCase() === targetSub) ||
+        (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === targetSub))
+      );
+    }
+    if (filter.topic) {
+      const targetTopic = filter.topic.trim().toLowerCase();
+      localMatches = localMatches.filter(q => 
+        (q as any).topic && ((q as any).topic as string).trim().toLowerCase() === targetTopic
+      );
+    }
+    if (filter.examId) {
+      localMatches = localMatches.filter(q => (q as any).examId === filter.examId);
+    }
+
+    // Cache-First: If matching questions exist in local IndexedDB and forceRefresh is false, return immediately!
+    if (localMatches.length > 0 && !filter.forceRefresh) {
+      return localMatches;
+    }
+
+    // Otherwise, fetch ONLY the specific subset from Firestore using targeted queries
+    const qColRef = collection(db, 'questions');
+    let firestoreDocs: Question[] = [];
+
+    if (filter.category) {
+      const qCat = query(qColRef, where('category', '==', filter.category));
+      const snap = await getDocs(qCat);
+      snap.forEach(d => {
+        const data = d.data();
+        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+      });
+    } else if (filter.subcategory) {
+      const qSub = query(qColRef, where('subcategory', '==', filter.subcategory));
+      const snap = await getDocs(qSub);
+      snap.forEach(d => {
+        const data = d.data();
+        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+      });
+    } else if (filter.examId) {
+      const qExam = query(qColRef, where('examId', '==', filter.examId));
+      const snap = await getDocs(qExam);
+      snap.forEach(d => {
+        const data = d.data();
+        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+      });
+    }
+
+    if (firestoreDocs.length > 0) {
+      // Upsert newly fetched questions into IndexedDB for instant future hits
+      await upsertQuestionsToIDB(firestoreDocs, []);
+      return firestoreDocs;
+    }
+
+    return localMatches;
+  } catch (err) {
+    console.warn('Lazy question fetch notice (using local cache):', err);
+    return await getQuestionsFromIDB();
+  }
+}
+
+/**
  * Real-time Firestore subscriber for questions collection with incremental IndexedDB diff sync.
  */
 export function subscribeQuestionsFromFirestore(

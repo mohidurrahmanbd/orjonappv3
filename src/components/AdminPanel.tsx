@@ -59,6 +59,12 @@ interface AdminPanelProps {
   auditLogs?: AuditLog[];
   onAddAuditLog?: (action: string, details: string, type?: AuditLog['type']) => void;
   onClearAuditLogs?: () => void;
+  sessionTimeoutMinutes?: number;
+  onUpdateSessionTimeout?: (mins: number) => void;
+  onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
+  onLoadUsersOnDemand?: () => void;
+  onLoadAuditLogsOnDemand?: () => void;
+  onLoadAttemptsOnDemand?: () => void;
 }
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
@@ -157,10 +163,26 @@ export default function AdminPanel({
   onUpdateAdminPassword,
   auditLogs = [],
   onAddAuditLog,
-  onClearAuditLogs
+  onClearAuditLogs,
+  sessionTimeoutMinutes = 15,
+  onUpdateSessionTimeout,
+  onFetchQuestionsLazy,
+  onLoadUsersOnDemand,
+  onLoadAuditLogsOnDemand,
+  onLoadAttemptsOnDemand
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'manage' | 'categories' | 'exams' | 'routines' | 'results' | 'users' | 'feedback' | 'backup' | 'firestore-migration' | 'audit-logs'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'users' && onLoadUsersOnDemand) {
+      onLoadUsersOnDemand();
+    } else if (activeTab === 'results' && onLoadAttemptsOnDemand) {
+      onLoadAttemptsOnDemand();
+    } else if (activeTab === 'audit-logs' && onLoadAuditLogsOnDemand) {
+      onLoadAuditLogsOnDemand();
+    }
+  }, [activeTab]);
 
   // Audit Log State
   const [auditSearch, setAuditSearch] = useState('');
@@ -6461,43 +6483,100 @@ export default function AdminPanel({
             </div>
 
             {/* Live Exam Lists */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-              <h3 className="font-bold text-sm text-gray-800 mb-2">📋 সক্রিয় অফিশিয়াল পরীক্ষাসমূহ</h3>
-              <div className="divide-y divide-gray-100">
-                {liveExams.length === 0 ? (
-                  <p className="text-gray-400 py-3 text-xs">কোনো অফিশিয়াল পরীক্ষা শিডিউল করা নেই।</p>
-                ) : (
-                  liveExams.map((exam, idx) => (
-                    <div key={exam.id ? `le-${exam.id}-${idx}` : `le-${idx}`} className="py-2.5 flex justify-between items-center">
-                      <div>
-                        <h4 className="font-bold text-gray-800">{exam.title}</h4>
-                        <p className="text-[10px] text-gray-500 mt-0.5">
-                          সময়সীমা: {new Date(exam.startTime).toLocaleString('bn-BD')} থেকে {new Date(exam.expiryTime).toLocaleString('bn-BD')}
-                        </p>
-                        <p className="text-[9px] text-indigo-600 font-bold mt-0.5">
-                          ক্যাটাগরি: {exam.category === 'ALL' ? 'সব বিষয়' : exam.category} | প্রশ্ন সংখ্যা: {exam.qLimit}টি | সময়: {exam.timeLimit} মিনিট
-                        </p>
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="font-bold text-sm text-gray-800 mb-3 flex items-center gap-2">
+                <span>📋</span> সক্রিয় অফিশিয়াল পরীক্ষাসমূহ
+              </h3>
+              {liveExams.length === 0 ? (
+                <p className="text-gray-400 py-4 text-xs text-center border border-dashed border-gray-200 rounded-xl">কোনো অফিশিয়াল পরীক্ষা শিডিউল করা নেই।</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
+                  {[...liveExams]
+                    .sort((a, b) => {
+                      const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
+                      const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
+                      return timeB - timeA;
+                    })
+                    .map((exam, idx) => (
+                    <div
+                      key={exam.id ? `le-${exam.id}-${idx}` : `le-${idx}`}
+                      className="bg-white border border-slate-150 rounded-2xl p-3.5 sm:p-4 shadow-xs flex flex-col justify-between gap-3 hover:shadow-md transition-all border-l-4 border-l-indigo-600"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-extrabold text-indigo-950 text-xs sm:text-sm leading-snug">{exam.title}</h4>
+                          <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg font-bold shrink-0">
+                            ⏱️ অফিশিয়াল
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 sm:p-3 space-y-1.5">
+                          <p className="text-[10px] sm:text-[10.5px] text-slate-600 font-medium leading-relaxed">
+                            📅 সময়সীমা: <span className="font-bold text-slate-800">{new Date(exam.startTime).toLocaleString('bn-BD')}</span> থেকে <span className="font-bold text-slate-800">{new Date(exam.expiryTime).toLocaleString('bn-BD')}</span>
+                          </p>
+                          <div className="flex flex-wrap gap-1 sm:gap-1.5 text-[9.5px] sm:text-[10px] text-indigo-700 font-bold pt-0.5">
+                            <span className="bg-white border border-slate-200 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md shadow-2xs">
+                              ক্যাটাগরি: {exam.category === 'ALL' ? 'সব বিষয়' : exam.category}
+                            </span>
+                            <span className="bg-white border border-slate-200 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md shadow-2xs">
+                              প্রশ্ন: {exam.qLimit}টি
+                            </span>
+                            <span className="bg-white border border-slate-200 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md shadow-2xs">
+                              সময়: {exam.timeLimit} মিনিট
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => {
-                          showCustomConfirm(
-                            'পরীক্ষা ডিলিট নিশ্চিতকরণ',
-                            'পরীক্ষাটি ডিলিট করতে চান? এটি ডিলিট করলে এর ফলাফল ডাটাও হারিয়ে যাবে!',
-                            () => {
-                              onDeleteLiveExam(exam.id);
-                              showCustomAlert('সম্পন্ন হয়েছে!', 'পরীক্ষাটি সফলভাবে ডিলিট করা হয়েছে!', 'success');
-                            },
-                            'warning'
-                          );
-                        }}
-                        className="text-rose-600 hover:text-rose-800 font-bold text-xs"
-                      >
-                        মুছুন
-                      </button>
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap w-full overflow-x-auto no-scrollbar scrollbar-none pb-0.5">
+                        <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap shrink-0">
+                          <button
+                            onClick={() => {
+                              const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${exam.id}`;
+                              const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                              window.open(fbUrl, '_blank', 'width=600,height=500');
+                            }}
+                            className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
+                            title="ফেসবুকে শেয়ার করুন"
+                          >
+                            <span>📘</span> <span className="whitespace-nowrap">FB শেয়ার</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${exam.id}`;
+                              navigator.clipboard.writeText(shareUrl);
+                              showCustomAlert('কপি সম্পন্ন!', 'লাইভ পরীক্ষার লিঙ্ক ক্লিপবোর্ডে কপি করা হয়েছে!\nএখন লিঙ্কটি যেকোনো সোশ্যাল মিডিয়ায় বা মেসেঞ্জারে শেয়ার করতে পারবেন।', 'success');
+                            }}
+                            className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
+                            title="লিঙ্ক কপি করুন"
+                          >
+                            <span>🔗</span> <span className="whitespace-nowrap">লিঙ্ক কপি</span>
+                          </button>
+                        </div>
+
+                        <div className="shrink-0 flex items-center">
+                          <button 
+                            onClick={() => {
+                              showCustomConfirm(
+                                'পরীক্ষা ডিলিট নিশ্চিতকরণ',
+                                'পরীক্ষাটি ডিলিট করতে চান? এটি ডিলিট করলে এর ফলাফল ডাটাও হারিয়ে যাবে!',
+                                () => {
+                                  onDeleteLiveExam(exam.id);
+                                  showCustomAlert('সম্পন্ন হয়েছে!', 'পরীক্ষাটি সফলভাবে ডিলিট করা হয়েছে!', 'success');
+                                },
+                                'warning'
+                              );
+                            }}
+                            className="px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-[9.5px] sm:text-xs flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
+                          >
+                            <span>🗑️</span> <span className="whitespace-nowrap">মুছুন</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -6639,7 +6718,13 @@ export default function AdminPanel({
                 className="px-3 py-1.5 border rounded-xl bg-white text-gray-800 focus:outline-none"
               >
                 <option value="">নির্বাচন করুন...</option>
-                {liveExams.map((le, idx) => <option key={le.id ? `le-opt-${le.id}-${idx}` : `le-opt-${idx}`} value={le.id}>{le.title} (লাইভ)</option>)}
+                {[...liveExams]
+                  .sort((a, b) => {
+                    const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
+                    const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
+                    return timeB - timeA;
+                  })
+                  .map((le, idx) => <option key={le.id ? `le-opt-${le.id}-${idx}` : `le-opt-${idx}`} value={le.id}>{le.title} (লাইভ)</option>)}
               </select>
             </div>
           </div>
@@ -8758,6 +8843,31 @@ export default function AdminPanel({
                 placeholder="পুনরায় পাসওয়ার্ড দিন"
                 className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
               />
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 mt-1">
+              <label className="block text-gray-800 font-extrabold mb-1 flex items-center gap-1.5 text-xs">
+                <span>⏱️</span>
+                <span>ইনঅ্যাক্টিভিটি সেশন টাইমআউট (Inactivity Timeout):</span>
+              </label>
+              <select
+                value={sessionTimeoutMinutes}
+                onChange={e => {
+                  const mins = parseInt(e.target.value, 10);
+                  if (onUpdateSessionTimeout) {
+                    onUpdateSessionTimeout(mins);
+                  }
+                }}
+                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold text-xs bg-slate-50"
+              >
+                <option value={5}>৫ মিনিট নিষ্ক্রিয়তা</option>
+                <option value={15}>১৫ মিনিট নিষ্ক্রিয়তা (ডিফল্ট)</option>
+                <option value={30}>৩০ মিনিট নিষ্ক্রিয়তা</option>
+                <option value={60}>৬০ মিনিট (১ ঘণ্টা) নিষ্ক্রিয়তা</option>
+              </select>
+              <p className="text-[10px] text-gray-500 font-medium mt-1 leading-snug">
+                ব্যবহারকারী বা এডমিন নির্দিষ্ট সময় কোনো মাউস বা টাচ ক্লিক না করলে সেশন স্বয়ংক্রিয়ভাবে সিকিউরড লগআউট হবে।
+              </p>
             </div>
 
             <div className="flex gap-2 pt-2">

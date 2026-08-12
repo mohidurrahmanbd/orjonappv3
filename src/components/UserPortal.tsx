@@ -101,33 +101,123 @@ const renderSubjectIcon = (name: string, sizeClass = "w-4 h-4") => {
 const getSubjectTheme = (name: string) => {
   const norm = (name || '').toLowerCase();
   if (norm.includes('বাংলা') || norm.includes('bangla') || norm.includes('সাহিত্য')) {
-    return { bg: 'bg-rose-600', lightBg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-150', hoverBg: 'hover:bg-rose-50/40', hoverBorder: 'hover:border-rose-300' };
+    return {
+      bg: 'bg-rose-600',
+      lightBg: 'bg-rose-50',
+      text: 'text-rose-950',
+      subText: 'text-rose-700',
+      border: 'border-rose-200',
+      hoverBg: 'hover:bg-rose-50/80',
+      hoverBorder: 'hover:border-rose-400',
+      badgeBg: 'bg-rose-100/90 text-rose-950 border-rose-300',
+    };
   }
   if (norm.includes('ইংরেজি') || norm.includes('english')) {
-    return { bg: 'bg-blue-600', lightBg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-150', hoverBg: 'hover:bg-blue-50/40', hoverBorder: 'hover:border-blue-300' };
+    return {
+      bg: 'bg-blue-600',
+      lightBg: 'bg-blue-50',
+      text: 'text-blue-950',
+      subText: 'text-blue-700',
+      border: 'border-blue-200',
+      hoverBg: 'hover:bg-blue-50/80',
+      hoverBorder: 'hover:border-blue-400',
+      badgeBg: 'bg-blue-100/90 text-blue-950 border-blue-300',
+    };
   }
   if (norm.includes('গণিত') || norm.includes('math') || norm.includes('মানসিক দক্ষতা')) {
-    return { bg: 'bg-amber-600', lightBg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-150', hoverBg: 'hover:bg-amber-50/40', hoverBorder: 'hover:border-amber-300' };
+    return {
+      bg: 'bg-amber-600',
+      lightBg: 'bg-amber-50',
+      text: 'text-amber-950',
+      subText: 'text-amber-800',
+      border: 'border-amber-200',
+      hoverBg: 'hover:bg-amber-50/80',
+      hoverBorder: 'hover:border-amber-400',
+      badgeBg: 'bg-amber-100/90 text-amber-950 border-amber-300',
+    };
   }
   if (norm.includes('বিজ্ঞান') || norm.includes('science') || norm.includes('পদার্থ') || norm.includes('রসায়ন')) {
-    return { bg: 'bg-teal-600', lightBg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-150', hoverBg: 'hover:bg-teal-50/40', hoverBorder: 'hover:border-teal-300' };
+    return {
+      bg: 'bg-teal-600',
+      lightBg: 'bg-teal-50',
+      text: 'text-teal-950',
+      subText: 'text-teal-700',
+      border: 'border-teal-200',
+      hoverBg: 'hover:bg-teal-50/80',
+      hoverBorder: 'hover:border-teal-400',
+      badgeBg: 'bg-teal-100/90 text-teal-950 border-teal-300',
+    };
   }
   if (norm.includes('কম্পিউটার') || norm.includes('ict') || norm.includes('আইসিটি')) {
-    return { bg: 'bg-cyan-600', lightBg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-150', hoverBg: 'hover:bg-cyan-50/40', hoverBorder: 'hover:border-cyan-300' };
+    return {
+      bg: 'bg-cyan-600',
+      lightBg: 'bg-cyan-50',
+      text: 'text-cyan-950',
+      subText: 'text-cyan-800',
+      border: 'border-cyan-200',
+      hoverBg: 'hover:bg-cyan-50/80',
+      hoverBorder: 'hover:border-cyan-400',
+      badgeBg: 'bg-cyan-100/90 text-cyan-950 border-cyan-300',
+    };
   }
   if (norm.includes('বাংলাদেশ') || norm.includes('bangladesh')) {
-    return { bg: 'bg-emerald-600', lightBg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-150', hoverBg: 'hover:bg-emerald-50/40', hoverBorder: 'hover:border-emerald-300' };
+    return {
+      bg: 'bg-emerald-600',
+      lightBg: 'bg-emerald-50',
+      text: 'text-emerald-950',
+      subText: 'text-emerald-800',
+      border: 'border-emerald-200',
+      hoverBg: 'hover:bg-emerald-50/80',
+      hoverBorder: 'hover:border-emerald-400',
+      badgeBg: 'bg-emerald-100/90 text-emerald-950 border-emerald-300',
+    };
   }
   if (norm.includes('আন্তর্জাতিক') || norm.includes('international')) {
-    return { bg: 'bg-purple-600', lightBg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-150', hoverBg: 'hover:bg-purple-50/40', hoverBorder: 'hover:border-purple-300' };
+    return {
+      bg: 'bg-purple-600',
+      lightBg: 'bg-purple-50',
+      text: 'text-purple-950',
+      subText: 'text-purple-800',
+      border: 'border-purple-200',
+      hoverBg: 'hover:bg-purple-50/80',
+      hoverBorder: 'hover:border-purple-400',
+      badgeBg: 'bg-purple-100/90 text-purple-950 border-purple-300',
+    };
   }
   if (norm.includes('ভূগোল') || norm.includes('পরিবেশ')) {
-    return { bg: 'bg-lime-600', lightBg: 'bg-lime-50', text: 'text-lime-800', border: 'border-lime-150', hoverBg: 'hover:bg-lime-50/40', hoverBorder: 'hover:border-lime-300' };
+    return {
+      bg: 'bg-lime-600',
+      lightBg: 'bg-lime-50',
+      text: 'text-lime-950',
+      subText: 'text-lime-800',
+      border: 'border-lime-200',
+      hoverBg: 'hover:bg-lime-50/80',
+      hoverBorder: 'hover:border-lime-400',
+      badgeBg: 'bg-lime-100/90 text-lime-950 border-lime-300',
+    };
   }
   if (norm.includes('নৈতিকতা') || norm.includes('মূল্যবোধ') || norm.includes('সুশাসন')) {
-    return { bg: 'bg-indigo-600', lightBg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-150', hoverBg: 'hover:bg-indigo-50/40', hoverBorder: 'hover:border-indigo-300' };
+    return {
+      bg: 'bg-indigo-600',
+      lightBg: 'bg-indigo-50',
+      text: 'text-indigo-950',
+      subText: 'text-indigo-800',
+      border: 'border-indigo-200',
+      hoverBg: 'hover:bg-indigo-50/80',
+      hoverBorder: 'hover:border-indigo-400',
+      badgeBg: 'bg-indigo-100/90 text-indigo-950 border-indigo-300',
+    };
   }
-  return { bg: 'bg-indigo-600', lightBg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-150', hoverBg: 'hover:bg-indigo-50/40', hoverBorder: 'hover:border-indigo-300' };
+  return {
+    bg: 'bg-indigo-600',
+    lightBg: 'bg-indigo-50',
+    text: 'text-indigo-950',
+    subText: 'text-indigo-800',
+    border: 'border-indigo-200',
+    hoverBg: 'hover:bg-indigo-50/80',
+    hoverBorder: 'hover:border-indigo-400',
+    badgeBg: 'bg-indigo-100/90 text-indigo-950 border-indigo-300',
+  };
 };
 
 interface UserPortalProps {
@@ -148,6 +238,9 @@ interface UserPortalProps {
   onLogout: () => void;
   allowUserExplanation?: boolean;
   showMcqCount?: boolean;
+  directExamId?: string | null;
+  onRegisterPrompt?: () => void;
+  onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
 }
 
 export default function UserPortal({
@@ -167,7 +260,10 @@ export default function UserPortal({
   onUpdateUser,
   onLogout,
   allowUserExplanation = true,
-  showMcqCount = true
+  showMcqCount = true,
+  directExamId,
+  onRegisterPrompt,
+  onFetchQuestionsLazy
 }: UserPortalProps) {
   // Navigation
   const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'routines' | 'profile'>('dashboard');
@@ -212,6 +308,9 @@ export default function UserPortal({
   const [flagCommentText, setFlagCommentText] = useState('');
   const [userExplModalQ, setUserExplModalQ] = useState<Question | null>(null);
   const [userExplText, setUserExplText] = useState('');
+
+  // Challenge Modal State
+  const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
 
   // Custom Exam Setup & Cascading Filter States
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -367,19 +466,96 @@ export default function UserPortal({
 
   // History detailed sheet view state
   const [selectedAttemptForView, setSelectedAttemptForView] = useState<Attempt | null>(null);
+  const [includeMarkTableInPDF, setIncludeMarkTableInPDF] = useState(true);
   const [resultFilterMode, setResultFilterMode] = useState<'user' | 'admin'>('user');
 
   // Custom Alert and Confirm Dialog States
-  const [customAlert, setCustomAlert] = useState<{ open: boolean; title?: string; message: string; onConfirm?: () => void } | null>(null);
+  const [customAlert, setCustomAlert] = useState<{
+    open: boolean;
+    title?: string;
+    message: string;
+    onConfirm?: () => void;
+    showCancel?: boolean;
+    confirmText?: string;
+    cancelText?: string;
+  } | null>(null);
   const [customConfirm, setCustomConfirm] = useState<{ open: boolean; title?: string; message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
 
-  const showCustomAlert = (message: string, onConfirm?: () => void, title?: string) => {
-    setCustomAlert({ open: true, title, message, onConfirm });
+  const showCustomAlert = (
+    message: string,
+    onConfirm?: () => void,
+    title?: string,
+    showCancel?: boolean,
+    confirmText?: string,
+    cancelText?: string
+  ) => {
+    setCustomAlert({ open: true, title, message, onConfirm, showCancel, confirmText, cancelText });
   };
 
   const showCustomConfirm = (message: string, onConfirm: () => void, onCancel?: () => void, title?: string) => {
     setCustomConfirm({ open: true, title, message, onConfirm, onCancel });
   };
+
+  // Guest Limitation Guard & Helpers
+  const checkGuestAccess = (featureName: string = 'এই ফিচারটি'): boolean => {
+    if (user.isGuest) {
+      showCustomAlert(
+        `🔒 রেজিস্ট্রেশন প্রয়োজন!\n\nগেস্ট (Guest) হিসেবে ক্যাটাগরি ও সাব-ক্যাটাগরি দেখা গেলেও MCQ পড়া ও পরীক্ষা দেওয়ার জন্য বিনামূল্যে অ্যাকাউন্ট রেজিস্ট্রেশন সম্পন্ন করুন।\n\n${featureName} অ্যাক্সেস করতে রেজিস্ট্রেশন করুন।`,
+        () => {
+          if (onRegisterPrompt) onRegisterPrompt();
+        },
+        '🔒 রেজিস্ট্রেশন প্রয়োজন',
+        true,
+        'রেজিস্ট্রেশন করুন',
+        'এখন নয়'
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'routines' | 'profile') => {
+    if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
+      checkGuestAccess(
+        tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
+      );
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const renderGuestLockCard = (title: string, description: string) => (
+    <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 text-white rounded-3xl p-6 sm:p-10 my-4 shadow-xl border border-indigo-700/50 text-center space-y-5 animate-fade-in max-w-2xl mx-auto">
+      <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-3xl mx-auto backdrop-blur-sm border border-white/20 shadow-md">
+        🔒
+      </div>
+      <div className="space-y-2.5">
+        <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider bg-amber-500/20 px-3 py-1 rounded-full border border-amber-400/30 inline-block">
+          গেস্ট মোড সীমাবদ্ধতা
+        </span>
+        <h3 className="text-base sm:text-xl font-extrabold text-white">
+          {title}
+        </h3>
+        <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed max-w-lg mx-auto">
+          {description}
+        </p>
+      </div>
+      <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center items-center">
+        <button
+          onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
+          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <span>🚀</span> বিনামূল্যে রেজিস্ট্রেশন সম্পূর্ণ করুন
+        </button>
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className="w-full sm:w-auto px-6 py-3.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-2xl transition-all border border-white/20 cursor-pointer"
+        >
+          এখন নয়
+        </button>
+      </div>
+    </div>
+  );
 
   // Stack Unwinding Engine: unwinds one layer of navigation/state stack.
   const handleStackUnwind = (): boolean => {
@@ -500,7 +676,25 @@ export default function UserPortal({
     };
   }, [onLogout]);
 
-  const handleDownloadPDF = (attempt: Attempt) => {
+  useEffect(() => {
+    if (directExamId && liveExams.length > 0) {
+      const targetExam = liveExams.find(e => e.id === directExamId);
+      if (targetExam) {
+        setActiveTab('exams');
+        startOfficialLiveExam(targetExam);
+      }
+    }
+  }, [directExamId, liveExams]);
+
+  const handleDownloadPDF = (attempt: Attempt, includeMarkCalcTable: boolean = true) => {
+    if (user.isGuest) {
+      showCustomAlert(
+        'গেস্ট (Guest) হিসেবে পরীক্ষা দিলে PDF ডাউনলোড করার সুযোগ নেই।\n\nবিনামূল্যে একটি একাউন্ট রেজিস্ট্রেশন করলে আপনার সকল আগের পরীক্ষার উত্তরপত্র ও PDF রেজাল্ট কার্ড ডাউনলোড করতে পারবেন!',
+        undefined,
+        '🔒 PDF ডাউনলোডে সীমাবদ্ধতা'
+      );
+      return;
+    }
     const attemptQuestions = 
       (attempt.activeQuizQuestions && attempt.activeQuizQuestions.length > 0)
         ? attempt.activeQuizQuestions
@@ -515,6 +709,10 @@ export default function UserPortal({
     const wrongC = attempt.wrongCount || 0;
     const skippedC = Math.max(0, totalQ - correctC - wrongC);
     const accuracy = Math.round((correctC / totalQ) * 100);
+
+    const correctMarks = (correctC * 1.0).toFixed(2);
+    const negativeDeduction = (wrongC * 0.5).toFixed(2);
+    const netScore = attempt.score;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -598,6 +796,48 @@ export default function UserPortal({
             font-size: 16px;
             font-weight: 800;
             margin-top: 4px;
+          }
+          .mark-calc-box {
+            background: #f8fafc;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+          }
+          .mark-calc-title {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: #1e1b4b;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-bottom: 10px;
+          }
+          .mark-calc-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+          .mark-calc-table th {
+            background: #f1f5f9;
+            color: #334155;
+            font-weight: 700;
+            padding: 7px 10px;
+            border: 1px solid #cbd5e1;
+            text-align: center;
+          }
+          .mark-calc-table td {
+            padding: 7px 10px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+            color: #0f172a;
+          }
+          .mark-calc-table tr.total-row {
+            background: #e0e7ff;
+          }
+          .mark-calc-table tr.total-row td {
+            border-top: 2px solid #4f46e5;
+            font-weight: 800;
           }
           .section-title {
             font-size: 15px;
@@ -711,6 +951,48 @@ export default function UserPortal({
             <div class="summary-val" style="color: #4f46e5;">${attempt.score}</div>
           </div>
         </div>
+
+        ${includeMarkCalcTable ? `
+          <div class="mark-calc-box">
+            <div class="mark-calc-title">📊 নম্বর গণনার বিস্তারিত হিসাব (Mark Calculation Table)</div>
+            <table class="mark-calc-table">
+              <thead>
+                <tr>
+                  <th style="text-align: left;">বিবরণ (Item)</th>
+                  <th>সংখ্যা (Count)</th>
+                  <th>প্রতিটির মান (Value per item)</th>
+                  <th>মোট নম্বর (Marks)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="text-align: left; font-weight: 700; color: #166534;">✅ সঠিক উত্তর (Correct Answers)</td>
+                  <td style="font-weight: 700;">${correctC}টি</td>
+                  <td>+১.০০</td>
+                  <td style="color: #16a34a; font-weight: 800;">+${correctMarks}</td>
+                </tr>
+                <tr>
+                  <td style="text-align: left; font-weight: 700; color: #9f1239;">❌ ভুল উত্তরের জন্য নেগেটিভ মার্ক (Wrong Answer Penalty)</td>
+                  <td style="font-weight: 700;">${wrongC}টি</td>
+                  <td>-০.৫০</td>
+                  <td style="color: #dc2626; font-weight: 800;">-${negativeDeduction}</td>
+                </tr>
+                <tr>
+                  <td style="text-align: left; font-weight: 700; color: #475569;">⚪ অনুত্তর / স্কিপড (Unanswered / Skipped)</td>
+                  <td style="font-weight: 700;">${skippedC}টি</td>
+                  <td>০.০০</td>
+                  <td style="color: #64748b; font-weight: 800;">০.০০</td>
+                </tr>
+                <tr class="total-row">
+                  <td style="text-align: left; font-weight: 800; color: #1e1b4b;">🏆 সর্বমোট অর্জিত নম্বর (Net Final Score)</td>
+                  <td style="font-weight: 800; color: #1e1b4b;">${totalQ}টি</td>
+                  <td style="color: #64748b;">—</td>
+                  <td style="color: #4f46e5; font-weight: 800; font-size: 14px;">${netScore}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
 
         <div class="section-title">প্রশ্নোত্তর ও ব্যাখ্যামূলক বিশ্লেষণ</div>
 
@@ -962,10 +1244,15 @@ export default function UserPortal({
   }, [isQuizTimerRunning, secondsRemaining, quizActive]);
 
   // Quiz helper functions
-  const startPrepExam = (categoryName: string, overrideQuestions?: Question[]) => {
-    const filtered = overrideQuestions || questions.filter(q => 
+  const startPrepExam = async (categoryName: string, overrideQuestions?: Question[]) => {
+    if (!checkGuestAccess('বিষয়ভিত্তিক প্রস্তুতি পরীক্ষা')) return;
+    let filtered = overrideQuestions || questions.filter(q => 
       q.category === categoryName || (q.categories && q.categories.includes(categoryName))
     );
+    if (filtered.length === 0 && onFetchQuestionsLazy && !overrideQuestions) {
+      const fetched = await onFetchQuestionsLazy({ category: categoryName });
+      filtered = fetched.filter(q => q.category === categoryName || (q.categories && q.categories.includes(categoryName)));
+    }
     if (filtered.length === 0) {
       showCustomAlert('কোনো প্রশ্ন পাওয়া যায়নি!');
       return;
@@ -975,10 +1262,15 @@ export default function UserPortal({
     setSetupModalOpen(true);
   };
 
-  const startJobExam = (subcatName: string, overrideQuestions?: Question[]) => {
-    const filtered = overrideQuestions || questions.filter(q => 
+  const startJobExam = async (subcatName: string, overrideQuestions?: Question[]) => {
+    if (!checkGuestAccess('জব সলিউশন পরীক্ষা')) return;
+    let filtered = overrideQuestions || questions.filter(q => 
       q.subcategory === subcatName || (q.subcategories && q.subcategories.includes(subcatName))
     );
+    if (filtered.length === 0 && onFetchQuestionsLazy && !overrideQuestions) {
+      const fetched = await onFetchQuestionsLazy({ subcategory: subcatName });
+      filtered = fetched.filter(q => q.subcategory === subcatName || (q.subcategories && q.subcategories.includes(subcatName)));
+    }
     if (filtered.length === 0) {
       showCustomAlert('কোনো প্রশ্ন পাওয়া যায়নি!');
       return;
@@ -1136,6 +1428,7 @@ export default function UserPortal({
   };
 
   const startCustomPracticeExam = () => {
+    if (!checkGuestAccess('কাস্টম পরীক্ষা ও প্র্যাকটিস এক্সাম')) return;
     setSetupModalOpen(false);
     const pool = getCustomExamQuestionsPool();
 
@@ -1335,7 +1628,7 @@ export default function UserPortal({
     reader.readAsText(file);
   };
 
-  const startOfficialLiveExam = (exam: LiveExam) => {
+  const startOfficialLiveExam = async (exam: LiveExam) => {
     // Check if already completed
     const alreadyTaken = attempts.some(a => a.examId === exam.id);
     if (alreadyTaken) {
@@ -1347,8 +1640,13 @@ export default function UserPortal({
 
     if (exam.questionIds && exam.questionIds.length > 0) {
       // Load specific manually selected questions
-      const idSet = new Set(exam.questionIds);
+      let idSet = new Set(exam.questionIds);
       finalQuestions = questions.filter(q => idSet.has(q.id));
+      if (finalQuestions.length === 0 && onFetchQuestionsLazy) {
+        const fetched = await onFetchQuestionsLazy({ examId: exam.id, category: exam.category === 'ALL' ? undefined : exam.category });
+        idSet = new Set(exam.questionIds);
+        finalQuestions = fetched.filter(q => idSet.has(q.id));
+      }
       
       // Keep original order of selected questions if possible
       finalQuestions.sort((a, b) => {
@@ -1360,7 +1658,14 @@ export default function UserPortal({
       let pool = questions;
       if (exam.category !== 'ALL') {
         pool = questions.filter(q => q.category === exam.category || (q.categories && q.categories.includes(exam.category)));
+        if (pool.length === 0 && onFetchQuestionsLazy) {
+          const fetched = await onFetchQuestionsLazy({ category: exam.category, examId: exam.id });
+          pool = fetched.filter(q => q.category === exam.category || (q.categories && q.categories.includes(exam.category)));
+        }
+      } else if (pool.length === 0 && onFetchQuestionsLazy) {
+        pool = await onFetchQuestionsLazy({ examId: exam.id });
       }
+
       if (pool.length === 0) {
         showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
         return;
@@ -1456,14 +1761,14 @@ export default function UserPortal({
       }
     });
 
-    // Bangladesh BCS marking standard: 0.25 negative marks for each wrong answer
-    const negativeMarks = wrongCount * 0.25;
+    // Standard marking: 0.5 negative marks for each wrong answer
+    const negativeMarks = wrongCount * 0.5;
     const finalScore = Math.max(0, correctCount - negativeMarks);
 
     const finishedAttempt: Attempt = {
       id: `attempt_${Date.now()}`,
-      userPhone: user.phone,
-      username: user.name,
+      userPhone: user.phone || user.email || '',
+      username: user.name || 'গেস্ট পরীক্ষার্থী',
       examId: quizExamId,
       examTitle: quizTitle,
       score: finalScore,
@@ -1474,7 +1779,9 @@ export default function UserPortal({
       incorrectQuestionIds: incorrectQIds,
       userSelectedAnswers,
       activeQuizQuestions: quizQuestions,
-      submittedAt: new Date().toISOString()
+      submittedAt: new Date().toISOString(),
+      userEmail: user.email || user.phone || '',
+      isGuestAttempt: user.isGuest || false
     };
 
     onSaveAttempt(finishedAttempt);
@@ -1508,7 +1815,8 @@ export default function UserPortal({
     showCustomAlert('🔖 প্রশ্নটি বুকমার্ক কালেকশনে যোগ করা হয়েছে!');
   };
 
-  const handleOpenReaderMode = (type: 'prep' | 'job', customValue?: string, overrideQuestions?: Question[]) => {
+  const handleOpenReaderMode = async (type: 'prep' | 'job', customValue?: string, overrideQuestions?: Question[]) => {
+    if (!checkGuestAccess('MCQ পড়া ও সমাধান ভিউ')) return;
     let filtered: Question[] = [];
     const targetValue = customValue || (type === 'prep' ? prepCategory : jobSubcategory);
     
@@ -1520,12 +1828,20 @@ export default function UserPortal({
         filtered = questions.filter(q => 
           q.category === targetValue || (q.categories && q.categories.includes(targetValue))
         );
+        if (filtered.length === 0 && onFetchQuestionsLazy) {
+          const fetched = await onFetchQuestionsLazy({ category: targetValue });
+          filtered = fetched.filter(q => q.category === targetValue || (q.categories && q.categories.includes(targetValue)));
+        }
         setReaderTitle(`বিষয়ভিত্তিক পড়া: ${targetValue}`);
         if (customValue) setPrepCategory(customValue);
       } else {
         filtered = questions.filter(q => 
           q.subcategory === targetValue || (q.subcategories && q.subcategories.includes(targetValue))
         );
+        if (filtered.length === 0 && onFetchQuestionsLazy) {
+          const fetched = await onFetchQuestionsLazy({ subcategory: targetValue });
+          filtered = fetched.filter(q => q.subcategory === targetValue || (q.subcategories && q.subcategories.includes(targetValue)));
+        }
         setReaderTitle(`জব সলিউশন রিডার: ${targetValue}`);
         if (customValue) setJobSubcategory(customValue);
       }
@@ -1776,6 +2092,114 @@ export default function UserPortal({
             </form>
           </div>
         )}
+
+        {/* Challenge Modal for Live Exams */}
+        {challengeModalData && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[99999] animate-fade-in">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-gray-100 flex flex-col gap-4 text-xs">
+              {/* Header */}
+              <div className="flex justify-between items-center border-b pb-3 border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 via-rose-600 to-purple-600 text-white flex items-center justify-center text-lg shadow-md shrink-0">
+                    ⚔️
+                  </span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                      ফ্রেন্ড চ্যালেঞ্জ (Facebook Share)
+                    </h3>
+                    <p className="text-[10.5px] text-slate-500 font-medium">
+                      প্রাপ্ত নম্বর দিয়ে ফেসবুকে বন্ধুদের সরাসরি চ্যালেঞ্জ জানান!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setChallengeModalData(null)}
+                  className="text-slate-400 hover:text-slate-600 font-extrabold text-base p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Exam Details & Score Card */}
+              <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-amber-300/80 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="space-y-1">
+                    <span className="text-[9.5px] font-black uppercase text-amber-900 tracking-wider bg-amber-200/90 px-2 py-0.5 rounded-md inline-block">
+                      🎯 লাইভ পরীক্ষা সম্পন্ন
+                    </span>
+                    <h4 className="font-extrabold text-indigo-950 text-sm">{challengeModalData.exam.title}</h4>
+                    <p className="text-[10px] text-slate-600 font-semibold">
+                      বিষয়: {challengeModalData.exam.category === 'ALL' ? 'সব বিষয়' : challengeModalData.exam.category} | প্রশ্ন: {challengeModalData.exam.qLimit}টি
+                    </p>
+                  </div>
+                  <div className="text-right bg-white px-3.5 py-2 rounded-2xl border border-amber-200 shadow-xs shrink-0">
+                    <span className="text-[9.5px] text-slate-500 font-bold block">অর্জিত নম্বর</span>
+                    <span className="text-base font-black text-rose-600">{challengeModalData.score}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Challenge Message Preview */}
+              <div className="space-y-1.5">
+                <label className="block text-slate-700 font-bold text-xs flex items-center justify-between">
+                  <span>💬 চ্যালেঞ্জ পোস্ট প্রিভিউ:</span>
+                  <span className="text-[10px] text-indigo-600 font-semibold">স্বয়ংক্রিয় তৈরি</span>
+                </label>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-slate-800 text-[11px] leading-relaxed font-medium whitespace-pre-wrap select-all">
+                  {`🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nতুমি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`;
+                    const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nতুমি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${shareUrl}`;
+
+                    navigator.clipboard.writeText(challengeMsg);
+                    const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                    window.open(fbUrl, '_blank', 'width=600,height=500');
+
+                    showCustomAlert(
+                      `আপনার নম্বর (${challengeModalData.score}) সহ চ্যালেঞ্জ মেসেজ ক্লিপবোর্ডে কপি করা হয়েছে এবং ফেসবুক শেয়ার পেজ চালু হয়েছে!\n\nফেসবুকে পেস্ট (Paste) করে বন্ধুদের চ্যালেঞ্জ পোস্ট করুন।`,
+                      undefined,
+                      '⚔️ ফেসবুক চ্যালেঞ্জ প্রস্তুত!'
+                    );
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>📘</span> ফেসবুকে চ্যালেঞ্জ শেয়ার করুন (FB Share)
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`;
+                      const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nতুমি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${shareUrl}`;
+
+                      navigator.clipboard.writeText(challengeMsg);
+                      showCustomAlert('চ্যালেঞ্জ মেসেজ ও পরীক্ষার লিঙ্ক সফলভাবে ক্লিপবোর্ডে কপি করা হয়েছে!', undefined, '📋 কপি সম্পন্ন!');
+                    }}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>📋</span> মেসেজ কপি করুন
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChallengeModalData(null)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    বন্ধ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   };
@@ -1783,6 +2207,30 @@ export default function UserPortal({
   return (
     <div className={`flex flex-col gap-3 min-h-[90vh] max-w-full overflow-x-hidden ${!quizActive && !readerModeActive ? 'pb-24' : ''}`}>
       
+      {/* Guest Mode Banner if active */}
+      {user.isGuest && !quizActive && !readerModeActive && (
+        <div className="bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 text-white px-3 sm:px-4 py-2.5 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs animate-fade-in">
+          <div className="flex items-center gap-2 font-bold">
+            <span className="bg-amber-300 text-slate-950 px-2 py-0.5 rounded-md text-[10px] uppercase font-black tracking-wider">গেস্ট মোড (Guest)</span>
+            <span>ইমেইল: <strong className="text-amber-200 font-extrabold">{user.email}</strong></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
+              className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+            >
+              <span>🚀</span> একাউন্ট তৈরি (রেজিস্ট্রেশন) করুন
+            </button>
+            <button
+              onClick={onLogout}
+              className="px-2.5 py-1 bg-black/20 hover:bg-black/30 text-white font-extrabold text-[11px] rounded-lg transition cursor-pointer"
+            >
+              বের হন
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Floating Mini Header */}
       {!quizActive && !readerModeActive && (
         <div className="flex justify-between items-center bg-indigo-50 border border-indigo-100 p-2 sm:p-2.5 rounded-2xl shadow-sm gap-2">
@@ -1933,7 +2381,7 @@ export default function UserPortal({
                       <button
                         key={item.id}
                         onClick={() => {
-                          setActiveTab(item.id as any);
+                          handleTabSelect(item.id as any);
                           setDrawerOpen(false);
                         }}
                         className={`flex items-center justify-between px-3.5 py-3 rounded-xl font-semibold text-[13.1px] border transition duration-200 ${
@@ -2553,7 +3001,7 @@ export default function UserPortal({
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div 
-                    onClick={() => { setRevisionMode(false); setSetupModalOpen(true); }}
+                    onClick={() => { if (!checkGuestAccess('কাস্টম পরীক্ষা ও প্র্যাকটিস এক্সাম')) return; setRevisionMode(false); setSetupModalOpen(true); }}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-indigo-50/50 to-indigo-100/30 border-indigo-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">⏱️</span>
@@ -2564,7 +3012,7 @@ export default function UserPortal({
                   </div>
 
                   <div 
-                    onClick={() => setActiveTab('preparation')}
+                    onClick={() => handleTabSelect('preparation')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-purple-50/50 to-purple-100/30 border-purple-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">📚</span>
@@ -2575,7 +3023,7 @@ export default function UserPortal({
                   </div>
 
                   <div 
-                    onClick={() => setActiveTab('job')}
+                    onClick={() => handleTabSelect('job')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">💼</span>
@@ -2586,7 +3034,7 @@ export default function UserPortal({
                   </div>
 
                   <div 
-                    onClick={() => setActiveTab('yearJob')}
+                    onClick={() => handleTabSelect('yearJob')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-amber-50/50 to-amber-100/30 border-amber-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">📅</span>
@@ -2597,7 +3045,7 @@ export default function UserPortal({
                   </div>
 
                   <div 
-                    onClick={() => setActiveTab('bookmarks')}
+                    onClick={() => handleTabSelect('bookmarks')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-amber-50/50 to-amber-100/30 border-amber-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">🔖</span>
@@ -2664,14 +3112,14 @@ export default function UserPortal({
               {/* History & Routines Quick View */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button 
-                  onClick={() => setActiveTab('results')}
+                  onClick={() => handleTabSelect('results')}
                   className="bg-indigo-900 hover:bg-indigo-950 text-white p-4 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
                 >
                   📊 ফলাফল ও বিস্তারিত উত্তরপত্র ভিউ
                   <ChevronRight className="w-4 h-4" />
                 </button>
                 <button 
-                  onClick={() => setActiveTab('routines')}
+                  onClick={() => handleTabSelect('routines')}
                   className="bg-indigo-900 hover:bg-indigo-950 text-white p-4 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
                 >
                   📅 একাডেমি রুটিন ও শিডিউল জোন
@@ -2788,36 +3236,36 @@ export default function UserPortal({
                                     onClick={() => {
                                       setPrepPath(isPrepRoot ? [item] : [...prepPath, item]);
                                     }}
-                                    className={`group bg-white ${theme.hoverBg} border border-slate-200/80 ${theme.hoverBorder} rounded-lg p-2 sm:p-2.5 flex flex-col justify-between gap-1.5 text-left shadow-2xs hover:shadow-2xs transition-all duration-150 cursor-pointer active:scale-98`}
+                                    className={`group bg-white ${theme.hoverBg} border ${theme.border} ${theme.hoverBorder} rounded-xl p-2.5 sm:p-3 flex flex-col justify-between gap-2 text-left shadow-2xs hover:shadow-xs transition-all duration-150 cursor-pointer active:scale-98`}
                                   >
                                     <div className="flex items-center justify-between gap-1">
-                                      <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${theme.bg} text-white flex items-center justify-center shadow-2xs shrink-0`}>
-                                        {renderSubjectIcon(item, "w-3.5 h-3.5")}
+                                      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${theme.bg} text-white flex items-center justify-center shadow-2xs shrink-0 group-hover:scale-105 transition-transform`}>
+                                        {renderSubjectIcon(item, "w-4 h-4")}
                                       </div>
-                                      <span className={`text-[8.5px] ${theme.lightBg} ${theme.text} font-extrabold px-1 py-0.5 rounded border ${theme.border} shrink-0`}>
+                                      <span className={`text-[9px] sm:text-[9.5px] ${theme.badgeBg} font-extrabold px-1.5 py-0.5 rounded-md border shrink-0`}>
                                         {subCount.toLocaleString('bn-BD')} টি উপ-অধ্যায়
                                       </span>
                                     </div>
 
-                                    <div className="my-0">
-                                      <h4 className="font-extrabold text-[12px] sm:text-[13px] text-slate-800 group-hover:text-indigo-700 transition-colors leading-tight line-clamp-2">
+                                    <div className="my-0.5">
+                                      <h4 className="font-black text-[12.5px] sm:text-[13.5px] text-slate-900 group-hover:text-indigo-950 transition-colors leading-snug line-clamp-2">
                                         {item}
                                       </h4>
                                       {itemSubHeading && (
-                                        <p className="text-[10px] text-indigo-600 font-bold leading-tight mt-0.5 line-clamp-1">
+                                        <p className={`text-[10px] ${theme.subText} font-extrabold leading-tight mt-1 line-clamp-1`}>
                                           {itemSubHeading}
                                         </p>
                                       )}
                                     </div>
 
-                                    <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[8.5px]">
+                                    <div className="pt-1.5 border-t border-slate-100/90 flex items-center justify-between text-[9px] sm:text-[9.5px]">
                                       {showMcqCount ? (
-                                        <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
+                                        <span className="bg-slate-900 text-white font-extrabold px-1.5 py-0.5 rounded-md shadow-2xs">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       ) : <span />}
-                                      <span className={`${theme.text} font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform`}>
-                                        খুলুন <ChevronRight className="w-2.5 h-2.5" />
+                                      <span className={`${theme.subText} font-black flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform`}>
+                                        খুলুন <ChevronRight className="w-3 h-3" />
                                       </span>
                                     </div>
                                   </button>
@@ -2847,8 +3295,20 @@ export default function UserPortal({
                                   <button
                                     key={`prep-leaf-${idx}-${item}`}
                                     id={`prep-leaf-btn-${idx}`}
-                                    onClick={() => {
-                                      const subcatQuestions = getQuestionsForPrepNode(item, false);
+                                    onClick={async () => {
+                                      if (user.isGuest) {
+                                        checkGuestAccess(`"${item}" - অধ্যায়ভিত্তিক MCQ সমাধান`);
+                                        return;
+                                      }
+                                      let subcatQuestions = getQuestionsForPrepNode(item, false);
+                                      if (subcatQuestions.length === 0 && onFetchQuestionsLazy) {
+                                        const fetched = await onFetchQuestionsLazy({ category: item, subcategory: item });
+                                        subcatQuestions = fetched.filter(q => 
+                                          q.category === item || q.subcategory === item ||
+                                          (q.categories && q.categories.includes(item)) ||
+                                          (q.subcategories && q.subcategories.includes(item))
+                                        );
+                                      }
                                       setReaderQuestions(subcatQuestions);
                                       setReaderTitle(`অধ্যায়ভিত্তিক অনুশীলন: ${item}`);
                                       setReaderActiveMode('read');
@@ -2858,30 +3318,41 @@ export default function UserPortal({
                                       setReaderCategoryFilter('সব প্রশ্ন');
                                       setReaderModeActive(true);
                                     }}
-                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-indigo-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-indigo-200 shadow-2xs text-left"
+                                    className={`flex items-center justify-between py-3.5 px-3.5 sm:py-4 sm:px-4 bg-white hover:${theme.lightBg} text-slate-900 rounded-xl font-bold text-xs transition border ${theme.border} ${theme.hoverBorder} shadow-2xs text-left group cursor-pointer`}
                                   >
-                                    <div className="flex items-center gap-2.5">
-                                      <span className={`w-8 h-8 flex items-center justify-center rounded-lg ${theme.lightBg} ${theme.text} border ${theme.border} shrink-0`}>
-                                        {renderSubjectIcon(item, "w-4 h-4")}
+                                    <div className="flex items-center gap-3">
+                                      <span className={`w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 flex items-center justify-center rounded-lg ${theme.lightBg} ${theme.text} border ${theme.border} shrink-0 group-hover:scale-105 transition-transform`}>
+                                        {renderSubjectIcon(item, "w-4.5 h-4.5")}
                                       </span>
                                       <div className="flex flex-col">
-                                        <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-black text-slate-900 text-[13.5px] sm:text-[15px] group-hover:text-indigo-950 transition-colors">{item}</span>
+                                          {user.isGuest && (
+                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
+                                              🔒 লক করা
+                                            </span>
+                                          )}
+                                        </div>
                                         {itemSubHeading && (
-                                          <span className="text-[10px] sm:text-[11px] text-indigo-700 font-bold mt-0.5">{itemSubHeading}</span>
+                                          <span className={`text-[10.5px] sm:text-[11.5px] ${theme.subText} font-extrabold mt-0.5`}>{itemSubHeading}</span>
                                         )}
                                         {subObj?.date && (
-                                          <span className="text-[10px] text-indigo-700 font-bold flex items-center gap-1 mt-0.5">
-                                            <Calendar className="w-3 h-3 text-indigo-600" />
+                                          <span className="text-[10px] text-emerald-800 font-extrabold flex items-center gap-1 mt-0.5 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80 w-max">
+                                            <Calendar className="w-3 h-3 text-emerald-600" />
                                             {formatBengaliDate(subObj.date)}
                                           </span>
                                         )}
                                       </div>
                                     </div>
-                                    {showMcqCount && (
-                                      <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
+                                    {user.isGuest ? (
+                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                        🔒 আনলক করুন
+                                      </span>
+                                    ) : showMcqCount ? (
+                                      <span className="text-[10px] bg-slate-900 text-white font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs">
                                         {qCount.toLocaleString('bn-BD')} MCQ
                                       </span>
-                                    )}
+                                    ) : null}
                                   </button>
                                 );
                               })}
@@ -3072,8 +3543,18 @@ export default function UserPortal({
                                   <button
                                     key={`job-leaf-${idx}-${item}`}
                                     id={`job-leaf-btn-${idx}`}
-                                    onClick={() => {
-                                      const subcatQuestions = getQuestionsForJobNode(item, false);
+                                    onClick={async () => {
+                                      if (user.isGuest) {
+                                        checkGuestAccess(`"${item}" - জব সলিউশন MCQ সমাধান`);
+                                        return;
+                                      }
+                                      let subcatQuestions = getQuestionsForJobNode(item, false);
+                                      if (subcatQuestions.length === 0 && onFetchQuestionsLazy) {
+                                        const fetched = await onFetchQuestionsLazy({ subcategory: item });
+                                        subcatQuestions = fetched.filter(q => 
+                                          q.subcategory === item || (q.subcategories && q.subcategories.includes(item))
+                                        );
+                                      }
                                       setReaderQuestions(subcatQuestions);
                                       setReaderTitle(`পরীক্ষাভিত্তিক অনুশীলন: ${item}`);
                                       setReaderActiveMode('read');
@@ -3083,14 +3564,21 @@ export default function UserPortal({
                                       setReaderCategoryFilter('সব প্রশ্ন');
                                       setReaderModeActive(true);
                                     }}
-                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-emerald-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-emerald-200 shadow-2xs text-left"
+                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-emerald-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-emerald-200 shadow-2xs text-left cursor-pointer"
                                   >
                                     <div className="flex items-center gap-2.5">
                                       <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-150 shrink-0">
                                         {renderSubjectIcon(item, "w-4 h-4")}
                                       </span>
                                       <div className="flex flex-col">
-                                        <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
+                                          {user.isGuest && (
+                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
+                                              🔒 লক করা
+                                            </span>
+                                          )}
+                                        </div>
                                         {subObj?.subHeading && (
                                           <span className="text-[10px] sm:text-[11px] text-emerald-700 font-bold mt-0.5">{subObj.subHeading}</span>
                                         )}
@@ -3102,11 +3590,15 @@ export default function UserPortal({
                                         )}
                                       </div>
                                     </div>
-                                    {showMcqCount && (
+                                    {user.isGuest ? (
+                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                        🔒 আনলক করুন
+                                      </span>
+                                    ) : showMcqCount ? (
                                       <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
                                         {qCount.toLocaleString('bn-BD')} MCQ
                                       </span>
-                                    )}
+                                    ) : null}
                                   </button>
                                 );
                               })}
@@ -3288,8 +3780,18 @@ export default function UserPortal({
                                   <button
                                     key={`year-job-leaf-${idx}-${item}`}
                                     id={`year-job-leaf-btn-${idx}`}
-                                    onClick={() => {
-                                      const subcatQuestions = getQuestionsForYearJobNode(item, false);
+                                    onClick={async () => {
+                                      if (user.isGuest) {
+                                        checkGuestAccess(`"${item}" - সালভিত্তিক প্রশ্ন সমাধান`);
+                                        return;
+                                      }
+                                      let subcatQuestions = getQuestionsForYearJobNode(item, false);
+                                      if (subcatQuestions.length === 0 && onFetchQuestionsLazy) {
+                                        const fetched = await onFetchQuestionsLazy({ subcategory: item });
+                                        subcatQuestions = fetched.filter(q => 
+                                          q.subcategory === item || (q.subcategories && q.subcategories.includes(item))
+                                        );
+                                      }
                                       setReaderQuestions(subcatQuestions);
                                       setReaderTitle(`সাল ভিত্তিক সমাধান: ${item}`);
                                       setReaderActiveMode('read');
@@ -3299,14 +3801,21 @@ export default function UserPortal({
                                       setReaderCategoryFilter('সব প্রশ্ন');
                                       setReaderModeActive(true);
                                     }}
-                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-amber-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-amber-200 shadow-2xs text-left"
+                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-amber-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-amber-200 shadow-2xs text-left cursor-pointer"
                                   >
                                     <div className="flex items-center gap-2.5">
                                       <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
                                         {renderSubjectIcon(item, "w-4 h-4")}
                                       </span>
                                       <div className="flex flex-col">
-                                        <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
+                                          {user.isGuest && (
+                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
+                                              🔒 লক করা
+                                            </span>
+                                          )}
+                                        </div>
                                         {subObj?.date && (
                                           <span className="text-[10px] text-amber-800 font-bold flex items-center gap-1 mt-0.5">
                                             <Calendar className="w-3 h-3 text-amber-600" />
@@ -3315,11 +3824,15 @@ export default function UserPortal({
                                         )}
                                       </div>
                                     </div>
-                                    {showMcqCount && (
+                                    {user.isGuest ? (
+                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                        🔒 আনলক করুন
+                                      </span>
+                                    ) : showMcqCount ? (
                                       <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
                                         {qCount.toLocaleString('bn-BD')} MCQ
                                       </span>
-                                    )}
+                                    ) : null}
                                   </button>
                                 );
                               })}
@@ -3343,6 +3856,12 @@ export default function UserPortal({
 
           {/* VIEW: BOOKMARKS */}
           {activeTab === 'bookmarks' && (() => {
+            if (user.isGuest) {
+              return renderGuestLockCard(
+                'বুকমার্ক করা প্রশ্ন লক করা আছে',
+                'গেস্ট (Guest) হিসেবে সেভ করা প্রশ্ন ফিচার ব্যবহার করা সম্ভব নয়। গুরুত্বপূর্ণ প্রশ্ন সেভ ও পরবর্তীতে প্র্যাকটিস করতে রেজিস্ট্রেশন করুন।'
+              );
+            }
             const selectedItemsList = selectedBookmarkFolder ? groupedBookmarks[selectedBookmarkFolder] || [] : [];
             const hasBookmarks = bookmarks.length > 0;
 
@@ -3614,61 +4133,169 @@ export default function UserPortal({
           {/* VIEW: EXAM ZONE */}
           {activeTab === 'exams' && (
             <div className="flex flex-col gap-4 text-xs">
-              {/* Official Live Exams lists */}
-              <div className="bg-white border border-gray-100 p-4 rounded-3xl shadow-sm">
-                <div className="divide-y divide-gray-100">
-                  {liveExams.length === 0 ? (
-                    <p className="text-gray-400 py-4 text-center">বর্তমানে কোনো সক্রিয় অফিশিয়াল লাইভ পরীক্ষা নেই।</p>
-                  ) : (
-                    liveExams.map((exam, idx) => {
-                      const alreadyTaken = attempts.some(a => a.examId === exam.id);
-                      const now = new Date();
-                      const isStarted = new Date(exam.startTime) <= now;
-                      const isExpired = new Date(exam.expiryTime) < now;
+              {/* Official Live Exams Header */}
+              <div className="flex items-center justify-between px-1">
+                <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base flex items-center gap-2">
+                  <span>🎯</span> অফিশিয়াল লাইভ পরীক্ষা জোন
+                </h3>
+                <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl">
+                  মোট পরীক্ষা: {liveExams.length.toLocaleString('bn-BD')}টি
+                </span>
+              </div>
 
-                      return (
-                        <div key={exam.id ? `usr-le-${exam.id}-${idx}` : `usr-le-${idx}`} className="py-3 flex justify-between items-center">
-                          <div>
-                            <h4 className="font-bold text-indigo-950">{exam.title}</h4>
-                            <p className="text-[10px] text-gray-500 mt-0.5">
-                              সময়সীমা: {new Date(exam.startTime).toLocaleString('bn-BD')} থেকে {new Date(exam.expiryTime).toLocaleString('bn-BD')}
-                            </p>
-                            <p className="text-[9px] text-indigo-600 font-bold mt-0.5">
-                              বিষয়: {exam.category === 'ALL' ? 'সব বিষয়' : exam.category} | প্রশ্ন: {exam.qLimit}টি | সময়: {exam.timeLimit} মিনিট
-                            </p>
+              {/* Grid cards for Live Exams */}
+              {liveExams.length === 0 ? (
+                <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-xs text-center text-gray-400">
+                  <p className="font-bold">বর্তমানে কোনো সক্রিয় অফিশিয়াল লাইভ পরীক্ষা নেই।</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[...liveExams]
+                    .sort((a, b) => {
+                      const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
+                      const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
+                      return timeB - timeA;
+                    })
+                    .map((exam, idx) => {
+                    const alreadyTaken = attempts.some(a => a.examId === exam.id);
+                    const now = new Date();
+                    const isStarted = new Date(exam.startTime) <= now;
+                    const isExpired = new Date(exam.expiryTime) < now;
+
+                    return (
+                      <div
+                        key={exam.id ? `usr-le-${exam.id}-${idx}` : `usr-le-${idx}`}
+                        className="bg-white border border-slate-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between gap-3.5 hover:shadow-md transition-all border-l-4 border-l-indigo-600"
+                      >
+                        {/* Top / Details section of the grid card */}
+                        <div className="space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-extrabold text-indigo-950 text-sm leading-snug">{exam.title}</h4>
+                            {alreadyTaken ? (
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
+                                🟢 অংশগ্রহণকৃত
+                              </span>
+                            ) : !isStarted ? (
+                              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
+                                ⏳ শুরু হয়নি
+                              </span>
+                            ) : isExpired ? (
+                              <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
+                                🔒 সময় শেষ
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0 animate-pulse">
+                                ⏱️ চলমান পরীক্ষা
+                              </span>
+                            )}
                           </div>
 
-                          {alreadyTaken ? (
-                            <span className="text-xs text-green-600 bg-green-50 border border-green-200 px-3 py-1.5 rounded-xl font-bold">
-                              অংশগ্রহণ করেছেন
-                            </span>
-                          ) : !isStarted ? (
-                            <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl font-bold">
-                              শুরু হয়নি
-                            </span>
-                          ) : isExpired ? (
-                            <span className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl font-bold">
-                              সময় শেষ
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => startOfficialLiveExam(exam)}
-                              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition shadow-sm cursor-pointer"
-                            >
-                              পরীক্ষা দিন ➔
-                            </button>
-                          )}
+                          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1.5">
+                            <p className="text-[10.5px] text-slate-600 font-medium leading-relaxed">
+                              📅 সময়সীমা: <span className="font-bold text-slate-800">{new Date(exam.startTime).toLocaleString('bn-BD')}</span> থেকে <span className="font-bold text-slate-800">{new Date(exam.expiryTime).toLocaleString('bn-BD')}</span>
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 text-[10px] text-indigo-700 font-bold pt-0.5">
+                              <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs">
+                                বিষয়: {exam.category === 'ALL' ? 'সব বিষয়' : exam.category}
+                              </span>
+                              <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs">
+                                প্রশ্ন: {exam.qLimit}টি
+                              </span>
+                              <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs">
+                                সময়: {exam.timeLimit} মিনিট
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      );
-                    })
-                  )}
+
+                        {/* Positioned strictly BELOW every grid card: Action/Toggle buttons (Strict Single Line / Inline) */}
+                        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1 sm:gap-2 flex-nowrap w-full overflow-x-auto no-scrollbar scrollbar-none pb-0.5">
+                          <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap shrink-0">
+                            <button
+                              onClick={() => {
+                                const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${exam.id}`;
+                                const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+                                window.open(fbUrl, '_blank', 'width=600,height=500');
+                              }}
+                              className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
+                              title="ফেসবুকে শেয়ার করুন"
+                            >
+                              <span>📘</span> <span className="whitespace-nowrap">FB শেয়ার</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${exam.id}`;
+                                navigator.clipboard.writeText(shareUrl);
+                                showCustomAlert('লাইভ পরীক্ষার লিঙ্ক ক্লিপবোর্ডে কপি করা হয়েছে!\nএখন যেকোনো বন্ধুদের সাথে বা সোশ্যাল মিডিয়ায় শেয়ার করতে পারবেন।', undefined, 'কপি সম্পন্ন!');
+                              }}
+                              className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
+                              title="লিঙ্ক কপি করুন"
+                            >
+                              <span>🔗</span> <span className="whitespace-nowrap">লিঙ্ক কপি</span>
+                            </button>
+
+                            {alreadyTaken && (
+                              <button
+                                onClick={() => {
+                                  if (user.isGuest) {
+                                    showCustomAlert(
+                                      'গেস্ট (Guest) হিসেবে চ্যালেঞ্জ পোস্ট করা যাবে না।\n\nবিনামূল্যে একাউন্ট রেজিস্ট্রেশন করলে আপনার স্কোর দিয়ে বন্ধুদের ফেসবুকে চ্যালেঞ্জ জানাতে পারবেন!',
+                                      undefined,
+                                      '🔒 রেজিস্ট্রেশন প্রয়োজন'
+                                    );
+                                    return;
+                                  }
+                                  const userAttempt = attempts.find(a => a.examId === exam.id);
+                                  const userScore = userAttempt ? userAttempt.score : 0;
+                                  setChallengeModalData({ exam, score: userScore });
+                                }}
+                                className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-600 to-purple-600 hover:from-amber-600 hover:to-rose-700 text-white font-extrabold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 animate-pulse"
+                                title="আপনার প্রাপ্ত নম্বর দিয়ে বন্ধুদের ফেসবুকে চ্যালেঞ্জ পাঠান"
+                              >
+                                <span>⚔️</span> <span className="whitespace-nowrap">চ্যালেঞ্জ</span>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="shrink-0 flex items-center">
+                            {alreadyTaken ? (
+                              <span className="text-[9.5px] sm:text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl font-extrabold whitespace-nowrap inline-flex items-center">
+                                অংশগ্রহণ করেছেন
+                              </span>
+                            ) : !isStarted ? (
+                              <span className="text-[9.5px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl font-extrabold whitespace-nowrap inline-flex items-center">
+                                শুরু হয়নি
+                              </span>
+                            ) : isExpired ? (
+                              <span className="text-[9.5px] sm:text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl font-extrabold whitespace-nowrap inline-flex items-center">
+                                সময় শেষ
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => startOfficialLiveExam(exam)}
+                                className="px-2 py-1 sm:px-4 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[9.5px] sm:text-xs transition shadow-sm cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0"
+                              >
+                                <span>🎯</span> <span className="whitespace-nowrap">পরীক্ষা দিন ➔</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
           {/* VIEW: EXAM RESULTS */}
           {activeTab === 'results' && (() => {
+            if (user.isGuest && !selectedAttemptForView) {
+              return renderGuestLockCard(
+                'পরীক্ষার ফলাফল ও সমাধান লক করা আছে',
+                'গেস্ট (Guest) হিসেবে দেওয়া পরীক্ষার উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন সম্পন্ন করুন।'
+              );
+            }
             const userCreatedAttempts = attempts.filter(a => a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_'));
             const adminCreatedAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_'));
             const activeFilteredAttempts = resultFilterMode === 'user' ? userCreatedAttempts : adminCreatedAttempts;
@@ -3695,13 +4322,38 @@ export default function UserPortal({
                         তারিখ: {new Date(selectedAttemptForView.submittedAt).toLocaleString('bn-BD')} | মোট প্রশ্ন: {selectedAttemptForView.totalQuestions}টি | সঠিক: {selectedAttemptForView.correctCount}টি | ভুল: {selectedAttemptForView.wrongCount}টি
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleDownloadPDF(selectedAttemptForView)}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                      >
-                        📄 PDF নামান
-                      </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl cursor-pointer border border-slate-200 transition">
+                        <input
+                          type="checkbox"
+                          checked={includeMarkTableInPDF}
+                          onChange={(e) => setIncludeMarkTableInPDF(e.target.checked)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>📊 নম্বর গণনার টেবিল (PDF)</span>
+                      </label>
+                      {user.isGuest ? (
+                        <button
+                          onClick={() => {
+                            showCustomAlert(
+                              'গেস্ট হিসেবে পরীক্ষা দিলে PDF ডাউনলোড করা যায় না।\n\nবিনামূল্যে রেজিস্ট্রেশন করলে প্রশ্নপত্র, ব্যাখ্যামূলক সমাধান ও PDF নামাতে পারবেন!',
+                              undefined,
+                              '🔒 PDF ডাউনলোডে সীমাবদ্ধতা'
+                            );
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer hover:bg-slate-300 transition"
+                          title="রেজিস্ট্রেশন করুন PDF ডাউনলোডের জন্য"
+                        >
+                          <span>🔒</span> PDF নামান (রেজিস্ট্রেশন প্রয়োজন)
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleDownloadPDF(selectedAttemptForView, includeMarkTableInPDF)}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          📄 PDF নামান
+                        </button>
+                      )}
                       <button
                         onClick={() => setSelectedAttemptForView(null)}
                         className="px-3 py-1.5 rounded-xl border font-bold text-xs hover:bg-gray-50 transition cursor-pointer text-gray-600"
@@ -3814,8 +4466,112 @@ export default function UserPortal({
                     );
                   })()}
 
+                  {/* Mark Calculation Table Breakdown */}
+                  {(() => {
+                    const totalQ = selectedAttemptForView.totalQuestions || attemptQuestions.length || 1;
+                    const correctC = selectedAttemptForView.correctCount || 0;
+                    const wrongC = selectedAttemptForView.wrongCount || 0;
+                    const skippedC = Math.max(0, totalQ - correctC - wrongC);
+
+                    return (
+                      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100">
+                          <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                            <span>📊 নম্বর গণনার বিস্তারিত বিবরণী (Mark Calculation Breakdown)</span>
+                          </h4>
+                          <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-200/80 px-2.5 py-0.5 rounded-full font-bold">
+                            ভুল উত্তর পেনাল্টি: -০.৫০ মার্কস / প্রশ্ন
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-700 border-b border-slate-200 font-bold">
+                                <th className="p-2.5 rounded-l-xl">বিবরণ</th>
+                                <th className="p-2.5 text-center">সংখ্যা</th>
+                                <th className="p-2.5 text-center">প্রতিটির মান</th>
+                                <th className="p-2.5 text-right rounded-r-xl">অর্জিত / কাটা নম্বর</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                              <tr>
+                                <td className="p-2.5 text-emerald-700 font-bold flex items-center gap-1.5">
+                                  <span>✅</span> সঠিক উত্তর
+                                </td>
+                                <td className="p-2.5 text-center">{correctC}টি</td>
+                                <td className="p-2.5 text-center text-slate-400">+১.০০</td>
+                                <td className="p-2.5 text-right font-extrabold text-emerald-600">+{(correctC * 1.0).toFixed(2)}</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 text-rose-700 font-bold flex items-center gap-1.5">
+                                  <span>❌</span> ভুল উত্তরের পেনাল্টি
+                                </td>
+                                <td className="p-2.5 text-center">{wrongC}টি</td>
+                                <td className="p-2.5 text-center text-slate-400">-০.৫০</td>
+                                <td className="p-2.5 text-right font-extrabold text-rose-600">-{(wrongC * 0.5).toFixed(2)}</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 text-amber-700 font-bold flex items-center gap-1.5">
+                                  <span>⚪</span> অনুত্তর / স্কিপড
+                                </td>
+                                <td className="p-2.5 text-center">{skippedC}টি</td>
+                                <td className="p-2.5 text-center text-slate-400">০.০০</td>
+                                <td className="p-2.5 text-right font-extrabold text-slate-400">০.০০</td>
+                              </tr>
+                              <tr className="bg-indigo-50/80 font-bold text-indigo-950">
+                                <td className="p-2.5 font-extrabold text-indigo-900 rounded-l-xl">
+                                  🏆 সর্বমোট অর্জিত নম্বর
+                                </td>
+                                <td className="p-2.5 text-center font-black">{totalQ}টি</td>
+                                <td className="p-2.5 text-center text-slate-400">—</td>
+                                <td className="p-2.5 text-right font-black text-indigo-700 text-sm rounded-r-xl">{selectedAttemptForView.score}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Detailed Analysis / Question Review */}
-                  {attemptQuestions.length === 0 ? (
+                  {user.isGuest ? (
+                    <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 text-white rounded-3xl p-6 sm:p-8 my-6 shadow-xl border border-indigo-700/50 text-center space-y-4 animate-fade-in">
+                      <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-3xl mx-auto backdrop-blur-sm border border-white/20">
+                        🔒
+                      </div>
+                      <div className="space-y-2 max-w-lg mx-auto">
+                        <h4 className="font-black text-xl sm:text-2xl text-amber-300">
+                          বিস্তারিত ফলাফল ও ব্যাখ্যামূলক সমাধান আনলক করুন!
+                        </h4>
+                        <p className="text-xs sm:text-sm text-indigo-150 leading-relaxed font-medium">
+                          আপনি <strong>গেস্ট (Guest)</strong> হিসেবে এই পরীক্ষায় অংশ নিয়েছেন। আপনার অর্জিত প্রাপ্ত নম্বর: <strong className="text-amber-300 text-base">{selectedAttemptForView.score}</strong>।
+                        </p>
+                        <p className="text-[11.5px] sm:text-xs text-indigo-200/90 leading-relaxed">
+                          প্রতিটি প্রশ্নের সঠিক উত্তর, বিষয়ভিত্তিক ব্যাখ্যা এবং PDF রেজাল্ট শিট ডাউনলোড করতে একটি ফ্রি একাউন্ট তৈরি (রেজিস্ট্রেশন) করুন।
+                        </p>
+                      </div>
+
+                      <div className="bg-white/10 p-4 rounded-2xl border border-white/10 text-left max-w-md mx-auto space-y-2 text-xs text-indigo-100">
+                        <div className="font-extrabold text-amber-200 text-xs flex items-center gap-1.5">
+                          <span>✨</span> একাউন্ট রেজিস্ট্রেশন করার বিশেষ সুবিধা:
+                        </div>
+                        <ul className="space-y-1.5 text-[11px] text-indigo-150 list-disc list-inside">
+                          <li>এই ইমেইলে দেওয়া পূর্বের সকল গেস্ট পরীক্ষার ফলাফল স্বয়ংক্রিয়ভাবে প্রোফাইলে যুক্ত হবে।</li>
+                          <li>পরীক্ষার বিস্তারিত উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে পাবেন।</li>
+                          <li>অফিশিয়াল PDF রেজাল্ট শিট যেকোনো সময় ডাউনলোড করতে পারবেন।</li>
+                        </ul>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
+                          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm rounded-2xl shadow-lg hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"
+                        >
+                          <span>🚀</span> রেজিস্ট্রেশন সম্পূর্ণ করুন (ফ্রি)
+                        </button>
+                      </div>
+                    </div>
+                  ) : attemptQuestions.length === 0 ? (
                     <p className="text-center py-8 text-gray-400 font-bold text-xs">
                       এই পরীক্ষার কোনো সংরক্ষিত প্রশ্ন পাওয়া যায়নি।
                     </p>
@@ -3977,6 +4733,12 @@ export default function UserPortal({
 
                   {/* VIEW: ACADEMIC ROUTINES */}
           {activeTab === 'routines' && (
+            user.isGuest ? (
+              renderGuestLockCard(
+                'একাডেমিক রুটিন লক করা আছে',
+                'গেস্ট (Guest) হিসেবে শুধুমাত্র "লাইভ পরীক্ষা" দেওয়া যায়। একাডেমিক পরীক্ষার সময়সূচী ও রুটিন দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন করুন।'
+              )
+            ) : (
             <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4 text-xs">
               {routines.length === 0 ? (
                 <p className="text-gray-400 text-center py-10">বর্তমানে কোনো রুটিন প্রকাশিত হয়নি।</p>
@@ -3996,6 +4758,7 @@ export default function UserPortal({
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* VIEW: PROFILE */}
@@ -4092,7 +4855,7 @@ export default function UserPortal({
                     <span className="text-lg font-extrabold text-green-600 mt-0.5">{netMarkPercentage.toLocaleString('bn-BD')}%</span>
                   </div>
                   <div 
-                    onClick={() => setActiveTab('bookmarks')}
+                    onClick={() => handleTabSelect('bookmarks')}
                     className="bg-white border border-amber-100 p-3 rounded-2xl shadow-2xs text-center flex flex-col justify-center cursor-pointer hover:bg-amber-50/60 transition"
                   >
                     <span className="text-[10px] font-bold text-gray-500 block">বুকমার্ক</span>
@@ -4452,7 +5215,7 @@ export default function UserPortal({
                 <button
                   key={item.id}
                   onClick={() => {
-                    setActiveTab(item.id as any);
+                    handleTabSelect(item.id as any);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 rounded-2xl transition-all duration-300 relative group ${
@@ -4487,16 +5250,26 @@ export default function UserPortal({
             <p className="text-xs text-gray-600 font-semibold leading-relaxed whitespace-pre-line">
               {customAlert.message}
             </p>
-            <button
-              onClick={() => {
-                const onConf = customAlert.onConfirm;
-                setCustomAlert(null);
-                if (onConf) onConf();
-              }}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 rounded-2xl text-xs transition shadow"
-            >
-              ঠিক আছে
-            </button>
+            <div className="flex gap-2.5 mt-1">
+              {(customAlert.showCancel || (user.isGuest && customAlert.onConfirm)) && (
+                <button
+                  onClick={() => setCustomAlert(null)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-2xl text-xs transition cursor-pointer"
+                >
+                  {customAlert.cancelText || 'এখন নয়'}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  const onConf = customAlert.onConfirm;
+                  setCustomAlert(null);
+                  if (onConf) onConf();
+                }}
+                className={`${(customAlert.showCancel || (user.isGuest && customAlert.onConfirm)) ? 'flex-1' : 'w-full'} bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 rounded-2xl text-xs transition shadow cursor-pointer`}
+              >
+                {customAlert.confirmText || (user.isGuest && customAlert.onConfirm ? 'রেজিস্ট্রেশন করুন' : 'ঠিক আছে')}
+              </button>
+            </div>
           </div>
         </div>
       )}
