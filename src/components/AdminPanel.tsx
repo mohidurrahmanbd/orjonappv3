@@ -8636,7 +8636,7 @@ export default function AdminPanel({
               <button
                 type="button"
                 onClick={() => {
-                  if (customModal.onConfirm) {
+                  if (typeof customModal.onConfirm === 'function') {
                     customModal.onConfirm();
                   } else {
                     setCustomModal(prev => ({ ...prev, isOpen: false }));

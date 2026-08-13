@@ -315,8 +315,46 @@ export default function UserPortal({
   const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
 
   // Course States
-  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'all' | 'active' | 'upcoming' | 'completed'>('all');
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return []; }
+    }
+    return [];
+  });
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setEnrolledCourseIds(parsed);
+      } catch {
+        setEnrolledCourseIds([]);
+      }
+    } else {
+      setEnrolledCourseIds([]);
+    }
+  }, [user?.userId, user?.phone]);
+
+  const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    let updated: string[];
+    if (enrolledCourseIds.includes(courseId)) {
+      updated = enrolledCourseIds.filter(id => id !== courseId);
+      showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
+    } else {
+      updated = [...enrolledCourseIds, courseId];
+      showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
+      setSelectedCourseFilter('enrolled');
+    }
+    setEnrolledCourseIds(updated);
+    localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+  };
 
   // Custom Exam Setup & Cascading Filter States
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -488,14 +526,33 @@ export default function UserPortal({
   const [customConfirm, setCustomConfirm] = useState<{ open: boolean; title?: string; message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
 
   const showCustomAlert = (
-    message: string,
-    onConfirm?: () => void,
-    title?: string,
+    param1: string,
+    param2?: (() => void) | string,
+    param3?: string,
     showCancel?: boolean,
     confirmText?: string,
     cancelText?: string
   ) => {
-    setCustomAlert({ open: true, title, message, onConfirm, showCancel, confirmText, cancelText });
+    let title = '📢 তথ্য';
+    let message = '';
+    let onConfirmFunc: (() => void) | undefined = undefined;
+
+    if (typeof param2 === 'function') {
+      message = param1;
+      onConfirmFunc = param2;
+      if (param3) title = param3;
+    } else if (typeof param2 === 'string') {
+      title = param1;
+      message = param2;
+      if (param3 && param3 !== 'success' && param3 !== 'info' && param3 !== 'warning' && param3 !== 'error') {
+        title = `${param3} ${param1}`;
+      }
+    } else {
+      message = param1;
+      if (param3) title = param3;
+    }
+
+    setCustomAlert({ open: true, title, message, onConfirm: onConfirmFunc, showCancel, confirmText, cancelText });
   };
 
   const showCustomConfirm = (message: string, onConfirm: () => void, onCancel?: () => void, title?: string) => {
@@ -4756,19 +4813,25 @@ export default function UserPortal({
                   </span>
                   <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
                     <GraduationCap className="w-5 h-5 text-indigo-300" />
-                    চলমান কোর্স ও স্টাডি প্রোগ্রাম
+                    আমার কোর্স ও স্টাডি প্রোগ্রাম
                   </h2>
                   <p className="text-xs text-indigo-100/80 font-medium mt-1">
-                    আপনার পছন্দের কোর্সে যুক্ত হয়ে রুটিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
+                    আপনার পছন্দের কোর্সে এনরোল করুন, রুটিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
                   </p>
                 </div>
 
                 {/* Filter Controls */}
                 <div className="flex flex-wrap gap-1.5 bg-white/10 p-1.5 rounded-2xl border border-white/15 backdrop-blur-sm self-stretch sm:self-auto">
-                  {(['all', 'active', 'upcoming', 'completed'] as const).map(statusKey => {
-                    const count = statusKey === 'all' ? courses.length : courses.filter(c => c.status === statusKey).length;
+                  {(['enrolled', 'all', 'active', 'upcoming', 'completed'] as const).map(statusKey => {
+                    const count = statusKey === 'enrolled' 
+                      ? enrolledCourseIds.length 
+                      : statusKey === 'all' 
+                        ? courses.length 
+                        : courses.filter(c => c.status === statusKey).length;
+                    
                     const labels = {
-                      all: `সকল (${count})`,
+                      enrolled: `🎓 আমার কোর্স (${count})`,
+                      all: `🌐 সকল (${count})`,
                       active: `🟢 চলমান (${count})`,
                       upcoming: `🟡 আসন্ন (${count})`,
                       completed: `⚪ সম্পন্ন (${count})`
@@ -4793,18 +4856,36 @@ export default function UserPortal({
 
               {/* Course List */}
               {(() => {
-                const filteredCourses = courses.filter(c => selectedCourseFilter === 'all' || c.status === selectedCourseFilter);
+                const filteredCourses = courses.filter(c => {
+                  if (selectedCourseFilter === 'enrolled') {
+                    return enrolledCourseIds.includes(c.id);
+                  }
+                  if (selectedCourseFilter === 'all') return true;
+                  return c.status === selectedCourseFilter;
+                });
 
                 if (filteredCourses.length === 0) {
                   return (
-                    <div className="bg-white border border-gray-100 p-10 rounded-3xl text-center space-y-3">
-                      <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mx-auto font-bold">
+                    <div className="bg-white border border-gray-100 p-8 sm:p-12 rounded-3xl text-center space-y-3.5 shadow-sm">
+                      <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center text-3xl mx-auto font-bold shadow-inner">
                         🎓
                       </div>
-                      <h4 className="font-extrabold text-gray-800 text-sm">কোনো কোর্স পাওয়া যায়নি</h4>
-                      <p className="text-gray-400 max-w-sm mx-auto text-xs">
-                        নির্বাচিত ফিল্টারে কোনো কোর্স নেই। অনুগ্রহ করে অন্য ফিল্টার সিলেক্ট করুন অথবা অ্যাডমিন থেকে নতুন কোর্স যুক্ত করার নির্দেশ দিন।
+                      <h4 className="font-black text-indigo-950 text-base">
+                        {selectedCourseFilter === 'enrolled' ? 'আপনি এখনও কোনো কোর্সে এনরোল করেননি' : 'কোনো কোর্স পাওয়া যায়নি'}
+                      </h4>
+                      <p className="text-gray-500 max-w-md mx-auto text-xs leading-relaxed font-medium">
+                        {selectedCourseFilter === 'enrolled' 
+                          ? 'আমাদের উপলব্ধ কোর্সগুলো থেকে আপনার পছন্দের কোর্সে এনরোল করুন। এনরোলকৃত কোর্সসমূহ সরাসরি এখানে জমা থাকবে।' 
+                          : 'নির্বাচিত ফিল্টারে কোনো কোর্স পাওয়া যায়নি। অন্য ফিল্টার নির্বাচন করুন।'}
                       </p>
+                      {selectedCourseFilter === 'enrolled' && (
+                        <button
+                          onClick={() => setSelectedCourseFilter('all')}
+                          className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-5 py-2.5 rounded-xl transition shadow text-xs inline-flex items-center gap-2"
+                        >
+                          🌐 উপলব্ধ সকল কোর্স দেখুন ➔
+                        </button>
+                      )}
                     </div>
                   );
                 }
@@ -4813,19 +4894,33 @@ export default function UserPortal({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredCourses.map((course, idx) => {
                       const courseRoutines = routines.filter(r => r.courseId === course.id || r.courseName === course.title);
-                      const isExpanded = expandedCourseId === course.id;
+                      const isEnrolled = enrolledCourseIds.includes(course.id);
 
                       return (
-                        <div key={course.id || idx} className="bg-white border border-gray-100/90 hover:border-indigo-200 p-5 rounded-3xl shadow-sm transition flex flex-col justify-between gap-4">
+                        <div key={course.id || idx} className={`bg-white border ${isEnrolled ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100/90 hover:border-indigo-200'} p-5 rounded-3xl shadow-sm transition flex flex-col justify-between gap-4 relative overflow-hidden`}>
+                          {isEnrolled && (
+                            <div className="absolute -right-12 top-5 bg-emerald-600 text-white font-extrabold text-[9px] uppercase px-10 py-1 rotate-45 shadow-xs">
+                              ENROLLED
+                            </div>
+                          )}
+
                           <div className="space-y-3">
                             {/* Course Badges */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
-                                course.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                                course.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
-                              }`}>
-                                {course.status === 'active' ? '● চলমান কোর্স (Active)' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স (Upcoming)' : '✓ সম্পন্ন কোর্স (Completed)'}
-                              </span>
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5 pr-6">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                                  course.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                  course.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
+                                }`}>
+                                  {course.status === 'active' ? '● চলমান কোর্স' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স' : '✓ সম্পন্ন কোর্স'}
+                                </span>
+
+                                {isEnrolled && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-emerald-600 text-white shadow-xs">
+                                    ✓ এনরোলড
+                                  </span>
+                                )}
+                              </div>
 
                               {course.category && (
                                 <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
@@ -4856,8 +4951,8 @@ export default function UserPortal({
                                   🏁 শেষ: {course.endDate}
                                 </span>
                               )}
-                              <span className="bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl text-emerald-800 font-bold flex items-center gap-1">
-                                📋 {courseRoutines.length} টি রুটিন সংযুক্ত
+                              <span className="bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center gap-1">
+                                📋 {courseRoutines.length} টি রুটিন
                               </span>
                             </div>
 
@@ -4866,7 +4961,7 @@ export default function UserPortal({
                               <div className="flex justify-between items-center">
                                 <h4 className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
                                   <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                                  📅 কোর্স একাডেমিক রুটিন ({courseRoutines.length})
+                                  📅 কোর্স রুটিন ও স্টাডি প্ল্যান ({courseRoutines.length})
                                 </h4>
                                 {courseRoutines.length > 0 && (
                                   <button 
@@ -4898,25 +4993,34 @@ export default function UserPortal({
                             </div>
                           </div>
 
-                          {/* Quick Action Buttons */}
-                          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                            <button
-                              onClick={() => {
-                                handleTabSelect('exams');
-                              }}
-                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-xl transition text-center shadow-xs flex items-center justify-center gap-1.5"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              লাইভ এক্সাম জোনে যান
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleTabSelect('routines');
-                              }}
-                              className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-2 px-3 rounded-xl transition text-center"
-                            >
-                              রুটিন পেজ ➔
-                            </button>
+                          {/* Enrollment & Action Buttons */}
+                          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+                            {isEnrolled ? (
+                              <>
+                                <button
+                                  onClick={() => handleTabSelect('exams')}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3 rounded-xl transition text-center shadow-xs flex items-center justify-center gap-1.5 text-xs"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  এনরোলড (লাইভ এক্সাম দিন)
+                                </button>
+                                <button
+                                  onClick={() => handleToggleEnrollCourse(course.id, course.title)}
+                                  className="bg-gray-100 hover:bg-rose-50 hover:text-rose-600 text-gray-500 font-bold py-2.5 px-3 rounded-xl transition text-[10px]"
+                                  title="কোর্স আন-এনরোল করুন"
+                                >
+                                  আন-এনরোল
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleEnrollCourse(course.id, course.title)}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-xl transition text-center shadow flex items-center justify-center gap-2 text-xs"
+                              >
+                                <GraduationCap className="w-4 h-4 text-indigo-200" />
+                                🎓 কোর্সে এনরোল করুন (Enroll Now)
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -5420,7 +5524,7 @@ export default function UserPortal({
               { id: 'exams', label: 'লাইভ এক্সাম', icon: Clock },
               { id: 'results', label: 'ফলাফল', icon: Award },
               { id: 'routines', label: 'রুটিন', icon: Calendar },
-              { id: 'bookmarks', label: 'বুকমার্ক', icon: BookmarkIcon },
+              { id: 'courses', label: 'আমার কোর্স', icon: GraduationCap },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -5476,7 +5580,7 @@ export default function UserPortal({
                 onClick={() => {
                   const onConf = customAlert.onConfirm;
                   setCustomAlert(null);
-                  if (onConf) onConf();
+                  if (typeof onConf === 'function') onConf();
                 }}
                 className={`${(customAlert.showCancel || (user.isGuest && customAlert.onConfirm)) ? 'flex-1' : 'w-full'} bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 rounded-2xl text-xs transition shadow cursor-pointer`}
               >
