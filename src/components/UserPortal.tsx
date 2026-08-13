@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, formatBengaliDate } from '../types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, formatBengaliDate } from '../types';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -226,6 +226,7 @@ interface UserPortalProps {
   liveExams: LiveExam[];
   notices: Notice[];
   routines: Routine[];
+  courses?: Course[];
   attempts: Attempt[];
   bookmarks: Bookmark[];
   categories: CategoryItem[];
@@ -249,6 +250,7 @@ export default function UserPortal({
   liveExams,
   notices,
   routines,
+  courses = [],
   attempts,
   bookmarks,
   categories = [],
@@ -266,7 +268,7 @@ export default function UserPortal({
   onFetchQuestionsLazy
 }: UserPortalProps) {
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'routines' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Study & Preparation states
@@ -311,6 +313,10 @@ export default function UserPortal({
 
   // Challenge Modal State
   const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
+
+  // Course States
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'all' | 'active' | 'upcoming' | 'completed'>('all');
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
 
   // Custom Exam Setup & Cascading Filter States
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -514,7 +520,7 @@ export default function UserPortal({
     return true;
   };
 
-  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'routines' | 'profile') => {
+  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile') => {
     if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
       checkGuestAccess(
         tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
@@ -2372,6 +2378,7 @@ export default function UserPortal({
                     { id: 'exams', label: '⏱️ এক্সাম জোন (পরীক্ষা)', icon: Clock },
                     { id: 'bookmarks', label: '🔖 সেভকৃত বুকমার্কস', icon: BookmarkIcon },
                     { id: 'results', label: '📝 পরীক্ষার ফলাফল', icon: Award },
+                    { id: 'courses', label: '🎓 চলমান কোর্স স্পেস', icon: GraduationCap },
                     { id: 'routines', label: '📅 একাডেমিক রুটিন', icon: Calendar },
                     { id: 'profile', label: '👤 প্রোফাইল ও সেটিংস', icon: UserIcon },
                   ].map(item => {
@@ -3109,20 +3116,27 @@ export default function UserPortal({
                 </div>
               </div>
 
-              {/* History & Routines Quick View */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* History, Courses & Routines Quick View */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button 
+                  onClick={() => handleTabSelect('courses')}
+                  className="bg-indigo-900 hover:bg-indigo-950 text-white p-3.5 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
+                >
+                  🎓 চলমান কোর্স ও স্টাডি স্পেস
+                  <ChevronRight className="w-4 h-4" />
+                </button>
                 <button 
                   onClick={() => handleTabSelect('results')}
-                  className="bg-indigo-900 hover:bg-indigo-950 text-white p-4 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
+                  className="bg-indigo-900 hover:bg-indigo-950 text-white p-3.5 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
                 >
-                  📊 ফলাফল ও বিস্তারিত উত্তরপত্র ভিউ
+                  📊 ফলাফল ও বিস্তারিত উত্তরপত্র
                   <ChevronRight className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={() => handleTabSelect('routines')}
-                  className="bg-indigo-900 hover:bg-indigo-950 text-white p-4 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
+                  className="bg-indigo-900 hover:bg-indigo-950 text-white p-3.5 rounded-2xl text-center shadow transition flex items-center justify-between font-bold text-xs"
                 >
-                  📅 একাডেমি রুটিন ও শিডিউল জোন
+                  📅 একাডেমিক রুটিন ও শিডিউল
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -4731,7 +4745,189 @@ export default function UserPortal({
             }
           })()}
 
-                  {/* VIEW: ACADEMIC ROUTINES */}
+          {/* VIEW: COURSES SPACE */}
+          {activeTab === 'courses' && (
+            <div className="space-y-5 animate-fade-in text-xs">
+              {/* Header Banner */}
+              <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-900 text-white p-5 rounded-3xl shadow-md border border-indigo-700/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 mb-1.5">
+                    🎓 একাডেমি ও জব সলিউশন
+                  </span>
+                  <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5 text-indigo-300" />
+                    চলমান কোর্স ও স্টাডি প্রোগ্রাম
+                  </h2>
+                  <p className="text-xs text-indigo-100/80 font-medium mt-1">
+                    আপনার পছন্দের কোর্সে যুক্ত হয়ে রুটিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
+                  </p>
+                </div>
+
+                {/* Filter Controls */}
+                <div className="flex flex-wrap gap-1.5 bg-white/10 p-1.5 rounded-2xl border border-white/15 backdrop-blur-sm self-stretch sm:self-auto">
+                  {(['all', 'active', 'upcoming', 'completed'] as const).map(statusKey => {
+                    const count = statusKey === 'all' ? courses.length : courses.filter(c => c.status === statusKey).length;
+                    const labels = {
+                      all: `সকল (${count})`,
+                      active: `🟢 চলমান (${count})`,
+                      upcoming: `🟡 আসন্ন (${count})`,
+                      completed: `⚪ সম্পন্ন (${count})`
+                    };
+                    const isActive = selectedCourseFilter === statusKey;
+                    return (
+                      <button
+                        key={statusKey}
+                        onClick={() => setSelectedCourseFilter(statusKey)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition text-[11px] ${
+                          isActive 
+                            ? 'bg-white text-indigo-950 shadow-sm' 
+                            : 'text-indigo-100 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {labels[statusKey]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Course List */}
+              {(() => {
+                const filteredCourses = courses.filter(c => selectedCourseFilter === 'all' || c.status === selectedCourseFilter);
+
+                if (filteredCourses.length === 0) {
+                  return (
+                    <div className="bg-white border border-gray-100 p-10 rounded-3xl text-center space-y-3">
+                      <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mx-auto font-bold">
+                        🎓
+                      </div>
+                      <h4 className="font-extrabold text-gray-800 text-sm">কোনো কোর্স পাওয়া যায়নি</h4>
+                      <p className="text-gray-400 max-w-sm mx-auto text-xs">
+                        নির্বাচিত ফিল্টারে কোনো কোর্স নেই। অনুগ্রহ করে অন্য ফিল্টার সিলেক্ট করুন অথবা অ্যাডমিন থেকে নতুন কোর্স যুক্ত করার নির্দেশ দিন।
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredCourses.map((course, idx) => {
+                      const courseRoutines = routines.filter(r => r.courseId === course.id || r.courseName === course.title);
+                      const isExpanded = expandedCourseId === course.id;
+
+                      return (
+                        <div key={course.id || idx} className="bg-white border border-gray-100/90 hover:border-indigo-200 p-5 rounded-3xl shadow-sm transition flex flex-col justify-between gap-4">
+                          <div className="space-y-3">
+                            {/* Course Badges */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                                course.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                course.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              }`}>
+                                {course.status === 'active' ? '● চলমান কোর্স (Active)' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স (Upcoming)' : '✓ সম্পন্ন কোর্স (Completed)'}
+                              </span>
+
+                              {course.category && (
+                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
+                                  🏷️ {course.category}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Course Title & Description */}
+                            <div>
+                              <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base leading-snug">
+                                {course.title}
+                              </h3>
+                              <p className="text-gray-600 font-medium text-xs mt-1.5 leading-relaxed">
+                                {course.description}
+                              </p>
+                            </div>
+
+                            {/* Key Metadata */}
+                            <div className="flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 pt-1">
+                              {course.startDate && (
+                                <span className="bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-xl flex items-center gap-1 text-gray-700 font-bold">
+                                  📅 শুরু: {course.startDate}
+                                </span>
+                              )}
+                              {course.endDate && (
+                                <span className="bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-xl flex items-center gap-1 text-gray-700 font-bold">
+                                  🏁 শেষ: {course.endDate}
+                                </span>
+                              )}
+                              <span className="bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl text-emerald-800 font-bold flex items-center gap-1">
+                                📋 {courseRoutines.length} টি রুটিন সংযুক্ত
+                              </span>
+                            </div>
+
+                            {/* Connected Routines Section */}
+                            <div className="bg-slate-50/80 border border-slate-100 p-3.5 rounded-2xl space-y-2">
+                              <div className="flex justify-between items-center">
+                                <h4 className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
+                                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                                  📅 কোর্স একাডেমিক রুটিন ({courseRoutines.length})
+                                </h4>
+                                {courseRoutines.length > 0 && (
+                                  <button 
+                                    onClick={() => handleTabSelect('routines')}
+                                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                                  >
+                                    সকল রুটিন ভিউ ➔
+                                  </button>
+                                )}
+                              </div>
+
+                              {courseRoutines.length === 0 ? (
+                                <p className="text-gray-400 text-[11px] font-medium py-1">এই কোর্সের জন্য এখনও কোনো রুটিন পোস্ট করা হয়নি।</p>
+                              ) : (
+                                <div className="space-y-2 pt-1">
+                                  {courseRoutines.map((r, rIdx) => (
+                                    <div key={r.id || rIdx} className="p-2.5 bg-white border border-gray-200/70 rounded-xl text-xs space-y-1">
+                                      <div className="flex justify-between items-center font-bold text-indigo-950">
+                                        <span>{r.title}</span>
+                                        <span className="text-[9px] text-gray-400 font-semibold">{new Date(r.createdAt).toLocaleDateString('bn-BD')}</span>
+                                      </div>
+                                      <p className="text-gray-600 text-[11px] whitespace-pre-line font-medium leading-relaxed">
+                                        {r.details}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Quick Action Buttons */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                            <button
+                              onClick={() => {
+                                handleTabSelect('exams');
+                              }}
+                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-xl transition text-center shadow-xs flex items-center justify-center gap-1.5"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              লাইভ এক্সাম জোনে যান
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleTabSelect('routines');
+                              }}
+                              className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-2 px-3 rounded-xl transition text-center"
+                            >
+                              রুটিন পেজ ➔
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* VIEW: ACADEMIC ROUTINES */}
           {activeTab === 'routines' && (
             user.isGuest ? (
               renderGuestLockCard(
@@ -4739,18 +4935,35 @@ export default function UserPortal({
                 'গেস্ট (Guest) হিসেবে শুধুমাত্র "লাইভ পরীক্ষা" দেওয়া যায়। একাডেমিক পরীক্ষার সময়সূচী ও রুটিন দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন করুন।'
               )
             ) : (
-            <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4 text-xs">
+            <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4 text-xs animate-fade-in">
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="font-extrabold text-sm text-indigo-950 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-indigo-600" />
+                  📅 একাডেমি ও কোর্স রুটিন সেন্টার
+                </h3>
+                <span className="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-xl text-[10px]">
+                  মোট রুটিন: {routines.length} টি
+                </span>
+              </div>
+
               {routines.length === 0 ? (
                 <p className="text-gray-400 text-center py-10">বর্তমানে কোনো রুটিন প্রকাশিত হয়নি।</p>
               ) : (
                 <div className="space-y-4">
                   {routines.map((item, idx) => (
-                    <div key={item.id ? `usr-rt-${item.id}-${idx}` : `usr-rt-${idx}`} className="p-4 bg-gray-50 border border-gray-100 rounded-2xl">
-                      <div className="flex justify-between items-start border-b pb-1.5 mb-2 border-gray-200">
-                        <h4 className="font-extrabold text-indigo-900 text-xs">{item.title}</h4>
-                        <span className="text-[9px] text-gray-400 font-semibold">{new Date(item.createdAt).toLocaleDateString('bn-BD')}</span>
+                    <div key={item.id ? `usr-rt-${item.id}-${idx}` : `usr-rt-${idx}`} className="p-4 bg-gray-50 border border-gray-100 hover:border-indigo-200 rounded-2xl transition space-y-2">
+                      <div className="flex justify-between items-start border-b pb-2 border-gray-200/80">
+                        <div>
+                          {item.courseName && (
+                            <span className="inline-block px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 text-[10px] font-extrabold mb-1 border border-indigo-200">
+                              🎓 কোর্স: {item.courseName}
+                            </span>
+                          )}
+                          <h4 className="font-extrabold text-indigo-950 text-xs sm:text-sm">{item.title}</h4>
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-bold shrink-0">{new Date(item.createdAt).toLocaleDateString('bn-BD')}</span>
                       </div>
-                      <p className="text-gray-600 leading-relaxed whitespace-pre-line text-[11px] font-medium">
+                      <p className="text-gray-700 leading-relaxed whitespace-pre-line text-[11px] font-medium pt-1">
                         {item.details}
                       </p>
                     </div>

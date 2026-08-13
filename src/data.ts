@@ -1,4 +1,4 @@
-import { Question, LiveExam, Notice, Routine, User } from './types';
+import { Question, LiveExam, Notice, Routine, User, Course } from './types';
 
 export const INITIAL_QUESTIONS: Question[] = [
   {
@@ -160,6 +160,29 @@ export const INITIAL_NOTICES: Notice[] = [
   }
 ];
 
+export const INITIAL_COURSES: Course[] = [
+  {
+    id: 'course_bcs_46',
+    title: '৪৬তম বিসিএস প্রিলিমিনারি স্পেশাল ক্র্যাশ কোর্স',
+    description: 'সম্পূর্ণ সিলেবাস ভিত্তিক বিষয়ভিত্তিক লাইভ পরীক্ষা, রিডার মোড অনুশীলন ও এক্সক্লুসিভ স্টাডি প্ল্যান।',
+    status: 'active',
+    category: 'বিসিএস প্রস্তুতি',
+    startDate: '২০২৪-০১-১০',
+    endDate: '২০২৪-০৬-৩০',
+    createdAt: '2026-07-17T12:00:00Z'
+  },
+  {
+    id: 'course_primary_2024',
+    title: 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩ স্পেশাল কোর্স',
+    description: 'বিগত বছরের প্রশ্ন সমাধান, বিষয়ভিত্তিক কুইজ ও নিয়মিত মডেল টেস্ট।',
+    status: 'active',
+    category: 'জব সলিউশন পরীক্ষা',
+    startDate: '২০২৪-০২-০১',
+    endDate: '২০২৪-০৭-১৫',
+    createdAt: '2026-07-17T14:00:00Z'
+  }
+];
+
 export const INITIAL_ROUTINES: Routine[] = [
   {
     id: 'r1',
@@ -168,7 +191,9 @@ export const INITIAL_ROUTINES: Routine[] = [
 ৫ই আগস্ট - ইংরেজি ভাষা ও সাহিত্য পরীক্ষা
 ৮ই আগস্ট - বাংলাদেশ বিষয়াবলী চূড়ান্ত পরীক্ষা
 ১০ই আগস্ট - সাধারণ বিজ্ঞান ও আইসিটি মডেল টেস্ট`,
-    createdAt: '2026-07-18T02:00:00Z'
+    createdAt: '2026-07-18T02:00:00Z',
+    courseId: 'course_bcs_46',
+    courseName: '৪৬তম বিসিএস প্রিলিমিনারি স্পেশাল ক্র্যাশ কোর্স'
   },
   {
     id: 'r2',
@@ -176,7 +201,9 @@ export const INITIAL_ROUTINES: Routine[] = [
     details: `১৫ই আগস্ট - গাণিতিক যুক্তি ও মানসিক দক্ষতা
 ১৭ই আগস্ট - বাংলা ও ইংরেজি রিভিশন পরীক্ষা
 ২০শে আগস্ট - ১০০ মার্কের পূর্ণাঙ্গ লাইভ মডেল টেস্ট`,
-    createdAt: '2026-07-18T03:00:00Z'
+    createdAt: '2026-07-18T03:00:00Z',
+    courseId: 'course_primary_2024',
+    courseName: 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩ স্পেশাল কোর্স'
   }
 ];
 

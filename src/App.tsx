@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, generateAutoUserId } from './types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, generateAutoUserId } from './types';
 import { 
   INITIAL_QUESTIONS, 
   INITIAL_NOTICES, 
   INITIAL_ROUTINES, 
   INITIAL_LIVE_EXAMS, 
-  INITIAL_USERS 
+  INITIAL_USERS,
+  INITIAL_COURSES
 } from './data';
 import AdminPanel from './components/AdminPanel';
 import UserPortal from './components/UserPortal';
@@ -80,6 +81,7 @@ export default function App() {
   const [liveExams, setLiveExams] = useState<LiveExam[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -435,6 +437,26 @@ export default function App() {
           const deduped = dedupeRoutines(fsR);
           setRoutines(deduped);
           localStorage.setItem('orjon_routines', JSON.stringify(deduped));
+        }
+      }).catch(() => {});
+    }
+
+    // Courses seed (Cache-First)
+    const storedCourses = localStorage.getItem('orjon_courses') || localStorage.getItem('medha_courses');
+    if (storedCourses) {
+      try {
+        setCourses(dedupeCourses(JSON.parse(storedCourses)));
+      } catch {
+        setCourses(dedupeCourses(INITIAL_COURSES));
+      }
+    } else {
+      localStorage.setItem('orjon_courses', JSON.stringify(dedupeCourses(INITIAL_COURSES)));
+      setCourses(dedupeCourses(INITIAL_COURSES));
+      fetchCollectionFromFirestore<Course>('courses').then(fsCourses => {
+        if (fsCourses && fsCourses.length > 0) {
+          const deduped = dedupeCourses(fsCourses);
+          setCourses(deduped);
+          localStorage.setItem('orjon_courses', JSON.stringify(deduped));
         }
       }).catch(() => {});
     }
@@ -1073,6 +1095,23 @@ export default function App() {
     setRoutines(deduped);
     localStorage.setItem('orjon_routines', JSON.stringify(deduped));
     syncCollectionToFirestore('routines', deduped, 'rt');
+  };
+
+  const dedupeCourses = (cList: Course[]): Course[] => {
+    const map = new Map<string, Course>();
+    (cList || []).forEach(item => {
+      if (item && item.id) {
+        map.set(item.id, item);
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  const updateCoursesDB = (newC: Course[]) => {
+    const deduped = dedupeCourses(newC);
+    setCourses(deduped);
+    localStorage.setItem('orjon_courses', JSON.stringify(deduped));
+    syncCollectionToFirestore('courses', deduped, 'course');
   };
 
   const dedupeLiveExams = (exams: LiveExam[]): LiveExam[] => {
@@ -1959,15 +1998,33 @@ export default function App() {
     addAuditLog('লাইভ পরীক্ষা মুছে ফেলা (Delete Exam)', `লাইভ পরীক্ষা মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'exam');
   };
 
-  const handleSaveRoutine = (title: string, details: string) => {
+  const handleSaveCourse = (cData: Omit<Course, 'id' | 'createdAt'>) => {
+    const newCourse: Course = {
+      ...cData,
+      id: `course_${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    updateCoursesDB([newCourse, ...courses]);
+    addAuditLog('কোর্স তৈরি (Course)', `নতুন কোর্স তৈরি করা হয়েছে: "${cData.title}"`, 'other');
+  };
+
+  const handleDeleteCourse = (id: string) => {
+    const target = courses.find(c => c.id === id);
+    updateCoursesDB(courses.filter(item => item.id !== id));
+    addAuditLog('কোর্স মুছে ফেলা (Delete Course)', `কোর্স মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'other');
+  };
+
+  const handleSaveRoutine = (title: string, details: string, courseId?: string, courseName?: string) => {
     const newRoutine: Routine = {
       id: `routine_${Date.now()}`,
       title,
       details,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      courseId,
+      courseName
     };
     updateRoutinesDB([newRoutine, ...routines]);
-    addAuditLog('রুটিন প্রকাশ (Routine)', `নতুন রুটিন প্রকাশ করা হয়েছে: "${title}"`, 'routine');
+    addAuditLog('রুটিন প্রকাশ (Routine)', `নতুন রুটিন প্রকাশ করা হয়েছে: "${title}"${courseName ? ` (কোর্স: ${courseName})` : ''}`, 'routine');
   };
 
   const handleDeleteRoutine = (id: string) => {
@@ -2431,6 +2488,7 @@ export default function App() {
             liveExams={liveExams}
             notices={notices}
             routines={routines}
+            courses={courses}
             attempts={attempts.filter(a => {
               if (currentUser.phone && a.userPhone === currentUser.phone) return true;
               if (currentUser.email && a.userEmail && a.userEmail.toLowerCase() === currentUser.email.toLowerCase()) return true;
@@ -2468,6 +2526,7 @@ export default function App() {
             liveExams={liveExams}
             notices={notices}
             routines={routines}
+            courses={courses}
             users={users}
             attempts={attempts}
             categories={categories}
@@ -2491,6 +2550,8 @@ export default function App() {
             onDeleteLiveExam={handleDeleteLiveExam}
             onSaveRoutine={handleSaveRoutine}
             onDeleteRoutine={handleDeleteRoutine}
+            onSaveCourse={handleSaveCourse}
+            onDeleteCourse={handleDeleteCourse}
             onLogout={requestLogoutConfirmation}
             allowUserExplanation={allowUserExplanation}
             onToggleUserExplanation={handleToggleUserExplanation}

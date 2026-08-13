@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, formatBengaliDate, formatBengaliDateTime } from '../types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, formatBengaliDate, formatBengaliDateTime } from '../types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
   History, FileText, CheckCircle2, Sparkles, Menu, ChevronDown, ChevronRight, ShieldAlert, AlertTriangle,
-  Download, Database, FileJson, RotateCcw, HardDrive
+  Download, Database, FileJson, RotateCcw, HardDrive, GraduationCap
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as ReactWindow from 'react-window';
@@ -26,6 +26,7 @@ interface AdminPanelProps {
   liveExams: LiveExam[];
   notices: Notice[];
   routines: Routine[];
+  courses?: Course[];
   users: User[];
   attempts: Attempt[];
   categories: CategoryItem[];
@@ -47,8 +48,10 @@ interface AdminPanelProps {
   onSaveNotice: (text: string) => void;
   onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt'>) => void;
   onDeleteLiveExam: (id: string) => void;
-  onSaveRoutine: (title: string, details: string) => void;
+  onSaveRoutine: (title: string, details: string, courseId?: string, courseName?: string) => void;
   onDeleteRoutine: (id: string) => void;
+  onSaveCourse?: (course: Omit<Course, 'id' | 'createdAt'>) => void;
+  onDeleteCourse?: (id: string) => void;
   onLogout: () => void;
   allowUserExplanation: boolean;
   onToggleUserExplanation: (allowed: boolean) => void;
@@ -131,6 +134,7 @@ export default function AdminPanel({
   liveExams,
   notices,
   routines,
+  courses = [],
   users,
   attempts,
   categories = [],
@@ -154,6 +158,8 @@ export default function AdminPanel({
   onDeleteLiveExam,
   onSaveRoutine,
   onDeleteRoutine,
+  onSaveCourse,
+  onDeleteCourse,
   onLogout,
   allowUserExplanation,
   onToggleUserExplanation,
@@ -171,8 +177,42 @@ export default function AdminPanel({
   onLoadAuditLogsOnDemand,
   onLoadAttemptsOnDemand
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'manage' | 'categories' | 'exams' | 'routines' | 'results' | 'users' | 'feedback' | 'backup' | 'firestore-migration' | 'audit-logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'manage' | 'categories' | 'exams' | 'courses' | 'routines' | 'results' | 'users' | 'feedback' | 'backup' | 'firestore-migration' | 'audit-logs'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Course Form States
+  const [courseTitle, setCourseTitle] = useState('');
+  const [courseDesc, setCourseDesc] = useState('');
+  const [courseCategory, setCourseCategory] = useState('');
+  const [courseStatus, setCourseStatus] = useState<'active' | 'upcoming' | 'completed'>('active');
+  const [courseStartDate, setCourseStartDate] = useState('');
+  const [courseEndDate, setCourseEndDate] = useState('');
+  const [routineCourseId, setRoutineCourseId] = useState('');
+
+  const handleCreateCourseSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseTitle.trim() || !courseDesc.trim()) {
+      showCustomAlert('অসম্পূর্ণ তথ্য!', 'কোর্সের শিরোনাম ও বিস্তারিত বিবরণ দিন!', 'error');
+      return;
+    }
+    if (onSaveCourse) {
+      onSaveCourse({
+        title: courseTitle.trim(),
+        description: courseDesc.trim(),
+        status: courseStatus,
+        category: courseCategory || undefined,
+        startDate: courseStartDate || undefined,
+        endDate: courseEndDate || undefined
+      });
+      showCustomAlert('সফল!', '🎓 নতুন কোর্স সফলভাবে তৈরি ও প্রকাশ করা হয়েছে!', 'success');
+      setCourseTitle('');
+      setCourseDesc('');
+      setCourseCategory('');
+      setCourseStatus('active');
+      setCourseStartDate('');
+      setCourseEndDate('');
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'users' && onLoadUsersOnDemand) {
@@ -2582,10 +2622,12 @@ export default function AdminPanel({
       alert('রুটিনের শিরোনাম এবং বিস্তারিত বিবরণ দিন!');
       return;
     }
-    onSaveRoutine(routineTitle.trim(), routineDetails.trim());
+    const targetCourse = courses.find(c => c.id === routineCourseId);
+    onSaveRoutine(routineTitle.trim(), routineDetails.trim(), targetCourse?.id, targetCourse?.title);
     alert('📅 নতুন একাডেমি রুটিন সফলভাবে পাবলিশ করা হয়েছে!');
     setRoutineTitle('');
     setRoutineDetails('');
+    setRoutineCourseId('');
   };
 
   const classifyQuestion = (q: Question): string => {
@@ -2748,6 +2790,7 @@ export default function AdminPanel({
     { id: 'manage', label: 'প্রশ্ন ব্যাংক ম্যানেজ', icon: '📁', count: questions.length, description: 'প্রশ্ন খোঁজা, এডিট ও বাল্ক ডিলিট' },
     { id: 'categories', label: 'ক্যাটাগরি ও সাব-ক্যাটাগরি', icon: '🗂️', count: categories.length, description: 'বিষয়ভিত্তিক ট্রি স্ট্রাকচার তৈরি' },
     { id: 'exams', label: 'পরীক্ষা ও নোটিশ সেন্ট্রাল', icon: '⏱️', count: liveExams.length, description: 'লাইভ পরীক্ষা ও পপআপ নোটিশ' },
+    { id: 'courses', label: 'কোর্স ম্যানেজমেন্ট', icon: '🎓', count: courses.length, description: 'চলমান ও নতুন কোর্স এবং কোর্স রুটিন ম্যানেজমেন্ট' },
     { id: 'routines', label: 'রুটিন ম্যানেজমেন্ট', icon: '📅', count: routines.length, description: 'ডেইলি/উইকলি স্টাডি রুটিন' },
     { id: 'results', label: 'পরীক্ষার ফলাফল ও মার্কস ভিউ', icon: '📈', count: adminAttempts.length, description: 'শিক্ষার্থীদের প্রাপ্ত নম্বর বিশ্লেষণ' },
     { id: 'users', label: 'নিবন্ধিত ইউজার ডাটাবেজ', icon: '👥', count: users.length, description: 'ইউজার স্ট্যাটাস ও রোল ম্যানেজ' },
@@ -2947,6 +2990,12 @@ export default function AdminPanel({
           className={`flex-1 min-w-[90px] py-2 px-3 border-b-2 font-bold text-center transition shrink-0 ${activeTab === 'exams' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-indigo-600'}`}
         >
           ⏱️ পরীক্ষা ও নোটিশ
+        </button>
+        <button 
+          onClick={() => setActiveTab('courses')}
+          className={`flex-1 min-w-[90px] py-2 px-3 border-b-2 font-bold text-center transition shrink-0 ${activeTab === 'courses' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-indigo-600'}`}
+        >
+          🎓 কোর্স ম্যানেজ ({courses.length})
         </button>
         <button 
           onClick={() => setActiveTab('routines')}
@@ -6582,6 +6631,152 @@ export default function AdminPanel({
         </div>
       )}
 
+      {/* COURSE MANAGEMENT */}
+      {activeTab === 'courses' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
+          {/* Create Course Form */}
+          <div className="md:col-span-5 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+              <GraduationCap className="w-4 h-4 text-indigo-600" />
+              🎓 নতুন কোর্স তৈরি করুন
+            </h3>
+            <form onSubmit={handleCreateCourseSubmit} className="space-y-3">
+              <div>
+                <label className="block text-gray-600 mb-1 font-medium">কোর্সের নাম / শিরোনাম:</label>
+                <input 
+                  type="text" 
+                  required
+                  value={courseTitle}
+                  onChange={e => setCourseTitle(e.target.value)}
+                  placeholder="যেমন: ৪৬তম বিসিএস প্রিলিমিনারি স্পেশাল ক্র্যাশ কোর্স" 
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-600 mb-1 font-medium">কোর্সের বিবরণ / বিস্তারিত:</label>
+                <textarea 
+                  rows={4}
+                  required
+                  value={courseDesc}
+                  onChange={e => setCourseDesc(e.target.value)}
+                  placeholder="যেমন: সম্পূর্ণ সিলেবাস ভিত্তিক বিষয়ভিত্তিক লাইভ পরীক্ষা, রিডার মোড অনুশীলন ও এক্সক্লুসিভ স্টাডি প্ল্যান।"
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-600 mb-1 font-medium">সম্পর্কিত ক্যাটাগরি (ঐচ্ছিক):</label>
+                <select
+                  value={courseCategory}
+                  onChange={e => setCourseCategory(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none bg-white"
+                >
+                  <option value="">সকল ক্যাটাগরি / সাধারণ</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-gray-600 mb-1 font-medium">স্ট্যাটাস:</label>
+                  <select
+                    value={courseStatus}
+                    onChange={e => setCourseStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none bg-white font-bold"
+                  >
+                    <option value="active">🟢 চলমান (Active)</option>
+                    <option value="upcoming">🟡 আসন্ন (Upcoming)</option>
+                    <option value="completed">⚪ সম্পন্ন (Completed)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-600 mb-1 font-medium">শুরুর তারিখ:</label>
+                  <input 
+                    type="date"
+                    value={courseStartDate}
+                    onChange={e => setCourseStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-600 mb-1 font-medium">শেষের তারিখ (ঐচ্ছিক):</label>
+                <input 
+                  type="date"
+                  value={courseEndDate}
+                  onChange={e => setCourseEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none"
+                />
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition shadow flex items-center justify-center gap-2"
+              >
+                কোর্স সেভ ও প্রকাশ করুন 🎓
+              </button>
+            </form>
+          </div>
+
+          {/* Published Courses */}
+          <div className="md:col-span-7 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-sm text-gray-800 mb-3">📋 তৈরি করা কোর্সসমূহ ({courses.length})</h3>
+            <div className="space-y-4">
+              {courses.length === 0 ? (
+                <p className="text-gray-400 py-6 text-center">কোনো কোর্স পাওয়া যায়নি। নতুন কোর্স তৈরি করুন।</p>
+              ) : (
+                courses.map((course, idx) => {
+                  const courseRoutines = routines.filter(r => r.courseId === course.id || r.courseName === course.title);
+                  return (
+                    <div key={course.id || idx} className="p-4 bg-gray-50 border border-gray-100 rounded-2xl flex flex-col gap-2">
+                      <div className="flex justify-between items-start gap-2 border-b pb-2">
+                        <div>
+                          <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider mb-1 ${
+                            course.status === 'active' ? 'bg-emerald-100 text-emerald-800' :
+                            course.status === 'upcoming' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-700'
+                          }`}>
+                            {course.status === 'active' ? '● চলমান কোর্স' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স' : '✓ সম্পন্ন কোর্স'}
+                          </span>
+                          <h4 className="font-extrabold text-indigo-950 text-sm">{course.title}</h4>
+                        </div>
+                        <button
+                          onClick={() => {
+                            showCustomConfirm(
+                              'কোর্স ডিলিট নিশ্চিতকরণ',
+                              `"${course.title}" কোর্সটি ডিলিট করতে চান?`,
+                              () => {
+                                if (onDeleteCourse) onDeleteCourse(course.id);
+                                showCustomAlert('সম্পন্ন হয়েছে!', 'কোর্সটি সফলভাবে মুছে ফেলা হয়েছে!', 'success');
+                              },
+                              'warning'
+                            );
+                          }}
+                          className="text-rose-600 hover:text-rose-800 font-bold shrink-0 text-xs"
+                        >
+                          মুছুন 🗑️
+                        </button>
+                      </div>
+                      <p className="text-gray-600 text-xs leading-relaxed">{course.description}</p>
+                      
+                      <div className="flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 pt-1">
+                        {course.category && <span className="bg-white border px-2 py-0.5 rounded-lg text-indigo-700 font-bold">🏷️ {course.category}</span>}
+                        {course.startDate && <span className="bg-white border px-2 py-0.5 rounded-lg">📅 শুরু: {course.startDate}</span>}
+                        {course.endDate && <span className="bg-white border px-2 py-0.5 rounded-lg">🏁 শেষ: {course.endDate}</span>}
+                        <span className="bg-white border px-2 py-0.5 rounded-lg text-emerald-700 font-bold">📅 সংযুক্ত রুটিন: {courseRoutines.length} টি</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 4. ROUTINES MANAGEMENT */}
       {activeTab === 'routines' && (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
@@ -6592,6 +6787,25 @@ export default function AdminPanel({
               📅 নতুন একাডেমি রুটিন যোগ করুন
             </h3>
             <form onSubmit={handleCreateRoutine} className="space-y-3">
+              <div>
+                <label className="block text-gray-600 mb-1 font-medium">নির্দিষ্ট কোর্স লিঙ্ক করুন (ঐচ্ছিক):</label>
+                <select
+                  value={routineCourseId}
+                  onChange={e => setRoutineCourseId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none bg-white font-medium"
+                >
+                  <option value="">সাধারণ রুটিন (সকলের জন্য)</option>
+                  {courses.map(c => (
+                    <option key={c.id} value={c.id}>
+                      🎓 {c.title} ({c.status === 'active' ? 'চলমান' : c.status})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  * কোর্স সিলেক্ট করলে এই রুটিনটি "চলমান কোর্স" সেকশন এবং সাধারণ রুটিন সেকশন উভয় স্থানেই প্রদর্শিত হবে।
+                </p>
+              </div>
+
               <div>
                 <label className="block text-gray-600 mb-1 font-medium">রুটিনের নাম / শিরোনাম:</label>
                 <input 
@@ -6635,6 +6849,11 @@ export default function AdminPanel({
                 routines.map((item, idx) => (
                   <div key={item.id ? `rt-${item.id}-${idx}` : `rt-${idx}`} className="py-2 flex justify-between items-start">
                     <div className="pr-4">
+                      {item.courseName && (
+                        <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold mb-1 border border-indigo-100">
+                          🎓 কোর্স: {item.courseName}
+                        </span>
+                      )}
                       <h4 className="font-bold text-indigo-800">{item.title}</h4>
                       <p className="text-[10px] text-gray-400 mt-0.5">প্রকাশের তারিখ: {new Date(item.createdAt).toLocaleDateString()}</p>
                       <p className="text-gray-600 text-[11px] whitespace-pre-line mt-1.5 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-100">

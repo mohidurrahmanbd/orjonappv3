@@ -88,11 +88,24 @@ export interface Notice {
   createdAt: string;
 }
 
+export interface Course {
+  id: string;
+  title: string;
+  description: string;
+  status: 'active' | 'upcoming' | 'completed';
+  category?: string;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+}
+
 export interface Routine {
   id: string;
   title: string;
   details: string;
   createdAt: string;
+  courseId?: string;
+  courseName?: string;
 }
 
 export interface LiveExam {
