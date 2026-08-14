@@ -1,0 +1,879 @@
+import React, { useState, useMemo } from 'react';
+import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../types';
+import { 
+  FolderTree, BookOpen, ChevronDown, ChevronRight, Search, 
+  Eye, EyeOff, Bookmark as BookmarkIcon, 
+  Check, HelpCircle, Sparkles, ArrowLeft, Layers
+} from 'lucide-react';
+
+interface RoutineHierarchicalMCQModalProps {
+  routine: Routine;
+  questions: Question[];
+  categories?: CategoryItem[];
+  subcategories?: SubcategoryItem[];
+  bookmarks?: Bookmark[];
+  onClose: () => void;
+  onStartPractice?: (routine: Routine) => void;
+  onToggleBookmark?: (qId: string) => void;
+}
+
+interface HierarchicalLeafNode {
+  name: string;
+  questions: Question[];
+}
+
+interface HierarchicalSubNode {
+  name: string;
+  leafNodes: HierarchicalLeafNode[];
+  directQuestions: Question[];
+  totalCount: number;
+}
+
+interface HierarchicalCatNode {
+  name: string;
+  subNodes: HierarchicalSubNode[];
+  directQuestions: Question[];
+  totalCount: number;
+}
+
+const PAGE_SIZE = 20;
+
+const toBengaliDigits = (num: number | string): string => {
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(num).replace(/[0-9]/g, (d) => bengaliDigits[parseInt(d, 10)]);
+};
+
+export default function RoutineHierarchicalMCQModal({
+  routine,
+  questions,
+  subcategories = [],
+  bookmarks = [],
+  onClose,
+  onStartPractice,
+  onToggleBookmark
+}: RoutineHierarchicalMCQModalProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAllAnswers, setShowAllAnswers] = useState(true);
+  const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
+  const [selectedUserOptions, setSelectedUserOptions] = useState<Record<string, number>>({});
+  
+  // ALL categories and topics are COLLAPSED by default (empty state = everything collapsed)
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
+  // Per-topic and global search pagination (max 20 MCQs per page)
+  const [topicPages, setTopicPages] = useState<Record<string, number>>({});
+  const [searchPage, setSearchPage] = useState(1);
+
+  // Subcategory descendant map for deep hierarchy resolution
+  const subcategoryDescendantsMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    subcategories.forEach(sub => {
+      const descendants: string[] = [];
+      const queue = [sub.name.trim().toLowerCase()];
+      const visited = new Set<string>(queue);
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        const children = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === current);
+        children.forEach(child => {
+          const childLower = child.name.trim().toLowerCase();
+          if (!visited.has(childLower)) {
+            visited.add(childLower);
+            descendants.push(child.name.trim().toLowerCase());
+            queue.push(childLower);
+          }
+        });
+      }
+      map.set(sub.name.trim().toLowerCase(), new Set(descendants));
+    });
+    return map;
+  }, [subcategories]);
+
+  // 1. Filter questions strictly or cascaded by the routine's selected syllabus
+  const matchedRoutineQuestions = useMemo(() => {
+    const catList = (routine.selectedCategories || []).map(c => c.trim().toLowerCase()).filter(Boolean);
+    const subList = (routine.selectedSubcategories || []).map(s => s.trim().toLowerCase()).filter(Boolean);
+    const leafList = (routine.selectedLeafCategories || []).map(l => l.trim().toLowerCase()).filter(Boolean);
+
+    const hasCatFilter = catList.length > 0;
+    const hasSubFilter = subList.length > 0;
+    const hasLeafFilter = leafList.length > 0;
+
+    if (!hasCatFilter && !hasSubFilter && !hasLeafFilter) {
+      return questions;
+    }
+
+    const activeSubSet = new Set<string>();
+    if (hasSubFilter) {
+      subList.forEach(s => {
+        activeSubSet.add(s);
+        const descendants = subcategoryDescendantsMap.get(s);
+        if (descendants) {
+          descendants.forEach(d => activeSubSet.add(d));
+        }
+      });
+    }
+
+    const activeLeafSet = new Set<string>(leafList);
+
+    return questions.filter(q => {
+      const qCat = (q.category || '').trim().toLowerCase();
+      const qCats = (q.categories || []).map(c => c.trim().toLowerCase());
+      const qSub = (q.subcategory || '').trim().toLowerCase();
+      const qSubs = (q.subcategories || []).map(s => s.trim().toLowerCase());
+      const qCsv = (q.csvCategory || '').trim().toLowerCase();
+
+      // Root Category Match
+      if (hasCatFilter) {
+        const matchCat = catList.includes(qCat) || qCats.some(c => catList.includes(c));
+        if (!matchCat) return false;
+      }
+
+      // Subcategory Match
+      if (hasSubFilter) {
+        const matchSub = activeSubSet.has(qSub) || qSubs.some(s => activeSubSet.has(s));
+        if (!matchSub) return false;
+      }
+
+      // Leaf Topic Match
+      if (hasLeafFilter) {
+        const matchLeaf = activeLeafSet.has(qCsv) || activeLeafSet.has(qSub) || qSubs.some(s => activeLeafSet.has(s));
+        if (!matchLeaf) return false;
+      }
+
+      return true;
+    });
+  }, [questions, routine, subcategoryDescendantsMap]);
+
+  // 2. Apply search filter if active
+  const filteredQuestions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return matchedRoutineQuestions;
+    }
+    const qLower = searchQuery.trim().toLowerCase();
+    return matchedRoutineQuestions.filter(q => {
+      return (
+        (q.text || '').toLowerCase().includes(qLower) ||
+        (q.optionA || '').toLowerCase().includes(qLower) ||
+        (q.optionB || '').toLowerCase().includes(qLower) ||
+        (q.optionC || '').toLowerCase().includes(qLower) ||
+        (q.optionD || '').toLowerCase().includes(qLower) ||
+        (q.explanation || '').toLowerCase().includes(qLower) ||
+        (q.category || '').toLowerCase().includes(qLower) ||
+        (q.subcategory || '').toLowerCase().includes(qLower) ||
+        (q.csvCategory || '').toLowerCase().includes(qLower)
+      );
+    });
+  }, [matchedRoutineQuestions, searchQuery]);
+
+  // 3. Build Tree Structure: Category -> Subcategory -> Leaf Topic -> Questions
+  const hierarchicalTree: HierarchicalCatNode[] = useMemo(() => {
+    const rootMap = new Map<string, {
+      name: string;
+      subMap: Map<string, {
+        name: string;
+        leafMap: Map<string, { name: string; questions: Question[] }>;
+        directQuestions: Question[];
+        totalCount: number;
+      }>;
+      directQuestions: Question[];
+      totalCount: number;
+    }>();
+
+    filteredQuestions.forEach(q => {
+      const catName = (q.category || '').trim() || 'সাধারণ জ্ঞান ও অন্যান্য';
+      const subName = (q.subcategory || '').trim() || 'মূল বিষয়াবলি';
+      const topicName = (q.csvCategory || '').trim() || 'সাধারণ অধ্যায়/টপিক';
+
+      // Get or create Category Node
+      let catNode = rootMap.get(catName);
+      if (!catNode) {
+        catNode = {
+          name: catName,
+          subMap: new Map(),
+          directQuestions: [],
+          totalCount: 0
+        };
+        rootMap.set(catName, catNode);
+      }
+      catNode.totalCount += 1;
+
+      // Get or create Subcategory Node
+      let subNode = catNode.subMap.get(subName);
+      if (!subNode) {
+        subNode = {
+          name: subName,
+          leafMap: new Map(),
+          directQuestions: [],
+          totalCount: 0
+        };
+        catNode.subMap.set(subName, subNode);
+      }
+      subNode.totalCount += 1;
+
+      // Get or create Leaf Topic Node
+      let leafNode = subNode.leafMap.get(topicName);
+      if (!leafNode) {
+        leafNode = {
+          name: topicName,
+          questions: []
+        };
+        subNode.leafMap.set(topicName, leafNode);
+      }
+      leafNode.questions.push(q);
+    });
+
+    // Convert Maps to structured nested arrays
+    return Array.from(rootMap.values()).map(catItem => {
+      const subNodes: HierarchicalSubNode[] = Array.from(catItem.subMap.values()).map(subItem => {
+        const leafNodes: HierarchicalLeafNode[] = Array.from(subItem.leafMap.values()).map(leafItem => ({
+          name: leafItem.name,
+          questions: leafItem.questions
+        }));
+
+        return {
+          name: subItem.name,
+          leafNodes,
+          directQuestions: subItem.directQuestions,
+          totalCount: subItem.totalCount
+        };
+      });
+
+      return {
+        name: catItem.name,
+        subNodes,
+        directQuestions: catItem.directQuestions,
+        totalCount: catItem.totalCount
+      };
+    });
+  }, [filteredQuestions]);
+
+  const toggleNode = (key: string) => {
+    setExpandedNodes(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const isBookmarked = (qId: string) => {
+    return bookmarks.some(b => b.questionId === qId);
+  };
+
+  const getOptionLetter = (idx: number) => {
+    switch (idx) {
+      case 0: return 'ক';
+      case 1: return 'খ';
+      case 2: return 'গ';
+      case 3: return 'ঘ';
+      default: return '';
+    }
+  };
+
+  const getCorrectIndex = (correctKey: string): number => {
+    if (correctKey === 'Option A' || correctKey === 'optionA' || correctKey === 'ক') return 0;
+    if (correctKey === 'Option B' || correctKey === 'optionB' || correctKey === 'খ') return 1;
+    if (correctKey === 'Option C' || correctKey === 'optionC' || correctKey === 'গ') return 2;
+    if (correctKey === 'Option D' || correctKey === 'optionD' || correctKey === 'ঘ') return 3;
+    return -1;
+  };
+
+  // Render a paginated list of MCQs (maximum 20 MCQs per page)
+  const renderQuestionList = (
+    questionList: Question[], 
+    pageKey: string,
+    startIndexOffset: number = 0
+  ) => {
+    const totalQ = questionList.length;
+    const currentPage = topicPages[pageKey] || 1;
+    const totalPages = Math.ceil(totalQ / PAGE_SIZE) || 1;
+    
+    // Slice 20 questions for this page
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    const endIdx = Math.min(startIdx + PAGE_SIZE, totalQ);
+    const visibleQuestions = questionList.slice(startIdx, endIdx);
+
+    const handlePageChange = (newPage: number) => {
+      setTopicPages(prev => ({
+        ...prev,
+        [pageKey]: newPage
+      }));
+    };
+
+    return (
+      <div className="space-y-3">
+        {/* Pagination Top Bar (if more than 20 MCQs) */}
+        {totalQ > PAGE_SIZE && (
+          <div className="bg-slate-100 border border-slate-200/90 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-700">
+              <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md">
+                পৃষ্ঠা {toBengaliDigits(currentPage)} / {toBengaliDigits(totalPages)}
+              </span>
+              <span className="text-[11px] text-slate-600">
+                (দেখাচ্ছে {toBengaliDigits(startIdx + 1)} - {toBengaliDigits(endIdx)} / মোট {toBengaliDigits(totalQ)} টি MCQ)
+              </span>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition cursor-pointer text-[11px]"
+              >
+                ← পূর্ববর্তী
+              </button>
+
+              <div className="flex items-center gap-1 overflow-x-auto max-w-[200px] sm:max-w-none">
+                {Array.from({ length: totalPages }).map((_, pIdx) => {
+                  const pNum = pIdx + 1;
+                  const isCurrent = pNum === currentPage;
+                  // Show current, first, last, and immediate neighbors
+                  if (
+                    pNum === 1 || 
+                    pNum === totalPages || 
+                    (pNum >= currentPage - 1 && pNum <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={`page-${pNum}`}
+                        type="button"
+                        onClick={() => handlePageChange(pNum)}
+                        className={`w-7 h-7 rounded-lg text-xs font-black transition cursor-pointer ${
+                          isCurrent
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {toBengaliDigits(pNum)}
+                      </button>
+                    );
+                  }
+                  if (pNum === currentPage - 2 || pNum === currentPage + 2) {
+                    return <span key={`ellipsis-${pNum}`} className="text-slate-400 text-xs px-0.5">...</span>;
+                  }
+                  return null;
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition cursor-pointer text-[11px]"
+              >
+                পরবর্তী →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Questions List */}
+        <div className="space-y-3 divide-y divide-slate-100">
+          {visibleQuestions.map((q, localIdx) => {
+            const absoluteQIndex = startIdx + localIdx + startIndexOffset;
+            const isRevealed = showAllAnswers || !!revealedAnswers[q.id];
+            const bookmarked = isBookmarked(q.id);
+            const options = [q.optionA, q.optionB, q.optionC, q.optionD];
+            const correctIdx = getCorrectIndex(q.correct);
+            const userChoice = selectedUserOptions[q.id];
+
+            return (
+              <div 
+                key={q.id || `q-${absoluteQIndex}`}
+                className={`pt-3.5 first:pt-0 space-y-2.5 ${localIdx > 0 ? 'mt-2.5' : ''}`}
+              >
+                {/* Question Header & Action Row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    <span className="bg-indigo-50 border border-indigo-200 text-indigo-900 font-black text-xs px-2 py-0.5 rounded-lg shrink-0 mt-0.5">
+                      {toBengaliDigits(absoluteQIndex + 1)}
+                    </span>
+                    <p className="text-xs sm:text-[13.5px] font-extrabold text-slate-900 leading-relaxed">
+                      {q.text}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {onToggleBookmark && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleBookmark(q.id)}
+                        className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                          bookmarked 
+                            ? 'bg-amber-50 text-amber-600 border-amber-300 hover:bg-amber-100 shadow-2xs' 
+                            : 'bg-white text-slate-400 border-slate-200 hover:text-slate-700 hover:bg-slate-50'
+                        }`}
+                        title={bookmarked ? 'বুকমার্ক সরানো' : 'বুকমার্কে যোগ করুন'}
+                      >
+                        <BookmarkIcon className={`w-3.5 h-3.5 ${bookmarked ? 'fill-amber-500 text-amber-500' : ''}`} />
+                      </button>
+                    )}
+
+                    {!showAllAnswers && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRevealedAnswers(prev => ({
+                            ...prev,
+                            [q.id]: !prev[q.id]
+                          }));
+                        }}
+                        className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
+                      >
+                        {isRevealed ? 'উত্তর লুকান' : 'উত্তর দেখুন'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4 Options Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5 text-xs">
+                  {options.map((optText, optIdx) => {
+                    const isCorrectOption = optIdx === correctIdx;
+                    const isSelectedByUser = userChoice === optIdx;
+
+                    let optionStyle = 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200';
+                    
+                    if (isRevealed) {
+                      if (isCorrectOption) {
+                        optionStyle = 'bg-emerald-50 text-emerald-950 border-emerald-300 font-extrabold shadow-2xs ring-1 ring-emerald-300';
+                      } else if (isSelectedByUser) {
+                        optionStyle = 'bg-rose-50 text-rose-950 border-rose-300 line-through';
+                      }
+                    } else if (isSelectedByUser) {
+                      optionStyle = 'bg-indigo-50 text-indigo-950 border-indigo-400 font-bold';
+                    }
+
+                    return (
+                      <button
+                        key={`opt-${optIdx}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedUserOptions(prev => ({
+                            ...prev,
+                            [q.id]: optIdx
+                          }));
+                          if (!isRevealed) {
+                            setRevealedAnswers(prev => ({
+                              ...prev,
+                              [q.id]: true
+                            }));
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition select-none cursor-pointer ${optionStyle}`}
+                      >
+                        <span className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5 ${
+                          isRevealed && isCorrectOption
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {getOptionLetter(optIdx)}
+                        </span>
+                        <span className="flex-1 leading-relaxed font-semibold">{optText || '—'}</span>
+                        {isRevealed && isCorrectOption && (
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Explanation Box */}
+                {isRevealed && (
+                  <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 text-xs text-amber-950 space-y-1.5 animate-fade-in shadow-2xs">
+                    <div className="flex items-center justify-between font-extrabold text-[11px] text-amber-900 border-b border-amber-200/70 pb-1">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                        সঠিক উত্তর: ({getOptionLetter(correctIdx)}) {options[correctIdx]}
+                      </span>
+                      <span className="text-[9.5px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-bold">
+                        ব্যাখ্যা
+                      </span>
+                    </div>
+
+                    <p className="text-[11.5px] leading-relaxed whitespace-pre-line text-slate-800 font-medium pt-0.5">
+                      {q.explanation || 'এই প্রশ্নের জন্য আলাদা কোনো অতিরিক্ত ব্যাখ্যা যুক্ত নেই।'}
+                    </p>
+
+                    {/* Approved User Explanations */}
+                    {q.userExplanations && q.userExplanations.filter(e => e.approved).length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-amber-200/70 space-y-1.5">
+                        {q.userExplanations.filter(e => e.approved).map(ue => (
+                          <div key={ue.id} className="bg-emerald-50/90 border border-emerald-200 rounded-lg p-2 text-[10.5px]">
+                            <div className="flex justify-between font-bold text-emerald-900 mb-0.5">
+                              <span>🏆 অতিরিক্ত ব্যাখ্যা:</span>
+                              <span className="text-[9px] text-emerald-700">{ue.userName}</span>
+                            </div>
+                            <p className="text-slate-800">{ue.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Pagination Bottom Bar (if more than 20 MCQs) */}
+        {totalQ > PAGE_SIZE && (
+          <div className="bg-slate-100/90 border border-slate-200 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs pt-3 mt-2">
+            <span className="text-[11px] font-bold text-slate-600">
+              পৃষ্ঠা {toBengaliDigits(currentPage)} / {toBengaliDigits(totalPages)} (সর্বমোট {toBengaliDigits(totalQ)} টি MCQ)
+            </span>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition cursor-pointer text-[11px]"
+              >
+                ← পূর্ববর্তী
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition cursor-pointer text-[11px]"
+              >
+                পরবর্তী →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div 
+      id="routine-hierarchical-page"
+      className="w-full flex-grow flex flex-col gap-4 animate-fade-in pb-12"
+    >
+      {/* 1. Page Header & Navigation Banner */}
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 rounded-2xl sm:rounded-3xl text-white p-4 sm:p-6 shadow-md border border-indigo-700/50 space-y-3">
+        {/* Back navigation & Badges */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-700/60 pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-back-from-hierarchical-page"
+              type="button"
+              onClick={onClose}
+              className="bg-white/10 hover:bg-white/20 active:scale-95 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition border border-white/20 cursor-pointer shadow-xs"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>← রুটিন তালিকায় ফিরে যান</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-indigo-500/30 text-indigo-100 border border-indigo-400/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+              <FolderTree className="w-3.5 h-3.5 text-indigo-300" />
+              অধ্যায়ভিত্তিক MCQ পৃষ্ঠা
+            </span>
+            {routine.courseName && (
+              <span className="bg-purple-500/30 text-purple-100 border border-purple-400/30 text-[11px] font-bold px-3 py-1 rounded-full">
+                🎓 {routine.courseName}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Title and Syllabus info */}
+        <div className="space-y-1.5">
+          <h1 className="text-base sm:text-xl font-black text-white leading-snug">
+            {routine.title}
+          </h1>
+
+          {/* Syllabus Badges */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] text-indigo-200 font-bold">সিলেবাস ফিল্টার:</span>
+            {(routine.selectedCategories || []).map(c => (
+              <span key={c} className="bg-indigo-700/90 text-white border border-indigo-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
+                {c}
+              </span>
+            ))}
+            {(routine.selectedSubcategories || []).map(s => (
+              <span key={s} className="bg-purple-700/90 text-white border border-purple-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
+                {s}
+              </span>
+            ))}
+            {(routine.selectedLeafCategories || []).map(l => (
+              <span key={l} className="bg-emerald-700/90 text-white border border-emerald-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
+                🌿 {l}
+              </span>
+            ))}
+            {(!routine.selectedCategories?.length && !routine.selectedSubcategories?.length && !routine.selectedLeafCategories?.length) && (
+              <span className="bg-white/10 text-indigo-100 text-[10.5px] font-medium px-2.5 py-0.5 rounded-lg">
+                সম্পূর্ণ প্রশ্নব্যাংক (All Topics)
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Sticky Action Toolbar (Search, Answer Mode, Total count, Practice) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 sticky top-2 z-20">
+        {/* Search bar */}
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            id="input-hierarchical-search"
+            type="text"
+            value={searchQuery}
+            onChange={e => {
+              setSearchQuery(e.target.value);
+              setSearchPage(1);
+            }}
+            placeholder="এই সিলেবাসের ভেতর প্রশ্ন বা অপশন খুঁজুন..."
+            className="w-full pl-9.5 pr-8 py-2.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-black cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Total Badge */}
+          <span className="bg-indigo-50 border border-indigo-200 text-indigo-900 font-extrabold text-xs px-3.5 py-2 rounded-xl">
+            মোট MCQ: {toBengaliDigits(filteredQuestions.length)} টি
+          </span>
+
+          {/* Answer Toggle */}
+          <button
+            id="btn-toggle-all-answers"
+            type="button"
+            onClick={() => setShowAllAnswers(prev => !prev)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border cursor-pointer shadow-2xs ${
+              showAllAnswers 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100' 
+                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+            }`}
+          >
+            {showAllAnswers ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            {showAllAnswers ? 'উত্তর প্রদর্শিত' : 'কুইজ মোড (উত্তর গোপন)'}
+          </button>
+
+          {/* Demo Exam Button */}
+          {onStartPractice && (
+            <button
+              id="btn-start-demo-exam-from-page"
+              type="button"
+              onClick={() => onStartPractice(routine)}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Demo exam</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 3. Hierarchy Content Section */}
+      {hierarchicalTree.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 p-8 space-y-3">
+          <HelpCircle className="w-14 h-14 text-slate-300 mx-auto" />
+          <h3 className="text-sm font-black text-slate-700">কোনো প্রশ্ন পাওয়া যায়নি</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed font-medium">
+            {searchQuery 
+              ? `"${searchQuery}" অনুসন্ধানে কোনো প্রশ্ন মেলেনি। অন্য শব্দ লিখে চেষ্টা করুন।`
+              : 'এই সিলেবাসের সাথে সরাসরি লিঙ্কযুক্ত প্রশ্ন ডাটাবেজে পাওয়া যায়নি।'
+            }
+          </p>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="mt-2 bg-indigo-600 text-white font-bold text-xs px-4 py-2 rounded-xl hover:bg-indigo-700 transition cursor-pointer"
+            >
+              সার্চ রিসেট করুন
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3.5">
+          {hierarchicalTree.map((catNode, catIdx) => {
+            const catKey = `cat-${catNode.name}`;
+            const isCatExpanded = !!expandedNodes[catKey];
+
+            return (
+              <div 
+                key={`cat-${catIdx}-${catNode.name}`}
+                className="bg-white rounded-2xl border border-indigo-100 shadow-2xs overflow-hidden transition"
+              >
+                {/* 1. Category Header (Level 1) - Collapsed by default */}
+                <div 
+                  onClick={() => toggleNode(catKey)}
+                  className="p-4 sm:p-4.5 bg-gradient-to-r from-indigo-50/90 via-purple-50/40 to-white hover:bg-indigo-50 flex items-center justify-between gap-3 cursor-pointer border-b border-indigo-100/70 select-none transition"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                      {toBengaliDigits(catIdx + 1)}
+                    </span>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-black text-indigo-950 flex items-center gap-2 flex-wrap">
+                        <span>{catNode.name}</span>
+                        <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-indigo-200">
+                          {toBengaliDigits(catNode.totalCount)} টি MCQ
+                        </span>
+                      </h3>
+                      <span className="text-[10.5px] text-slate-500 font-semibold">
+                        অধ্যায় / বিষয়: {toBengaliDigits(catNode.subNodes.length)} টি
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-indigo-600 font-bold hidden sm:inline">
+                      {isCatExpanded ? 'সংকুচিত করুন' : 'অধ্যায় দেখতে ক্লিক করুন'}
+                    </span>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${
+                      isCatExpanded ? 'bg-indigo-600 text-white shadow-2xs' : 'bg-indigo-100 text-indigo-700'
+                    }`}>
+                      {isCatExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subcategories (Level 2) - Collapsed by default */}
+                {isCatExpanded && (
+                  <div className="p-3 sm:p-5 space-y-3.5 bg-slate-50/50">
+                    {catNode.subNodes.map((subNode, subIdx) => {
+                      const subKey = `sub-${catNode.name}-${subNode.name}`;
+                      const isSubExpanded = !!expandedNodes[subKey];
+
+                      return (
+                        <div 
+                          key={`sub-${subIdx}-${subNode.name}`}
+                          className="bg-white rounded-xl border border-purple-100 shadow-2xs overflow-hidden"
+                        >
+                          {/* 2. Subcategory Header (Level 2) */}
+                          <div 
+                            onClick={() => toggleNode(subKey)}
+                            className="p-3.5 bg-purple-50/60 hover:bg-purple-100/60 flex items-center justify-between gap-3 cursor-pointer border-b border-purple-100 select-none transition"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="w-5.5 h-5.5 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-[10.5px] shrink-0 shadow-2xs">
+                                {toBengaliDigits(subIdx + 1)}
+                              </span>
+                              <h4 className="text-xs sm:text-[13px] font-extrabold text-purple-950 flex items-center gap-2 flex-wrap">
+                                <span>{subNode.name}</span>
+                                <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                                  {toBengaliDigits(subNode.totalCount)} টি প্রশ্ন
+                                </span>
+                              </h4>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className={`w-6 h-6 rounded-md flex items-center justify-center transition ${
+                                isSubExpanded ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
+                              }`}>
+                                {isSubExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Leaf Topics (Level 3) - Collapsed by default */}
+                          {isSubExpanded && (
+                            <div className="p-3 sm:p-4 space-y-3 bg-slate-50/30">
+                              {subNode.leafNodes.map((leafNode, leafIdx) => {
+                                const leafKey = `leaf-${catNode.name}-${subNode.name}-${leafNode.name}`;
+                                const isLeafExpanded = !!expandedNodes[leafKey];
+
+                                return (
+                                  <div 
+                                    key={`leaf-${leafIdx}-${leafNode.name}`}
+                                    className="bg-white rounded-xl border border-emerald-100 shadow-2xs overflow-hidden"
+                                  >
+                                    {/* 3. Leaf Topic Header (Level 3) */}
+                                    <div 
+                                      onClick={() => toggleNode(leafKey)}
+                                      className="px-3.5 py-2.5 bg-emerald-50/50 hover:bg-emerald-100/50 flex items-center justify-between gap-2.5 cursor-pointer border-b border-emerald-100 select-none transition"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-emerald-700 font-black text-xs">🌿</span>
+                                        <h5 className="text-xs font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
+                                          <span>পরিচ্ছেদ / টপিক: {leafNode.name}</span>
+                                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md border border-emerald-200">
+                                            {toBengaliDigits(leafNode.questions.length)} টি MCQ
+                                          </span>
+                                        </h5>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[10px] text-emerald-700 font-bold hidden sm:inline">
+                                          {isLeafExpanded ? 'প্রশ্ন লুকান' : 'প্রশ্ন দেখুন (সর্বোচ্চ ২০টি)'}
+                                        </span>
+                                        <div className={`w-5 h-5 rounded flex items-center justify-center transition ${
+                                          isLeafExpanded ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
+                                        }`}>
+                                          {isLeafExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* 4. Paginated List of MCQs (maximum 20 MCQs per page) */}
+                                    {isLeafExpanded && (
+                                      <div className="p-3 sm:p-4.5 bg-white">
+                                        {renderQuestionList(leafNode.questions, leafKey)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 4. Page Footer Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 mt-4">
+        <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
+          <Layers className="w-4 h-4 text-indigo-600" />
+          <span>প্রতিটি অধ্যায়ে সর্বোচ্চ ২০টি করে MCQ পেজিনেশন আকারে প্রদর্শিত হচ্ছে।</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onStartPractice && (
+            <button
+              id="btn-bottom-start-demo-exam"
+              type="button"
+              onClick={() => onStartPractice(routine)}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              Demo exam শুরু
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer"
+          >
+            ← রুটিন তালিকায় ফিরুন
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

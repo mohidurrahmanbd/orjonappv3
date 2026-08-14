@@ -99,6 +99,18 @@ export interface Course {
   createdAt: string;
 }
 
+export interface ScheduledExamConfig {
+  enabled: boolean;
+  startTime: string; // ISO or YYYY-MM-DDTHH:mm
+  expiryTime?: string; // ISO or YYYY-MM-DDTHH:mm
+  timeLimit: number; // in minutes
+  qLimit: number; // number of MCQs
+  totalMarks: number;
+  passMarks: number;
+  questionSelection: 'auto' | 'manual';
+  questionIds?: string[];
+}
+
 export interface Routine {
   id: string;
   title: string;
@@ -106,6 +118,13 @@ export interface Routine {
   createdAt: string;
   courseId?: string;
   courseName?: string;
+  // Syllabus Topics (Cascading)
+  selectedCategories?: string[];
+  selectedSubcategories?: string[];
+  selectedLeafCategories?: string[];
+  // Scheduled Exam configuration
+  examConfig?: ScheduledExamConfig;
+  examDate?: string;
 }
 
 export interface LiveExam {
@@ -118,6 +137,16 @@ export interface LiveExam {
   expiryTime: string; // ISO datetime
   createdAt: string;
   questionIds?: string[];
+  // Course/Routine linked fields
+  routineId?: string;
+  courseId?: string;
+  courseName?: string;
+  selectedCategories?: string[];
+  selectedSubcategories?: string[];
+  selectedLeafCategories?: string[];
+  totalMarks?: number;
+  passMarks?: number;
+  questionSelection?: 'auto' | 'manual';
 }
 
 export interface Bookmark {

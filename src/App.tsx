@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, generateAutoUserId } from './types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, generateAutoUserId } from './types';
 import { 
   INITIAL_QUESTIONS, 
   INITIAL_NOTICES, 
@@ -2014,17 +2014,58 @@ export default function App() {
     addAuditLog('কোর্স মুছে ফেলা (Delete Course)', `কোর্স মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'other');
   };
 
-  const handleSaveRoutine = (title: string, details: string, courseId?: string, courseName?: string) => {
+  const handleSaveRoutine = (
+    title: string, 
+    details: string, 
+    courseId?: string, 
+    courseName?: string,
+    selectedCategories?: string[],
+    selectedSubcategories?: string[],
+    selectedLeafCategories?: string[],
+    examConfig?: ScheduledExamConfig
+  ) => {
+    const routineId = `routine_${Date.now()}`;
     const newRoutine: Routine = {
-      id: `routine_${Date.now()}`,
+      id: routineId,
       title,
       details,
       createdAt: new Date().toISOString(),
       courseId,
-      courseName
+      courseName,
+      selectedCategories,
+      selectedSubcategories,
+      selectedLeafCategories,
+      examConfig
     };
+
     updateRoutinesDB([newRoutine, ...routines]);
-    addAuditLog('রুটিন প্রকাশ (Routine)', `নতুন রুটিন প্রকাশ করা হয়েছে: "${title}"${courseName ? ` (কোর্স: ${courseName})` : ''}`, 'routine');
+
+    // Automatically create/sync LiveExam if exam schedule is enabled
+    if (examConfig && examConfig.enabled && examConfig.startTime) {
+      const newLiveExam: LiveExam = {
+        id: `exam_rt_${Date.now()}`,
+        routineId: routineId,
+        courseId: courseId,
+        courseName: courseName,
+        title: title,
+        qLimit: examConfig.qLimit || 20,
+        timeLimit: examConfig.timeLimit || 20,
+        category: selectedCategories && selectedCategories.length > 0 ? selectedCategories[0] : 'ALL',
+        startTime: examConfig.startTime,
+        expiryTime: examConfig.expiryTime || new Date(new Date(examConfig.startTime).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+        questionIds: examConfig.questionIds || [],
+        selectedCategories: selectedCategories || [],
+        selectedSubcategories: selectedSubcategories || [],
+        selectedLeafCategories: selectedLeafCategories || [],
+        totalMarks: examConfig.totalMarks || examConfig.qLimit || 20,
+        passMarks: examConfig.passMarks || Math.ceil((examConfig.qLimit || 20) * 0.4),
+        questionSelection: examConfig.questionSelection || 'auto'
+      };
+      updateLiveExamsDB([newLiveExam, ...liveExams]);
+    }
+
+    addAuditLog('রুটিন প্রকাশ (Routine)', `নতুন সিলেবাস রুটিন প্রকাশ করা হয়েছে: "${title}"${courseName ? ` (কোর্স: ${courseName})` : ''}`, 'routine');
   };
 
   const handleDeleteRoutine = (id: string) => {

@@ -18,14 +18,15 @@ interface UserGrowthChartProps {
   users: User[];
 }
 
-export default function UserGrowthChart({ users }: UserGrowthChartProps) {
+export default function UserGrowthChart({ users = [] }: UserGrowthChartProps) {
   const [timeframe, setTimeframe] = useState<GrowthTimeframe>('7d');
 
   // Compute aggregated chart data based on selected timeframe
   const { chartData, totalInPeriod, peakCount, avgPerPeriod } = useMemo(() => {
+    const safeUsers = users || [];
     const now = new Date();
     let maxUserTime = now.getTime();
-    users.forEach(u => {
+    safeUsers.forEach(u => {
       if (u.createdAt) {
         const t = new Date(u.createdAt).getTime();
         if (!isNaN(t) && t > maxUserTime) maxUserTime = t;
@@ -34,7 +35,7 @@ export default function UserGrowthChart({ users }: UserGrowthChartProps) {
     const refDate = new Date(maxUserTime);
 
     // Collect and sanitize creation timestamps
-    const userTimestamps = users.map(u => {
+    const userTimestamps = safeUsers.map(u => {
       if (!u.createdAt) return refDate.getTime();
       const t = new Date(u.createdAt).getTime();
       return isNaN(t) ? refDate.getTime() : t;

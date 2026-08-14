@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, formatBengaliDate, formatBengaliDateTime } from '../types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, formatBengaliDate, formatBengaliDateTime } from '../types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
@@ -18,6 +18,8 @@ import {
 } from '../lib/migration';
 
 import UserGrowthChart from './UserGrowthChart';
+import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
+import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
 
 const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || ReactWindow;
 
@@ -48,7 +50,16 @@ interface AdminPanelProps {
   onSaveNotice: (text: string) => void;
   onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt'>) => void;
   onDeleteLiveExam: (id: string) => void;
-  onSaveRoutine: (title: string, details: string, courseId?: string, courseName?: string) => void;
+  onSaveRoutine: (
+    title: string, 
+    details: string, 
+    courseId?: string, 
+    courseName?: string, 
+    selectedCategories?: string[], 
+    selectedSubcategories?: string[], 
+    selectedLeafCategories?: string[], 
+    examConfig?: ScheduledExamConfig
+  ) => void;
   onDeleteRoutine: (id: string) => void;
   onSaveCourse?: (course: Omit<Course, 'id' | 'createdAt'>) => void;
   onDeleteCourse?: (id: string) => void;
@@ -130,13 +141,13 @@ const isYearJobSolutionVariation = (name: string): boolean => {
 };
 
 export default function AdminPanel({
-  questions,
-  liveExams,
-  notices,
-  routines,
+  questions = [],
+  liveExams = [],
+  notices = [],
+  routines = [],
   courses = [],
-  users,
-  attempts,
+  users = [],
+  attempts = [],
   categories = [],
   subcategories = [],
   onAddCategory,
@@ -599,6 +610,9 @@ export default function AdminPanel({
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['সাধারণ জ্ঞান']);
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
 
+  // Routine Hierarchical MCQ viewer modal state
+  const [viewingHierarchyRoutine, setViewingHierarchyRoutine] = useState<Routine | null>(null);
+
   // Category Hierarchy editor state
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeNewName, setEditingNodeNewName] = useState('');
@@ -685,6 +699,7 @@ export default function AdminPanel({
   // Manage Questions Tab State - Cascading Filters
   const [catFilter, setCatFilter] = useState('ALL');
   const [subcatFilterChain, setSubcatFilterChain] = useState<string[]>([]);
+  const [leafTopicFilter, setLeafTopicFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
 
@@ -843,9 +858,24 @@ export default function AdminPanel({
   const [manualFilterSelectionStatus, setManualFilterSelectionStatus] = useState<'ALL' | 'SELECTED' | 'UNSELECTED'>('ALL');
   const [manualFilterRecommendationOnly, setManualFilterRecommendationOnly] = useState<boolean>(false);
 
-  // Routine settings states
+  // Routine settings states & Cascading Topic Filters
   const [routineTitle, setRoutineTitle] = useState('');
   const [routineDetails, setRoutineDetails] = useState('');
+  const [routineSelectedCategories, setRoutineSelectedCategories] = useState<string[]>([]);
+  const [routineSelectedSubcategories, setRoutineSelectedSubcategories] = useState<string[]>([]);
+  const [routineSelectedLeafCategories, setRoutineSelectedLeafCategories] = useState<string[]>([]);
+
+  // Preset Exam Configuration States
+  const [routineEnableExam, setRoutineEnableExam] = useState(false);
+  const [routineExamStartTime, setRoutineExamStartTime] = useState('');
+  const [routineExamExpiryTime, setRoutineExamExpiryTime] = useState('');
+  const [routineExamTimeLimit, setRoutineExamTimeLimit] = useState(20);
+  const [routineExamQLimit, setRoutineExamQLimit] = useState(20);
+  const [routineExamTotalMarks, setRoutineExamTotalMarks] = useState(20);
+  const [routineExamPassMarks, setRoutineExamPassMarks] = useState(8);
+  const [routineExamQuestionSelection, setRoutineExamQuestionSelection] = useState<'auto' | 'manual'>('auto');
+  const [routineExamManualQuestionIds, setRoutineExamManualQuestionIds] = useState<string[]>([]);
+  const [routineManualQuestionSearch, setRoutineManualQuestionSearch] = useState('');
 
   // Selected exam for results viewing
   const [selectedExamIdForResults, setSelectedExamIdForResults] = useState('');
@@ -862,8 +892,8 @@ export default function AdminPanel({
     str.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
   // Distinct lists from existing database or dynamic categories
-  const distinctCategories = useMemo(() => Array.from(new Set(categories.length > 0 ? categories.map(c => c.name) : questions.map(q => q.category))), [categories, questions]);
-  const distinctSubcategories = useMemo(() => Array.from(new Set(subcategories.length > 0 ? subcategories.map(s => s.name) : questions.map(q => q.subcategory).filter(Boolean))), [subcategories, questions]);
+  const distinctCategories = useMemo(() => Array.from(new Set((categories || []).length > 0 ? (categories || []).map(c => c?.name || '') : (questions || []).map(q => q?.category || ''))).filter(Boolean), [categories, questions]);
+  const distinctSubcategories = useMemo(() => Array.from(new Set((subcategories || []).length > 0 ? (subcategories || []).map(s => s?.name || '') : (questions || []).map(q => q?.subcategory || '').filter(Boolean))).filter(Boolean), [subcategories, questions]);
 
   // All dynamic system categories (root zones, standard subjects, dynamic categories, subcategories, and existing questions)
   const allSystemCategories = useMemo(() => {
@@ -871,9 +901,9 @@ export default function AdminPanel({
     const catSet = new Set<string>([
       ...rootCategoryNames,
       ...STANDARD_SUBJECT_CATEGORIES,
-      ...categories.map(c => c.name.trim()),
-      ...subcategories.map(s => s.name.trim()),
-      ...questions.map(q => q.category ? q.category.trim() : '').filter(Boolean)
+      ...(categories || []).map(c => (c?.name || '').trim()),
+      ...(subcategories || []).map(s => (s?.name || '').trim()),
+      ...(questions || []).map(q => q?.category ? q.category.trim() : '').filter(Boolean)
     ]);
     return Array.from(catSet).filter(Boolean);
   }, [categories, subcategories, questions]);
@@ -920,11 +950,11 @@ export default function AdminPanel({
       issueDescription: string;
     }[] = [];
 
-    const normCatNames = new Set(allSystemCategories.map(c => normalizeName(c)));
+    const normCatNames = new Set((allSystemCategories || []).map(c => normalizeName(c)));
     const normSubcatNames = new Set([
-      ...subcategories.map(s => normalizeName(s.name)),
-      ...categories.map(c => normalizeName(c.name)),
-      ...questions.map(q => normalizeName(q.subcategory)).filter(Boolean)
+      ...(subcategories || []).map(s => normalizeName(s?.name || '')),
+      ...(categories || []).map(c => normalizeName(c?.name || '')),
+      ...(questions || []).map(q => normalizeName(q?.subcategory || '')).filter(Boolean)
     ]);
 
     pendingQuestions.forEach((q, idx) => {
@@ -984,6 +1014,328 @@ export default function AdminPanel({
     }
     return path;
   };
+
+  // Helper to find all descendants of a subcategory recursively (for deep cascading filter matching)
+  const getSubcategoryDescendants = (subName: string): string[] => {
+    const descendants: string[] = [];
+    const queue = [subName.trim().toLowerCase()];
+    const visited = new Set<string>(queue);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const children = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === current);
+      children.forEach(child => {
+        const childLower = child.name.trim().toLowerCase();
+        if (!visited.has(childLower)) {
+          visited.add(childLower);
+          descendants.push(child.name.trim());
+          queue.push(childLower);
+        }
+      });
+    }
+    return descendants;
+  };
+
+  // Memoized subcategory descendants map for ultra-fast filtering
+  const subcategoryDescendantsMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    subcategories.forEach(sub => {
+      const descendants = getSubcategoryDescendants(sub.name).map(d => d.toLowerCase());
+      map.set(sub.name.trim().toLowerCase(), new Set(descendants));
+    });
+    return map;
+  }, [subcategories]);
+
+  // Memoized question count map for all direct nodes in O(N) time
+  const nodeQuestionCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    questions.forEach(q => {
+      const targets = new Set<string>();
+      if (q.category) targets.add(q.category.trim().toLowerCase());
+      if (q.subcategory) targets.add(q.subcategory.trim().toLowerCase());
+      if (q.csvCategory) targets.add(q.csvCategory.trim().toLowerCase());
+      if (q.categories) q.categories.forEach(c => c && targets.add(c.trim().toLowerCase()));
+      if (q.subcategories) q.subcategories.forEach(s => s && targets.add(s.trim().toLowerCase()));
+
+      targets.forEach(t => {
+        map.set(t, (map.get(t) || 0) + 1);
+      });
+    });
+    return map;
+  }, [questions]);
+
+  // Root Category & Question Multi-Category Link Resolution for Manage and Routine Tabs
+  const { questionRootCategoriesMap = new Map<string, Set<string>>(), rootCategoryMCQCounts = {}, allRootCategories = [] } = useMemo(() => {
+    const baseRoots = ['বিষয়ভিত্তিক প্রস্তুতি', 'জব সলিউশন পরীক্ষা', 'সাল ভিত্তিক জব সলিউশন'];
+    const customRoots = (categories || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const rootSet = new Set<string>([...baseRoots, ...customRoots, ...(distinctCategories || [])]);
+    const rootList = Array.from(rootSet).filter(Boolean);
+
+    const qToRoots = new Map<string, Set<string>>();
+    const rootCounts: Record<string, number> = {};
+
+    rootList.forEach(r => {
+      rootCounts[r] = 0;
+    });
+
+    questions.forEach(q => {
+      const qRoots = new Set<string>();
+
+      const resolveRootForName = (nameStr: string) => {
+        if (!nameStr) return;
+        const clean = nameStr.trim();
+        if (!clean) return;
+
+        if (isJobSolutionVariation(clean)) {
+          qRoots.add('জব সলিউশন পরীক্ষা');
+          return;
+        }
+        if (isYearJobSolutionVariation(clean)) {
+          qRoots.add('সাল ভিত্তিক জব সলিউশন');
+          return;
+        }
+
+        const matchedRoot = rootList.find(r => r.toLowerCase() === clean.toLowerCase());
+        if (matchedRoot) {
+          qRoots.add(matchedRoot);
+          return;
+        }
+
+        let sub = subcategories.find(s => s?.name && s.name.trim().toLowerCase() === clean.toLowerCase());
+        let depth = 10;
+        while (sub && sub.parentCategory && depth > 0) {
+          const parent = sub.parentCategory.trim();
+          if (isJobSolutionVariation(parent)) {
+            qRoots.add('জব সলিউশন পরীক্ষা');
+            return;
+          }
+          if (isYearJobSolutionVariation(parent)) {
+            qRoots.add('সাল ভিত্তিক জব সলিউশন');
+            return;
+          }
+
+          const matchedParentRoot = rootList.find(r => r.toLowerCase() === parent.toLowerCase());
+          if (matchedParentRoot) {
+            qRoots.add(matchedParentRoot);
+            return;
+          }
+
+          const parentSub = subcategories.find(s => s?.name && s.name.trim().toLowerCase() === parent.toLowerCase());
+          if (parentSub) {
+            sub = parentSub;
+          } else {
+            qRoots.add(parent);
+            return;
+          }
+          depth--;
+        }
+
+        const catObj = categories.find(c => c?.name && c.name.trim().toLowerCase() === clean.toLowerCase());
+        if (catObj) {
+          qRoots.add(catObj.name);
+        }
+      };
+
+      if (q.category) resolveRootForName(q.category);
+      if (q.csvCategory) resolveRootForName(q.csvCategory);
+      if (q.categories && Array.isArray(q.categories)) {
+        q.categories.forEach(c => c && resolveRootForName(c));
+      }
+      if (q.subcategory) resolveRootForName(q.subcategory);
+      if (q.subcategories && Array.isArray(q.subcategories)) {
+        q.subcategories.forEach(s => s && resolveRootForName(s));
+      }
+
+      if (qRoots.size === 0 && q.category) {
+        qRoots.add(q.category);
+      }
+
+      qToRoots.set(q.id, qRoots);
+
+      qRoots.forEach(rName => {
+        rootCounts[rName] = (rootCounts[rName] || 0) + 1;
+      });
+    });
+
+    return {
+      questionRootCategoriesMap: qToRoots,
+      rootCategoryMCQCounts: rootCounts,
+      allRootCategories: rootList
+    };
+  }, [questions, subcategories, categories, distinctCategories]);
+
+  // Memoized subcategory total (recursive) question counts
+  const subcategoryDescendantsCountMap = useMemo(() => {
+    const totalMap = new Map<string, number>();
+    subcategories.forEach(sub => {
+      const subLower = sub.name.trim().toLowerCase();
+      const descendants = subcategoryDescendantsMap.get(subLower);
+      let count = nodeQuestionCountMap.get(subLower) || 0;
+      if (descendants) {
+        descendants.forEach(d => {
+          count += nodeQuestionCountMap.get(d) || 0;
+        });
+      }
+      totalMap.set(subLower, count);
+    });
+    return totalMap;
+  }, [subcategories, subcategoryDescendantsMap, nodeQuestionCountMap]);
+
+  // Computed Subcategories based on selected Root Categories for Routine Management
+  const routineAvailableSubcategories = useMemo(() => {
+    if (routineSelectedCategories.length === 0) {
+      return subcategories;
+    }
+
+    const selectedNorm = routineSelectedCategories.map(c => normalizeName(c));
+    const hasJob = routineSelectedCategories.some(c => isJobSolutionVariation(c));
+    const hasYear = routineSelectedCategories.some(c => isYearJobSolutionVariation(c));
+    const hasSubject = routineSelectedCategories.some(c => c === 'বিষয়ভিত্তিক প্রস্তুতি' || normalizeName(c) === 'বিষয়ভিত্তিক প্রস্তুতি');
+
+    return subcategories.filter(s => {
+      const parentNorm = normalizeName(s.parentCategory || '');
+      if (hasJob && isJobSolutionVariation(s.parentCategory || '')) return true;
+      if (hasYear && isYearJobSolutionVariation(s.parentCategory || '')) return true;
+      if (hasSubject && (!s.parentCategory || s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')) return true;
+      if (selectedNorm.includes(parentNorm)) return true;
+
+      // Check if this subcategory connects up to any selected root category
+      let currentSub: SubcategoryItem | undefined = s;
+      let depth = 10;
+      while (currentSub && currentSub.parentCategory && depth > 0) {
+        const pNorm = normalizeName(currentSub.parentCategory);
+        if (selectedNorm.includes(pNorm)) return true;
+        if (hasJob && isJobSolutionVariation(currentSub.parentCategory)) return true;
+        if (hasYear && isYearJobSolutionVariation(currentSub.parentCategory)) return true;
+        if (hasSubject && (!currentSub.parentCategory || currentSub.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')) return true;
+        currentSub = subcategories.find(item => normalizeName(item.name) === pNorm);
+        depth--;
+      }
+
+      return false;
+    });
+  }, [subcategories, routineSelectedCategories]);
+
+  // Computed Leaf Categories (leaf subcategories and csvCategory topics) based on selected Categories & Subcategories for Routine Management
+  const routineAvailableLeafCategories = useMemo(() => {
+    const leafMap = new Map<string, number>();
+
+    if (routineSelectedSubcategories.length > 0) {
+      const activeSubNames = routineSelectedSubcategories.map(s => s.trim().toLowerCase());
+      const activeSubSet = new Set(activeSubNames);
+
+      activeSubNames.forEach(subName => {
+        const descendants = subcategoryDescendantsMap.get(subName);
+        if (descendants) {
+          descendants.forEach(d => activeSubSet.add(d));
+        }
+      });
+
+      // 1. Leaf child subcategories (subcategories under selected that have no further subcategories)
+      subcategories.forEach(s => {
+        const sLower = s.name.trim().toLowerCase();
+        const parentLower = (s.parentCategory || '').trim().toLowerCase();
+        if (activeSubSet.has(parentLower) || activeSubSet.has(sLower)) {
+          const isLeaf = !subcategories.some(child => (child.parentCategory || '').trim().toLowerCase() === sLower);
+          if (isLeaf) {
+            const count = subcategoryDescendantsCountMap.get(sLower) || nodeQuestionCountMap.get(sLower) || 0;
+            leafMap.set(s.name.trim(), count);
+          }
+        }
+      });
+
+      // 2. csvCategory values from questions matching active subcategories
+      questions.forEach(q => {
+        const qSub = (q.subcategory || '').trim().toLowerCase();
+        const qCsv = (q.csvCategory || '').trim();
+        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
+
+        const matchesSub = activeSubSet.has(qSub) || qSubArray.some(s => activeSubSet.has(s));
+        if (matchesSub && qCsv) {
+          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
+        }
+      });
+    } else if (routineSelectedCategories.length > 0) {
+      const catSet = new Set(routineSelectedCategories);
+      questions.forEach(q => {
+        const qRoots = questionRootCategoriesMap.get(q.id);
+        const matchesCat = (qRoots && routineSelectedCategories.some(c => qRoots.has(c))) || catSet.has(q.category || '');
+        const qCsv = (q.csvCategory || '').trim();
+        if (matchesCat && qCsv) {
+          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
+        }
+      });
+    } else {
+      questions.forEach(q => {
+        const qCsv = (q.csvCategory || '').trim();
+        if (qCsv) {
+          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
+        }
+      });
+    }
+
+    return Array.from(leafMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [questions, subcategories, routineSelectedCategories, routineSelectedSubcategories, subcategoryDescendantsMap, subcategoryDescendantsCountMap, nodeQuestionCountMap, questionRootCategoriesMap]);
+
+  // Questions matching selected cascading syllabus topics for Routine Management
+  const routineMatchingQuestions = useMemo(() => {
+    const catSelected = routineSelectedCategories.length > 0;
+    const subSelected = routineSelectedSubcategories.length > 0;
+    const leafSelected = routineSelectedLeafCategories.length > 0;
+
+    if (!catSelected && !subSelected && !leafSelected) {
+      return questions;
+    }
+
+    const activeSubSet = new Set<string>();
+    if (subSelected) {
+      routineSelectedSubcategories.forEach(sub => {
+        const subLower = sub.trim().toLowerCase();
+        activeSubSet.add(subLower);
+        const descendants = subcategoryDescendantsMap.get(subLower);
+        if (descendants) {
+          descendants.forEach(d => activeSubSet.add(d));
+        }
+      });
+    }
+
+    const activeLeafSet = new Set(routineSelectedLeafCategories.map(l => l.trim().toLowerCase()));
+
+    return questions.filter(q => {
+      // 1. Root Category Match
+      if (catSelected) {
+        const qRoots = questionRootCategoriesMap.get(q.id);
+        const matchesRoot = qRoots && routineSelectedCategories.some(c => qRoots.has(c));
+        const directCatMatch = routineSelectedCategories.includes(q.category || '') || 
+          (q.categories && q.categories.some(c => routineSelectedCategories.includes(c)));
+        if (!matchesRoot && !directCatMatch) return false;
+      }
+
+      // 2. Subcategory Match
+      if (subSelected) {
+        const qSubLower = (q.subcategory || '').trim().toLowerCase();
+        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
+        const matchesSub = activeSubSet.has(qSubLower) || qSubArray.some(s => activeSubSet.has(s));
+        if (!matchesSub) return false;
+      }
+
+      // 3. Leaf Category Match
+      if (leafSelected) {
+        const qCsvLower = (q.csvCategory || '').trim().toLowerCase();
+        const qSubLower = (q.subcategory || '').trim().toLowerCase();
+        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
+
+        const matchesLeaf = activeLeafSet.has(qCsvLower) || 
+          activeLeafSet.has(qSubLower) || 
+          qSubArray.some(s => activeLeafSet.has(s));
+        if (!matchesLeaf) return false;
+      }
+
+      return true;
+    });
+  }, [questions, routineSelectedCategories, routineSelectedSubcategories, routineSelectedLeafCategories, questionRootCategoriesMap, subcategoryDescendantsMap]);
 
   // Populate form for editing
   const handleStartEdit = (q: Question) => {
@@ -2140,54 +2492,58 @@ export default function AdminPanel({
     prepareMappingReview();
   };
 
-  // Helper to find all descendants of a subcategory recursively (for deep cascading filter matching)
-  const getSubcategoryDescendants = (subName: string): string[] => {
-    const descendants: string[] = [];
-    const queue = [subName.trim().toLowerCase()];
-    const visited = new Set<string>(queue);
+  // Dynamically compute available Leaf Categories / Topics for Manage tab based on active filters
+  const manageAvailableLeafTopics = useMemo(() => {
+    const activeSubcatFilters = subcatFilterChain.filter(s => s && s !== 'ALL');
+    const leafMap = new Map<string, number>();
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const children = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === current);
-      children.forEach(child => {
-        const childLower = child.name.trim().toLowerCase();
-        if (!visited.has(childLower)) {
-          visited.add(childLower);
-          descendants.push(child.name.trim());
-          queue.push(childLower);
+    if (activeSubcatFilters.length > 0) {
+      const deepestSub = activeSubcatFilters[activeSubcatFilters.length - 1];
+      const deepestLower = deepestSub.trim().toLowerCase();
+      const descendants = subcategoryDescendantsMap.get(deepestLower) || new Set<string>();
+      const activeSet = new Set<string>([deepestLower, ...descendants]);
+
+      // 1. Child subcategory leaf nodes
+      subcategories.forEach(s => {
+        const sLower = s.name.trim().toLowerCase();
+        const pLower = (s.parentCategory || '').trim().toLowerCase();
+        if (activeSet.has(pLower)) {
+          const isLeaf = !subcategories.some(child => (child.parentCategory || '').trim().toLowerCase() === sLower);
+          if (isLeaf) {
+            const count = subcategoryDescendantsCountMap.get(sLower) || nodeQuestionCountMap.get(sLower) || 0;
+            leafMap.set(s.name.trim(), count);
+          }
+        }
+      });
+
+      // 2. csvCategory values on questions matching this subcategory chain
+      questions.forEach(q => {
+        const qSub = (q.subcategory || '').trim().toLowerCase();
+        const qCsv = (q.csvCategory || '').trim();
+        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
+
+        const matches = activeSet.has(qSub) || qSubArray.some(s => activeSet.has(s));
+        if (matches && qCsv) {
+          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
+        }
+      });
+    } else if (catFilter !== 'ALL') {
+      // Leaf topics under this Root Category
+      questions.forEach(q => {
+        const rootSet = questionRootCategoriesMap.get(q.id);
+        const matchesRoot = rootSet && rootSet.has(catFilter);
+        const matchesCat = q.category === catFilter || (q.categories && q.categories.includes(catFilter));
+        const qCsv = (q.csvCategory || '').trim();
+        if ((matchesRoot || matchesCat) && qCsv) {
+          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
         }
       });
     }
-    return descendants;
-  };
 
-  // Memoized subcategory descendants map for ultra-fast filtering
-  const subcategoryDescendantsMap = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    subcategories.forEach(sub => {
-      const descendants = getSubcategoryDescendants(sub.name).map(d => d.toLowerCase());
-      map.set(sub.name.trim().toLowerCase(), new Set(descendants));
-    });
-    return map;
-  }, [subcategories]);
-
-  // Memoized question count map for all nodes in O(N) time
-  const nodeQuestionCountMap = useMemo(() => {
-    const map = new Map<string, number>();
-    questions.forEach(q => {
-      const targets = new Set<string>();
-      if (q.category) targets.add(q.category.trim().toLowerCase());
-      if (q.subcategory) targets.add(q.subcategory.trim().toLowerCase());
-      if (q.csvCategory) targets.add(q.csvCategory.trim().toLowerCase());
-      if (q.categories) q.categories.forEach(c => c && targets.add(c.trim().toLowerCase()));
-      if (q.subcategories) q.subcategories.forEach(s => s && targets.add(s.trim().toLowerCase()));
-
-      targets.forEach(t => {
-        map.set(t, (map.get(t) || 0) + 1);
-      });
-    });
-    return map;
-  }, [questions]);
+    return Array.from(leafMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [questions, subcategories, catFilter, subcatFilterChain, subcategoryDescendantsMap, subcategoryDescendantsCountMap, nodeQuestionCountMap, questionRootCategoriesMap]);
 
   // Manage Question Filter Logics (Advanced Cascading Filters - Memoized)
   const filteredQuestionsForManage = useMemo(() => {
@@ -2202,12 +2558,16 @@ export default function AdminPanel({
     }
 
     const searchLower = searchQuery.toLowerCase().trim();
+    const leafLower = leafTopicFilter !== 'ALL' ? leafTopicFilter.trim().toLowerCase() : '';
 
     return questions.filter(q => {
       // 1. Matches Main Category
       if (catFilter !== 'ALL') {
+        const rootSet = questionRootCategoriesMap.get(q.id);
+        const matchesRoot = rootSet && rootSet.has(catFilter);
         const qCats = q.categories && q.categories.length > 0 ? q.categories : [q.category];
-        if (!qCats.some(c => c === catFilter)) return false;
+        const matchesDirectCat = qCats.some(c => c === catFilter);
+        if (!matchesRoot && !matchesDirectCat) return false;
       }
 
       // 2. Matches Subcategory Chain
@@ -2220,22 +2580,33 @@ export default function AdminPanel({
         if (!matchesSub) return false;
       }
 
-      // 3. Matches Search Text
+      // 3. Matches Leaf Topic Filter
+      if (leafLower) {
+        const qCsvLower = (q.csvCategory || '').trim().toLowerCase();
+        const qSubLower = (q.subcategory || '').trim().toLowerCase();
+        const qSubs = (q.subcategories || []).map(s => s.trim().toLowerCase());
+        const matchesLeaf = qCsvLower === leafLower || qSubLower === leafLower || qSubs.includes(leafLower);
+        if (!matchesLeaf) return false;
+      }
+
+      // 4. Matches Search Text
       if (searchLower) {
         const matchesSearch = q.text.toLowerCase().includes(searchLower) || 
                               q.category.toLowerCase().includes(searchLower) ||
-                              (q.subcategory && q.subcategory.toLowerCase().includes(searchLower));
+                              (q.subcategory && q.subcategory.toLowerCase().includes(searchLower)) ||
+                              (q.csvCategory && q.csvCategory.toLowerCase().includes(searchLower)) ||
+                              (q.explanation && q.explanation.toLowerCase().includes(searchLower));
         if (!matchesSearch) return false;
       }
 
       return true;
     });
-  }, [questions, catFilter, subcatFilterChain, searchQuery, subcategoryDescendantsMap]);
+  }, [questions, catFilter, subcatFilterChain, leafTopicFilter, searchQuery, subcategoryDescendantsMap, questionRootCategoriesMap]);
 
   // Reset managePage to 1 when filters change
   useEffect(() => {
     setManagePage(1);
-  }, [catFilter, subcatFilterChain, searchQuery]);
+  }, [catFilter, subcatFilterChain, leafTopicFilter, searchQuery]);
 
   const paginatedQuestionsForManage = useMemo(() => {
     const start = (managePage - 1) * managePageSize;
@@ -2618,16 +2989,65 @@ export default function AdminPanel({
 
   const handleCreateRoutine = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!routineTitle.trim() || !routineDetails.trim()) {
-      alert('রুটিনের শিরোনাম এবং বিস্তারিত বিবরণ দিন!');
+    if (!routineTitle.trim()) {
+      showCustomAlert('অসম্পূর্ণ তথ্য!', 'রুটিনের শিরোনাম দিন!', 'error');
       return;
     }
-    const targetCourse = courses.find(c => c.id === routineCourseId);
-    onSaveRoutine(routineTitle.trim(), routineDetails.trim(), targetCourse?.id, targetCourse?.title);
-    alert('📅 নতুন একাডেমি রুটিন সফলভাবে পাবলিশ করা হয়েছে!');
+
+    if (routineEnableExam) {
+      if (!routineExamStartTime) {
+        showCustomAlert('পরীক্ষার সময় দিন!', 'পরীক্ষা শুরুর তারিখ ও সময় নির্ধারণ করুন!', 'error');
+        return;
+      }
+      if (routineExamQuestionSelection === 'manual' && routineExamManualQuestionIds.length === 0) {
+        showCustomAlert('প্রশ্ন নির্বাচন করুন!', 'ম্যানুয়াল মোডে অন্তত ১ টি প্রশ্ন নির্বাচন করুন!', 'error');
+        return;
+      }
+    }
+
+    const targetCourse = courses ? courses.find(c => c.id === routineCourseId) : undefined;
+
+    const examConfig: ScheduledExamConfig | undefined = routineEnableExam ? {
+      enabled: true,
+      startTime: routineExamStartTime,
+      expiryTime: routineExamExpiryTime || undefined,
+      timeLimit: Number(routineExamTimeLimit) || 20,
+      qLimit: routineExamQuestionSelection === 'manual' ? routineExamManualQuestionIds.length : (Number(routineExamQLimit) || 20),
+      totalMarks: Number(routineExamTotalMarks) || 20,
+      passMarks: Number(routineExamPassMarks) || 8,
+      questionSelection: routineExamQuestionSelection,
+      questionIds: routineExamQuestionSelection === 'manual' ? routineExamManualQuestionIds : undefined
+    } : undefined;
+
+    onSaveRoutine(
+      routineTitle.trim(), 
+      routineDetails.trim(), 
+      targetCourse?.id, 
+      targetCourse?.title,
+      routineSelectedCategories,
+      routineSelectedSubcategories,
+      routineSelectedLeafCategories,
+      examConfig
+    );
+
+    showCustomAlert('সফল!', '📅 নতুন সিলেবাস রুটিন ও শিডিউলড এক্সাম সফলভাবে পাবলিশ করা হয়েছে!', 'success');
+
+    // Reset Form
     setRoutineTitle('');
     setRoutineDetails('');
     setRoutineCourseId('');
+    setRoutineSelectedCategories([]);
+    setRoutineSelectedSubcategories([]);
+    setRoutineSelectedLeafCategories([]);
+    setRoutineEnableExam(false);
+    setRoutineExamStartTime('');
+    setRoutineExamExpiryTime('');
+    setRoutineExamTimeLimit(20);
+    setRoutineExamQLimit(20);
+    setRoutineExamTotalMarks(20);
+    setRoutineExamPassMarks(8);
+    setRoutineExamQuestionSelection('auto');
+    setRoutineExamManualQuestionIds([]);
   };
 
   const classifyQuestion = (q: Question): string => {
@@ -3041,10 +3461,19 @@ export default function AdminPanel({
         </button>
       </div>
 
-      {/* TAB CONTENTS */}
-
-      {/* 0. DASHBOARD OVERVIEW SECTION */}
-      {activeTab === 'dashboard' && (
+      {/* TAB CONTENTS / FULL PAGE HIERARCHICAL MCQ VIEW */}
+      {viewingHierarchyRoutine ? (
+        <RoutineHierarchicalMCQModal
+          routine={viewingHierarchyRoutine}
+          questions={questions}
+          categories={categories}
+          subcategories={subcategories}
+          onClose={() => setViewingHierarchyRoutine(null)}
+        />
+      ) : (
+        <>
+          {/* 0. DASHBOARD OVERVIEW SECTION */}
+          {activeTab === 'dashboard' && (
         <div className="flex flex-col gap-5 animate-fade-in">
           {/* Welcome Banner */}
           <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-red-800 rounded-2xl p-5 text-white shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -3241,7 +3670,7 @@ export default function AdminPanel({
                 </div>
 
                 <div className="space-y-2.5">
-                  {categories.slice(0, 6).map((catItem) => {
+                  {(categories || []).slice(0, 6).map((catItem) => {
                     const catName = typeof catItem === 'string' ? catItem : catItem.name;
                     const catKey = typeof catItem === 'string' ? catItem : catItem.id || catItem.name;
                     const count = questions.filter(q => q.category === catName).length;
@@ -4237,28 +4666,120 @@ export default function AdminPanel({
             />
           </div>
 
-          {/* Cascading Search Filters */}
-          <div className="flex flex-col gap-3.5 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-            <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1 uppercase tracking-wider">
-              <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-              ধাপভিত্তিক ক্যাসকেডিং ফিল্টার (Cascading Search Filter):
+          {/* Root Category MCQ Breakdown Cards */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4.5 rounded-2xl border border-indigo-800/50 shadow-md space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-800/40 pb-2.5">
+              <div className="flex items-center gap-2 font-black text-xs uppercase tracking-wider text-indigo-200">
+                <FolderTree className="w-4 h-4 text-indigo-400" />
+                <span>মূল ক্যাটাগরি ভিত্তিক মোট MCQ সংখ্যা (Root Category MCQ Breakdown):</span>
+              </div>
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-400/30 font-bold">
+                মোট প্রশ্ন: {questions.length.toLocaleString('bn-BD')} টি
+              </span>
             </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 text-xs">
+              {(allRootCategories || []).map(rootName => {
+                const mcqCount = rootCategoryMCQCounts[rootName] || 0;
+                const isSelected = catFilter === rootName;
+                return (
+                  <button
+                    key={rootName}
+                    type="button"
+                    onClick={() => {
+                      setCatFilter(isSelected ? 'ALL' : rootName);
+                      setSubcatFilterChain([]);
+                      setSelectedQIds([]);
+                    }}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 border-indigo-400 text-white shadow-md ring-2 ring-indigo-300/30'
+                        : 'bg-white/10 hover:bg-white/20 border-white/10 text-slate-100'
+                    }`}
+                  >
+                    <div className="font-extrabold text-[11px] line-clamp-1 flex items-center justify-between gap-1">
+                      <span>{rootName}</span>
+                      {isSelected && <span className="text-[9px] bg-white text-indigo-950 font-black px-1.5 py-0.2 rounded-md shrink-0">সিলেক্টেড</span>}
+                    </div>
+                    <div className="flex items-baseline justify-between gap-1 pt-1.5 border-t border-white/10">
+                      <span className="text-[10px] opacity-80 font-medium">মোট MCQ</span>
+                      <span className="font-black text-xs text-amber-300">
+                        {mcqCount.toLocaleString('bn-BD')} টি
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Multi-Level Cascading Search Filters */}
+          <div className="flex flex-col gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+              <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1 uppercase tracking-wider">
+                <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                মাল্টি-লেভেল ক্যাসকেডিং ফিল্টার (Multi-Level Cascading Filters):
+              </div>
+              {(catFilter !== 'ALL' || subcatFilterChain.length > 0 || leafTopicFilter !== 'ALL' || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatFilter('ALL');
+                    setSubcatFilterChain([]);
+                    setLeafTopicFilter('ALL');
+                    setSearchQuery('');
+                    setSelectedQIds([]);
+                  }}
+                  className="text-[10px] text-rose-600 hover:text-rose-800 font-bold bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200 transition cursor-pointer"
+                >
+                  ✕ সব ফিল্টার মুছুন
+                </button>
+              )}
+            </div>
+
+            {/* Breadcrumb Path */}
+            {(catFilter !== 'ALL' || subcatFilterChain.length > 0 || leafTopicFilter !== 'ALL') && (
+              <div className="flex items-center gap-1.5 flex-wrap text-[10px] bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700">
+                <span className="font-bold text-indigo-700">ফিল্টার পাথ:</span>
+                <span className="bg-indigo-50 text-indigo-800 px-1.5 py-0.5 rounded font-semibold">{catFilter}</span>
+                {subcatFilterChain.map((sub, idx) => (
+                  <React.Fragment key={`bc-manage-${idx}`}>
+                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded font-semibold">{sub}</span>
+                  </React.Fragment>
+                ))}
+                {leafTopicFilter !== 'ALL' && (
+                  <>
+                    <ChevronRight className="w-3 h-3 text-emerald-500 shrink-0" />
+                    <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-bold">🌿 {leafTopicFilter}</span>
+                  </>
+                )}
+                <span className="ml-auto text-[9.5px] text-slate-500 font-bold">
+                  ফলাফল: {filteredQuestionsForManage.length.toLocaleString('bn-BD')} টি
+                </span>
+              </div>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
               {/* Category Dropdown (Tier 1) */}
               <div>
-                <label className="block text-[10px] text-gray-500 mb-1 font-bold">মূল ক্যাটাগরি ফিল্টার:</label>
+                <label className="block text-[10px] text-gray-500 mb-1 font-bold">১. মূল ক্যাটাগরি:</label>
                 <select 
                   value={catFilter}
                   onChange={e => { 
                     setCatFilter(e.target.value); 
                     setSubcatFilterChain([]); 
+                    setLeafTopicFilter('ALL');
                     setSelectedQIds([]); 
                   }}
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition text-xs font-semibold"
                 >
-                  <option value="ALL">সব ক্যাটাগরি</option>
-                  {distinctCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="ALL">সব ক্যাটাগরি ({questions.length.toLocaleString('bn-BD')}টি MCQ)</option>
+                  {(allRootCategories || []).map(c => (
+                    <option key={c} value={c}>
+                      {c} ({(rootCategoryMCQCounts[c] || 0).toLocaleString('bn-BD')}টি MCQ)
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -4292,7 +4813,7 @@ export default function AdminPanel({
                   selectBoxes.push(
                     <div key={`cascade-filter-level-${i}`}>
                       <label className="block text-[10px] text-gray-500 mb-1 font-bold">
-                        {i === 0 ? 'উপ-ক্যাটাগরি / পরীক্ষা (ধাপ ১):' : `সাব-ক্যাটাগরি ধাপ ${i + 1}:`}
+                        {i === 0 ? '২. সাব-ক্যাটাগরি ধাপ ১:' : `${i + 2}. সাব-ক্যাটাগরি ধাপ ${i + 1}:`}
                       </label>
                       <select
                         value={currentSelection}
@@ -4306,12 +4827,20 @@ export default function AdminPanel({
                             newChain.splice(i + 1);
                           }
                           setSubcatFilterChain(newChain);
+                          setLeafTopicFilter('ALL');
                           setSelectedQIds([]);
                         }}
                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition text-xs font-semibold"
                       >
                         <option value="ALL">--- সব ---</option>
-                        {options.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        {options.map(s => {
+                          const count = subcategoryDescendantsCountMap.get(s.name.trim().toLowerCase()) || nodeQuestionCountMap.get(s.name.trim().toLowerCase()) || 0;
+                          return (
+                            <option key={s.id} value={s.name}>
+                              {s.name} {count > 0 ? `(${count.toLocaleString('bn-BD')}টি)` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   );
@@ -4319,6 +4848,30 @@ export default function AdminPanel({
 
                 return selectBoxes;
               })()}
+
+              {/* Dynamic Leaf Category / Topic Dropdown */}
+              {manageAvailableLeafTopics.length > 0 && (
+                <div>
+                  <label className="block text-[10px] text-emerald-700 mb-1 font-bold flex items-center gap-1">
+                    🌿 লিফ টপিক / ক্যাটাগরি:
+                  </label>
+                  <select
+                    value={leafTopicFilter}
+                    onChange={e => {
+                      setLeafTopicFilter(e.target.value);
+                      setSelectedQIds([]);
+                    }}
+                    className="w-full px-2.5 py-1.5 border border-emerald-300 rounded-lg bg-emerald-50/50 text-emerald-950 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition text-xs font-semibold"
+                  >
+                    <option value="ALL">সব টপিক ({manageAvailableLeafTopics.reduce((acc, curr) => acc + curr.count, 0).toLocaleString('bn-BD')}টি)</option>
+                    {(manageAvailableLeafTopics || []).map(topic => (
+                      <option key={topic.name} value={topic.name}>
+                        {topic.name} ({topic.count.toLocaleString('bn-BD')}টি)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -4834,7 +5387,7 @@ export default function AdminPanel({
                         <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
                         <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
                         <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                        {categories.map(c => (
+                        {(categories || []).map(c => (
                           <option key={c.id} value={c.name}>{c.name}</option>
                         ))}
                       </optgroup>
@@ -5059,7 +5612,7 @@ export default function AdminPanel({
                             <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
                             <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
                             <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                            {categories.map(c => (
+                            {(categories || []).map(c => (
                               <option key={c.id} value={c.name}>{c.name}</option>
                             ))}
                             {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
@@ -5188,7 +5741,7 @@ export default function AdminPanel({
                           <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
                           <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
                           <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                          {categories.map(c => (
+                          {(categories || []).map(c => (
                             <option key={c.id} value={c.name}>{c.name}</option>
                           ))}
                           {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
@@ -5401,7 +5954,7 @@ export default function AdminPanel({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
-                        {['বিষয়ভিত্তিক প্রস্তুতি', 'জব সলিউশন পরীক্ষা', 'সাল ভিত্তিক জব সলিউশন', ...categories.map(c => c.name)]
+                        {['বিষয়ভিত্তিক প্রস্তুতি', 'জব সলিউশন পরীক্ষা', 'সাল ভিত্তিক জব সলিউশন', ...(categories || []).map(c => c?.name || '').filter(Boolean)]
                           .filter((v, i, a) => a.indexOf(v) === i)
                           .map((rootName, idx) => {
                             const childCount = subcategories.filter(s => s.parentCategory === rootName).length;
@@ -5502,7 +6055,7 @@ export default function AdminPanel({
                             <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
                             <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
                             <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                            {categories.map(c => (
+                            {(categories || []).map(c => (
                               <option key={c.id} value={c.name}>{c.name}</option>
                             ))}
                             {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
@@ -5771,7 +6324,7 @@ export default function AdminPanel({
                                             <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
                                             <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
                                             <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                                            {categories.map(c => (
+                                            {(categories || []).map(c => (
                                               <option key={c.id} value={c.name}>{c.name}</option>
                                             ))}
                                           </optgroup>
@@ -6673,7 +7226,7 @@ export default function AdminPanel({
                   className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none bg-white"
                 >
                   <option value="">সকল ক্যাটাগরি / সাধারণ</option>
-                  {categories.map(cat => (
+                  {(categories || []).map(cat => (
                     <option key={cat.id} value={cat.name}>{cat.name}</option>
                   ))}
                 </select>
@@ -6726,10 +7279,10 @@ export default function AdminPanel({
           <div className="md:col-span-7 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
             <h3 className="font-bold text-sm text-gray-800 mb-3">📋 তৈরি করা কোর্সসমূহ ({courses.length})</h3>
             <div className="space-y-4">
-              {courses.length === 0 ? (
+              {(!courses || courses.length === 0) ? (
                 <p className="text-gray-400 py-6 text-center">কোনো কোর্স পাওয়া যায়নি। নতুন কোর্স তৈরি করুন।</p>
               ) : (
-                courses.map((course, idx) => {
+                (courses || []).map((course, idx) => {
                   const courseRoutines = routines.filter(r => r.courseId === course.id || r.courseName === course.title);
                   return (
                     <div key={course.id || idx} className="p-4 bg-gray-50 border border-gray-100 rounded-2xl flex flex-col gap-2">
@@ -6781,103 +7334,498 @@ export default function AdminPanel({
       {activeTab === 'routines' && (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
           {/* Create Routine Form */}
-          <div className="md:col-span-5 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
-            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-indigo-600" />
-              📅 নতুন একাডেমি রুটিন যোগ করুন
-            </h3>
-            <form onSubmit={handleCreateRoutine} className="space-y-3">
+          <div className="md:col-span-7 bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-5">
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <h3 className="font-black text-base text-indigo-950 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-600" />
+                📅 কোর্স সিলেবাস রুটিন ও এক্সাম শিডিউলার
+              </h3>
+              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-xl">
+                ক্যাসকেডিং ফিল্টার সাপোর্টেড
+              </span>
+            </div>
+
+            <form onSubmit={handleCreateRoutine} className="space-y-4">
+              {/* Course Selector */}
               <div>
-                <label className="block text-gray-600 mb-1 font-medium">নির্দিষ্ট কোর্স লিঙ্ক করুন (ঐচ্ছিক):</label>
+                <label className="block text-gray-700 mb-1.5 font-bold">🎓 কোর্স নির্বাচন করুন:</label>
                 <select
                   value={routineCourseId}
                   onChange={e => setRoutineCourseId(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none bg-white font-medium"
+                  className="w-full px-3.5 py-2.5 border rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-bold"
                 >
-                  <option value="">সাধারণ রুটিন (সকলের জন্য)</option>
-                  {courses.map(c => (
+                  <option value="">সাধারণ রুটিন (সকল কোর্সের জন্য)</option>
+                  {(courses || []).map(c => (
                     <option key={c.id} value={c.id}>
                       🎓 {c.title} ({c.status === 'active' ? 'চলমান' : c.status})
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  * কোর্স সিলেক্ট করলে এই রুটিনটি "চলমান কোর্স" সেকশন এবং সাধারণ রুটিন সেকশন উভয় স্থানেই প্রদর্শিত হবে।
-                </p>
               </div>
 
-              <div>
-                <label className="block text-gray-600 mb-1 font-medium">রুটিনের নাম / শিরোনাম:</label>
-                <input 
-                  type="text" 
-                  required
-                  value={routineTitle}
-                  onChange={e => setRoutineTitle(e.target.value)}
-                  placeholder="যেমন: বিসিএস প্রিলিমিনারি ফাইনাল ক্র্যাশ কোর্স রুটিন" 
-                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none" 
-                />
+              {/* Title & Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 mb-1 font-bold">রুটিন / পরীক্ষার শিরোনাম: *</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={routineTitle}
+                    onChange={e => setRoutineTitle(e.target.value)}
+                    placeholder="যেমন: মডেল টেস্ট ০১ - বাংলা ব্যাকরণ ও গাণিতিক যুক্তি" 
+                    className="w-full px-3.5 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-1 font-bold">বিস্তারিত রুটিন নোট (ঐচ্ছিক):</label>
+                  <input 
+                    type="text"
+                    value={routineDetails}
+                    onChange={e => setRoutineDetails(e.target.value)}
+                    placeholder="যেমন: পৃষ্ঠা নম্বর ৫০-৮৫ রিভিশন দিন।"
+                    className="w-full px-3.5 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-gray-600 mb-1 font-medium">বিস্তারিত রুটিন তথ্য:</label>
-                <textarea 
-                  rows={5}
-                  required
-                  value={routineDetails}
-                  onChange={e => setRoutineDetails(e.target.value)}
-                  placeholder="যেমন: &#10;৩রা মে - বাংলা ব্যাকরণ&#10;৫ই মে - ইংরেজি পরীক্ষা"
-                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none"
-                />
+              {/* --- CASCADING SYLLABUS TOPICS FILTERS --- */}
+              <div className="bg-gradient-to-br from-indigo-50/70 to-purple-50/70 p-4 rounded-2xl border border-indigo-100/80 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-black text-indigo-950 text-xs flex items-center gap-1.5">
+                    <FolderTree className="w-4 h-4 text-indigo-600" />
+                    📚 পরীক্ষার সিলেবাস নির্বাচন (Cascading Syllabus Filters)
+                  </h4>
+                  <span className="bg-emerald-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
+                    🎯 ম্যাচিং প্রশ্ন: {routineMatchingQuestions.length.toLocaleString('bn-BD')} টি
+                  </span>
+                </div>
+
+                {/* 1. Category Cascading Filter */}
+                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-700 font-extrabold text-[11px] block">
+                      ১. মূল ক্যাটাগরি (Root Category Filter):
+                    </label>
+                    {routineSelectedCategories.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoutineSelectedCategories([]);
+                          setRoutineSelectedSubcategories([]);
+                          setRoutineSelectedLeafCategories([]);
+                        }}
+                        className="text-[10px] font-bold text-rose-600 hover:underline"
+                      >
+                        রিসেট
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pt-1">
+                    {(allRootCategories || []).map(cat => {
+                      const isSelected = routineSelectedCategories.includes(cat);
+                      const mcqCount = rootCategoryMCQCounts[cat] || 0;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setRoutineSelectedCategories(prev => prev.filter(c => c !== cat));
+                            } else {
+                              setRoutineSelectedCategories(prev => [...prev, cat]);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
+                            isSelected 
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
+                              : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : '+ '}{cat} {mcqCount > 0 ? `(${mcqCount.toLocaleString('bn-BD')}টি)` : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Subcategory Cascading Filter */}
+                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-700 font-extrabold text-[11px] block">
+                      ২. সাব-ক্যাটাগরি (Subcategory Filter - ডায়নামিক লোড):
+                    </label>
+                    {routineSelectedSubcategories.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoutineSelectedSubcategories([]);
+                          setRoutineSelectedLeafCategories([]);
+                        }}
+                        className="text-[10px] font-bold text-rose-600 hover:underline"
+                      >
+                        রিসেট
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                    {routineAvailableSubcategories.length === 0 ? (
+                      <span className="text-[10px] text-gray-400 font-medium">কোনো সাব-ক্যাটাগরি পাওয়া যায়নি</span>
+                    ) : (
+                      (routineAvailableSubcategories || []).map(sub => {
+                        const subName = sub.name;
+                        const isSelected = routineSelectedSubcategories.includes(subName);
+                        const subCount = subcategoryDescendantsCountMap.get(subName.trim().toLowerCase()) || nodeQuestionCountMap.get(subName.trim().toLowerCase()) || 0;
+                        return (
+                          <button
+                            key={sub.id || subName}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setRoutineSelectedSubcategories(prev => prev.filter(s => s !== subName));
+                              } else {
+                                setRoutineSelectedSubcategories(prev => [...prev, subName]);
+                              }
+                            }}
+                            className={`px-2 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
+                              isSelected 
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs' 
+                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : '+ '}{subName} {subCount > 0 ? `(${subCount.toLocaleString('bn-BD')}টি)` : ''}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Leaf Category / Topic Cascading Filter */}
+                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-700 font-extrabold text-[11px] block">
+                      ৩. অধ্যায় / নির্দিষ্ট টপিক (Leaf Topics Filter - ডায়নামিক লোড):
+                    </label>
+                    {routineSelectedLeafCategories.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setRoutineSelectedLeafCategories([])}
+                        className="text-[10px] font-bold text-rose-600 hover:underline"
+                      >
+                        রিসেট
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                    {routineAvailableLeafCategories.length === 0 ? (
+                      <span className="text-[10px] text-gray-400 font-medium">মনোনীত ফিল্টারে কোনো টপিক পাওয়া যায়নি</span>
+                    ) : (
+                      (routineAvailableLeafCategories || []).map(item => {
+                        const isSelected = routineSelectedLeafCategories.includes(item.name);
+                        return (
+                          <button
+                            key={item.name}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setRoutineSelectedLeafCategories(prev => prev.filter(l => l !== item.name));
+                              } else {
+                                setRoutineSelectedLeafCategories(prev => [...prev, item.name]);
+                              }
+                            }}
+                            className={`px-2 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
+                              isSelected 
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' 
+                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : '+ '}{item.name} ({item.count.toLocaleString('bn-BD')}টি)
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* --- PRESET SCHEDULED EXAM CONFIGURATION --- */}
+              <div className="border border-indigo-200 rounded-2xl p-4 bg-indigo-50/40 space-y-3">
+                <label className="flex items-center gap-2 font-black text-indigo-950 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={routineEnableExam}
+                    onChange={e => setRoutineEnableExam(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                  <span>⏰ এই সিলেবাসের উপর শিডিউলড পরীক্ষা সেটআপ করুন (Preset Scheduled Exam)</span>
+                </label>
+
+                {routineEnableExam && (
+                  <div className="space-y-3.5 pt-2 border-t border-indigo-100 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">পরীক্ষা শুরুর সময় (Start Date & Time): *</label>
+                        <input
+                          type="datetime-local"
+                          required={routineEnableExam}
+                          value={routineExamStartTime}
+                          onChange={e => setRoutineExamStartTime(e.target.value)}
+                          className="w-full px-3 py-2 border rounded-xl text-gray-800 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">পরীক্ষা শেষের সময় (Expiry Date & Time):</label>
+                        <input
+                          type="datetime-local"
+                          value={routineExamExpiryTime}
+                          onChange={e => setRoutineExamExpiryTime(e.target.value)}
+                          className="w-full px-3 py-2 border rounded-xl text-gray-800 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">সময় (মিনিট):</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={routineExamTimeLimit}
+                          onChange={e => setRoutineExamTimeLimit(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">এমসিকিউ সংখ্যা:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={routineExamQLimit}
+                          onChange={e => setRoutineExamQLimit(Number(e.target.value))}
+                          disabled={routineExamQuestionSelection === 'manual'}
+                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white disabled:bg-gray-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">মোট নম্বর:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={routineExamTotalMarks}
+                          onChange={e => setRoutineExamTotalMarks(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-700 mb-1 font-bold">পাস নম্বর:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={routineExamPassMarks}
+                          onChange={e => setRoutineExamPassMarks(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Question Selection Mode */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5 font-extrabold">প্রশ্ন সিলেকশন মোড (Question Selection):</label>
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-1.5 font-bold text-gray-800 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="qSelectMode"
+                            checked={routineExamQuestionSelection === 'auto'}
+                            onChange={() => setRoutineExamQuestionSelection('auto')}
+                          />
+                          <span>⚡ স্বয়ংক্রিয় (Automatic filter from syllabus)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 font-bold text-gray-800 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="qSelectMode"
+                            checked={routineExamQuestionSelection === 'manual'}
+                            onChange={() => setRoutineExamQuestionSelection('manual')}
+                          />
+                          <span>🖐️ ম্যানুয়াল (Specific Question Pick)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Manual Question Picker */}
+                    {routineExamQuestionSelection === 'manual' && (
+                      <div className="bg-white p-3 rounded-2xl border border-indigo-200 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="font-extrabold text-indigo-950 text-[11px]">
+                            নির্ধারিত সিলেবাসের প্রশ্ন থেকে নির্বাচন করুন (নির্বাচিত: {routineExamManualQuestionIds.length} টি)
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="প্রশ্ন খুঁজুন..."
+                            value={routineManualQuestionSearch}
+                            onChange={e => setRoutineManualQuestionSearch(e.target.value)}
+                            className="px-2.5 py-1 border rounded-lg text-[10px] w-40"
+                          />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-gray-100 pr-1">
+                          {routineMatchingQuestions
+                            .filter(q => !routineManualQuestionSearch || q.text.toLowerCase().includes(routineManualQuestionSearch.toLowerCase()))
+                            .map((q, idx) => {
+                              const isChecked = routineExamManualQuestionIds.includes(q.id);
+                              return (
+                                <label key={q.id || idx} className="flex items-start gap-2 pt-1.5 cursor-pointer hover:bg-gray-50 p-1 rounded-lg">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      if (isChecked) {
+                                        setRoutineExamManualQuestionIds(prev => prev.filter(id => id !== q.id));
+                                      } else {
+                                        setRoutineExamManualQuestionIds(prev => [...prev, q.id]);
+                                      }
+                                    }}
+                                    className="mt-0.5"
+                                  />
+                                  <div className="text-[11px]">
+                                    <p className="font-bold text-gray-800 line-clamp-1">{q.text}</p>
+                                    <span className="text-[9px] text-gray-400 font-medium">
+                                      {q.category} • {q.subcategory} {q.csvCategory ? `• ${q.csvCategory}` : ''}
+                                    </span>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <button 
                 type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition shadow"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-2xl transition shadow flex items-center justify-center gap-2 text-xs"
               >
-                রুটিন পাবলিশ করুন
+                <Sparkles className="w-4 h-4 text-indigo-200" />
+                কোর্স সিলেবাস রুটিন ও এক্সাম প্রকাশ করুন
               </button>
             </form>
           </div>
 
-          {/* Published Routines */}
-          <div className="md:col-span-7 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
-            <h3 className="font-bold text-sm text-gray-800 mb-3">📋 ইতিমধ্যে প্রকাশিত রুটিন সমূহ</h3>
-            <div className="divide-y divide-gray-100 space-y-3">
-              {routines.length === 0 ? (
-                <p className="text-gray-400 py-4 text-center">কোনো রুটিন পাওয়া যায়নি।</p>
+          {/* Published Routines & Scheduled Exams List */}
+          <div className="md:col-span-5 bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
+              <h3 className="font-black text-sm text-gray-900">📋 প্রকাশিত রুটিন ও এক্সাম কার্ডসমূহ ({routines.length})</h3>
+            </div>
+
+            <div className="space-y-3.5 max-h-[800px] overflow-y-auto pr-1">
+              {(!routines || routines.length === 0) ? (
+                <p className="text-gray-400 py-8 text-center font-medium">কোনো রুটিন প্রকাশ করা হয়নি।</p>
               ) : (
-                routines.map((item, idx) => (
-                  <div key={item.id ? `rt-${item.id}-${idx}` : `rt-${idx}`} className="py-2 flex justify-between items-start">
-                    <div className="pr-4">
+                (routines || []).map((item, idx) => {
+                  const hasExam = item.examConfig && item.examConfig.enabled;
+                  const targetCourse = courses ? courses.find(c => c.id === item.courseId || c.title === item.courseName) : undefined;
+
+                  return (
+                    <div key={item.id ? `rt-${item.id}-${idx}` : `rt-${idx}`} className="p-4 bg-gray-50/80 border border-gray-200/80 rounded-2xl shadow-2xs space-y-2.5 relative">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          {item.courseName && (
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[9px] font-black uppercase mb-1">
+                              🎓 {item.courseName}
+                            </span>
+                          )}
+                          <h4 className="font-extrabold text-indigo-950 text-xs leading-snug">{item.title}</h4>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            showCustomConfirm(
+                              'রুটিন ডিলিট নিশ্চিতকরণ',
+                              'রুটিনটি নিশ্চিত ডিলিট করতে চান?',
+                              () => {
+                                onDeleteRoutine(item.id);
+                                showCustomAlert('সম্পন্ন হয়েছে!', 'রুটিনটি সফলভাবে ডিলিট করা হয়েছে!', 'success');
+                              },
+                              'warning'
+                            );
+                          }}
+                          className="text-rose-600 hover:text-rose-800 font-bold shrink-0 text-[10px]"
+                        >
+                          🗑️ মুছুন
+                        </button>
+                      </div>
+
+                      {/* View Hierarchical MCQs Action */}
+                      <button
+                        type="button"
+                        onClick={() => setViewingHierarchyRoutine(item)}
+                        className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-extrabold py-1.5 px-3 rounded-xl transition text-[10.5px] flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                        🌳 অধ্যায়ভিত্তিক MCQ দেখুন
+                      </button>
+
+                      {/* PDF Export Action */}
                       {item.courseName && (
-                        <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold mb-1 border border-indigo-100">
-                          🎓 কোর্স: {item.courseName}
-                        </span>
+                        <button
+                          onClick={() => {
+                            const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
+                            downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines);
+                          }}
+                          className="w-full bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold py-1.5 px-3 rounded-xl transition text-[10px] flex items-center justify-center gap-1.5"
+                        >
+                          <Download className="w-3.5 h-3.5 text-indigo-600" />
+                          📥 কোর্স সম্পূর্ণ রুটিন PDF ডাউনলোড
+                        </button>
                       )}
-                      <h4 className="font-bold text-indigo-800">{item.title}</h4>
-                      <p className="text-[10px] text-gray-400 mt-0.5">প্রকাশের তারিখ: {new Date(item.createdAt).toLocaleDateString()}</p>
-                      <p className="text-gray-600 text-[11px] whitespace-pre-line mt-1.5 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                        {item.details}
-                      </p>
+
+                      {/* Exam Config Badge */}
+                      {hasExam && (
+                        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-2.5 rounded-xl font-bold text-[10px] space-y-1 shadow-xs">
+                          <p className="flex items-center gap-1 text-[11px] font-black">
+                            ⏰ শিডিউলড পরীক্ষা: {formatBengaliDateTime(item.examConfig?.startTime)}
+                          </p>
+                          <p className="text-emerald-100 font-medium">
+                            এমসিকিউ: {item.examConfig?.qLimit || 20} টি | সময়: {item.examConfig?.timeLimit || 20} মি. | পূর্ণমান: {item.examConfig?.totalMarks || 20}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Selected Topics Pills */}
+                      {((item.selectedCategories && item.selectedCategories.length > 0) ||
+                        (item.selectedSubcategories && item.selectedSubcategories.length > 0) ||
+                        (item.selectedLeafCategories && item.selectedLeafCategories.length > 0)) && (
+                        <div className="space-y-1 bg-white p-2.5 rounded-xl border border-gray-100">
+                          <span className="text-[10px] font-bold text-gray-500 block">📚 সিলেবাস টপিকসমূহ:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {(item.selectedCategories || []).map(c => (
+                              <span key={c} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
+                                {c}
+                              </span>
+                            ))}
+                            {(item.selectedSubcategories || []).map(s => (
+                              <span key={s} className="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
+                                {s}
+                              </span>
+                            ))}
+                            {(item.selectedLeafCategories || []).map(l => (
+                              <span key={l} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {item.details && (
+                        <p className="text-gray-600 text-[11px] whitespace-pre-line leading-relaxed bg-white p-2.5 rounded-xl border border-gray-100">
+                          {item.details}
+                        </p>
+                      )}
                     </div>
-                    <button 
-                      onClick={() => {
-                        showCustomConfirm(
-                          'রুটিন ডিলিট নিশ্চিতকরণ',
-                          'রুটিনটি নিশ্চিত ডিলিট করতে চান?',
-                          () => {
-                            onDeleteRoutine(item.id);
-                            showCustomAlert('সম্পন্ন হয়েছে!', 'রুটিনটি সফলভাবে ডিলিট করা হয়েছে!', 'success');
-                          },
-                          'warning'
-                        );
-                      }}
-                      className="text-rose-600 hover:text-rose-800 font-bold shrink-0 text-xs mt-1"
-                    >
-                      মুছুন 🗑️
-                    </button>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -6996,7 +7944,8 @@ export default function AdminPanel({
       {/* 6. REGISTERED USERS LIST */}
       {activeTab === 'users' && (() => {
         // Prepare enriched list
-        const enrichedUsers = users.map(u => {
+        const safeUsers = users || [];
+        const enrichedUsers = safeUsers.map(u => {
           // Calculate points
           let approvedPoints = 0;
           let pendingPoints = 0;
@@ -7082,7 +8031,7 @@ export default function AdminPanel({
         return (
           <div className="flex flex-col gap-5 animate-fade-in">
             {/* Recent User Growth Analytics */}
-            <UserGrowthChart users={users} />
+            <UserGrowthChart users={safeUsers} />
 
             <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 text-xs">
             <div className="flex justify-between items-center mb-2">
@@ -7091,7 +8040,7 @@ export default function AdminPanel({
                 👥 রেজিস্টার্ড শিক্ষার্থীদের প্রোফাইল তালিকা
               </h3>
               <span className="bg-indigo-50 border border-indigo-100 text-indigo-800 font-bold px-3 py-1 rounded-full text-xs">
-                মোট নিবন্ধিত: {users.length} জন | ফিল্টারকৃত: {filteredUsers.length} জন
+                মোট নিবন্ধিত: {safeUsers.length} জন | ফিল্টারকৃত: {filteredUsers.length} জন
               </span>
             </div>
 
@@ -8664,7 +9613,7 @@ export default function AdminPanel({
               e.preventDefault();
               const q = questions.find(q => q.id === editingExpl.qId);
               if (q && q.userExplanations) {
-                const updated = q.userExplanations.map(ex => {
+                const updated = (q.userExplanations || []).map(ex => {
                   if (ex.id === editingExpl.explId) {
                     return { ...ex, text: editingExpl.text };
                   }
@@ -8895,6 +9844,8 @@ export default function AdminPanel({
             )}
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* MANUAL ADD AUDIT LOG MODAL */}
