@@ -1,11 +1,15 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Routine, formatBengaliDateTime } from '../types';
+import { Routine, Question, CategoryItem, SubcategoryItem, formatBengaliDateTime } from '../types';
+import { formatRoutineSyllabusPaths } from './routineUtils';
 
 export const downloadCourseRoutinePDF = async (
   courseTitle: string,
   courseCategory: string | undefined,
-  routines: Routine[]
+  routines: Routine[],
+  subcategories?: SubcategoryItem[],
+  categories?: CategoryItem[],
+  questions?: Question[]
 ): Promise<void> => {
   // Create a temporary container element for rendering the PDF layout
   const container = document.createElement('div');
@@ -69,11 +73,7 @@ export const downloadCourseRoutinePDF = async (
               ? formatBengaliDateTime(r.examConfig.startTime) 
               : (r.examDate ? formatBengaliDateTime(r.examDate) : formatBengaliDateTime(r.createdAt));
 
-            const cats = [
-              ...(r.selectedCategories || []),
-              ...(r.selectedSubcategories || []),
-              ...(r.selectedLeafCategories || [])
-            ];
+            const syllabusPaths = formatRoutineSyllabusPaths(r, subcategories, categories, questions);
 
             return `
               <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border: 1px solid #cbd5e1;">
@@ -88,7 +88,7 @@ export const downloadCourseRoutinePDF = async (
                     ${r.title}
                   </strong>
                   <div style="font-size: 11px; color: #475569; white-space: pre-line; line-height: 1.4;">
-                    ${r.details}
+                    ${r.details || ''}
                   </div>
                 </td>
                 <td style="padding: 10px 12px; border: 1px solid #cbd5e1;">
@@ -98,11 +98,11 @@ export const downloadCourseRoutinePDF = async (
                     </div>
                   ` : '<div style="color: #64748b; font-size: 10px; font-weight: 600;">পড়া ও রিভিশন ক্লাস</div>'}
 
-                  ${cats.length > 0 ? `
+                  ${syllabusPaths.length > 0 ? `
                     <div style="margin-top: 4px;">
-                      <strong style="font-size: 10px; color: #334155; display: block; margin-bottom: 2px;">সিলেবাস বিষয়াবলি:</strong>
-                      <div style="display: flex; flex-wrap: wrap; gap: 3px;">
-                        ${cats.map(c => `<span style="background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700;">${c}</span>`).join('')}
+                      <strong style="font-size: 10px; color: #334155; display: block; margin-bottom: 3px;">📚 সিলেবাস শাখা (Syllabus Hierarchy):</strong>
+                      <div style="display: flex; flex-direction: column; gap: 3px;">
+                        ${syllabusPaths.map(p => `<span style="background-color: #f1f5f9; color: #1e1b4b; border: 1px solid #cbd5e1; padding: 3px 6px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">📌 ${p}</span>`).join('')}
                       </div>
                     </div>
                   ` : ''}

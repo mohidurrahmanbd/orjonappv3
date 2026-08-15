@@ -5,6 +5,7 @@ import {
   Eye, EyeOff, Bookmark as BookmarkIcon, 
   Check, HelpCircle, Sparkles, ArrowLeft, Layers
 } from 'lucide-react';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 
 interface RoutineHierarchicalMCQModalProps {
   routine: Routine;
@@ -46,6 +47,7 @@ const toBengaliDigits = (num: number | string): string => {
 export default function RoutineHierarchicalMCQModal({
   routine,
   questions,
+  categories = [],
   subcategories = [],
   bookmarks = [],
   onClose,
@@ -91,59 +93,8 @@ export default function RoutineHierarchicalMCQModal({
 
   // 1. Filter questions strictly or cascaded by the routine's selected syllabus
   const matchedRoutineQuestions = useMemo(() => {
-    const catList = (routine.selectedCategories || []).map(c => c.trim().toLowerCase()).filter(Boolean);
-    const subList = (routine.selectedSubcategories || []).map(s => s.trim().toLowerCase()).filter(Boolean);
-    const leafList = (routine.selectedLeafCategories || []).map(l => l.trim().toLowerCase()).filter(Boolean);
-
-    const hasCatFilter = catList.length > 0;
-    const hasSubFilter = subList.length > 0;
-    const hasLeafFilter = leafList.length > 0;
-
-    if (!hasCatFilter && !hasSubFilter && !hasLeafFilter) {
-      return questions;
-    }
-
-    const activeSubSet = new Set<string>();
-    if (hasSubFilter) {
-      subList.forEach(s => {
-        activeSubSet.add(s);
-        const descendants = subcategoryDescendantsMap.get(s);
-        if (descendants) {
-          descendants.forEach(d => activeSubSet.add(d));
-        }
-      });
-    }
-
-    const activeLeafSet = new Set<string>(leafList);
-
-    return questions.filter(q => {
-      const qCat = (q.category || '').trim().toLowerCase();
-      const qCats = (q.categories || []).map(c => c.trim().toLowerCase());
-      const qSub = (q.subcategory || '').trim().toLowerCase();
-      const qSubs = (q.subcategories || []).map(s => s.trim().toLowerCase());
-      const qCsv = (q.csvCategory || '').trim().toLowerCase();
-
-      // Root Category Match
-      if (hasCatFilter) {
-        const matchCat = catList.includes(qCat) || qCats.some(c => catList.includes(c));
-        if (!matchCat) return false;
-      }
-
-      // Subcategory Match
-      if (hasSubFilter) {
-        const matchSub = activeSubSet.has(qSub) || qSubs.some(s => activeSubSet.has(s));
-        if (!matchSub) return false;
-      }
-
-      // Leaf Topic Match
-      if (hasLeafFilter) {
-        const matchLeaf = activeLeafSet.has(qCsv) || activeLeafSet.has(qSub) || qSubs.some(s => activeLeafSet.has(s));
-        if (!matchLeaf) return false;
-      }
-
-      return true;
-    });
-  }, [questions, routine, subcategoryDescendantsMap]);
+    return getRoutineMatchingQuestions(routine, questions, subcategories);
+  }, [questions, routine, subcategories]);
 
   // 2. Apply search filter if active
   const filteredQuestions = useMemo(() => {
@@ -589,30 +540,41 @@ export default function RoutineHierarchicalMCQModal({
             {routine.title}
           </h1>
 
-          {/* Syllabus Badges */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[11px] text-indigo-200 font-bold">সিলেবাস ফিল্টার:</span>
-            {(routine.selectedCategories || []).map(c => (
-              <span key={c} className="bg-indigo-700/90 text-white border border-indigo-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
-                {c}
-              </span>
-            ))}
-            {(routine.selectedSubcategories || []).map(s => (
-              <span key={s} className="bg-purple-700/90 text-white border border-purple-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
-                {s}
-              </span>
-            ))}
-            {(routine.selectedLeafCategories || []).map(l => (
-              <span key={l} className="bg-emerald-700/90 text-white border border-emerald-400/40 text-[10.5px] font-bold px-2.5 py-0.5 rounded-lg shadow-2xs">
-                🌿 {l}
-              </span>
-            ))}
-            {(!routine.selectedCategories?.length && !routine.selectedSubcategories?.length && !routine.selectedLeafCategories?.length) && (
-              <span className="bg-white/10 text-indigo-100 text-[10.5px] font-medium px-2.5 py-0.5 rounded-lg">
-                সম্পূর্ণ প্রশ্নব্যাংক (All Topics)
-              </span>
-            )}
-          </div>
+          {/* Syllabus Badges & Hierarchical Paths */}
+          {(() => {
+            const paths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
+            if (paths.length > 0) {
+              return (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] text-indigo-200 font-bold flex items-center gap-1">
+                    <FolderTree className="w-3.5 h-3.5 text-indigo-300" />
+                    সিলেবাস শাখা (Syllabus Hierarchy):
+                  </span>
+                  <div className="flex flex-col gap-1.5">
+                    {paths.map((p, pIdx) => (
+                      <div key={pIdx} className="bg-white/15 backdrop-blur-xs border border-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
+                        <span className="text-amber-300 font-black">📌</span>
+                        {p.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                          <React.Fragment key={sIdx}>
+                            <span className={sIdx === arr.length - 1 ? "text-amber-200 font-black" : "text-white"}>{seg}</span>
+                            {sIdx < arr.length - 1 && <span className="text-indigo-300 font-bold">›</span>}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-indigo-200 font-bold">সিলেবাস ফিল্টার:</span>
+                <span className="bg-white/10 text-indigo-100 text-[10.5px] font-medium px-2.5 py-0.5 rounded-lg">
+                  সম্পূর্ণ প্রশ্নব্যাংক (All Topics)
+                </span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

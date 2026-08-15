@@ -98,6 +98,16 @@
         "date": { "type": "string" }
       }
     },
+    "Course": {
+      "title": "Course",
+      "description": "Study Course",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" }
+      }
+    },
     "LiveExam": {
       "title": "LiveExam",
       "description": "Live Exam Schedule",
@@ -159,6 +169,10 @@
     "/routines/{routineId}": {
       "schema": "Routine",
       "description": "Routines collection"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Courses collection"
     },
     "/live_exams/{liveExamId}": {
       "schema": "LiveExam",

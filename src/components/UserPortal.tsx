@@ -14,6 +14,7 @@ import {
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -316,54 +317,33 @@ export default function UserPortal({
       if (finalQuestions.length === 0 && onFetchQuestionsLazy) {
         const fetched = await onFetchQuestionsLazy({ examId: linkedExam?.id, category: routine.selectedCategories?.[0] });
         idSet = new Set(explicitIds);
-        finalQuestions = fetched.filter(q => idSet.has(q.id));
+        finalQuestions = (fetched || []).filter(q => idSet.has(q.id));
       }
       finalQuestions.sort((a, b) => explicitIds.indexOf(a.id) - explicitIds.indexOf(b.id));
     } else {
-      const catSet = new Set((routine.selectedCategories || []).map(c => c.trim().toLowerCase()));
-      const subSet = new Set((routine.selectedSubcategories || []).map(s => s.trim().toLowerCase()));
-      const leafSet = new Set((routine.selectedLeafCategories || []).map(l => l.trim().toLowerCase()));
+      // Strictly filter questions matching the routine's selected syllabus topics
+      let matchedQs = getRoutineMatchingQuestions(routine, questions, subcategories);
 
-      let matchedQs = questions;
-
-      if (catSet.size > 0 || subSet.size > 0 || leafSet.size > 0) {
-        matchedQs = questions.filter(q => {
-          const qCat = (q.category || '').trim().toLowerCase();
-          const qSub = (q.subcategory || '').trim().toLowerCase();
-          const qCsv = (q.csvCategory || '').trim().toLowerCase();
-
-          if (catSet.size > 0 && !catSet.has(qCat)) return false;
-          if (subSet.size > 0 && !subSet.has(qSub)) return false;
-          if (leafSet.size > 0 && !leafSet.has(qCsv)) return false;
-
-          return true;
-        });
-      }
-
+      // Lazy load if questions are empty in local memory
       if (matchedQs.length === 0 && onFetchQuestionsLazy && routine.selectedCategories && routine.selectedCategories.length > 0) {
         const fetched = await onFetchQuestionsLazy({ category: routine.selectedCategories[0] });
-        matchedQs = fetched.filter(q => {
-          const qCat = (q.category || '').trim().toLowerCase();
-          const qSub = (q.subcategory || '').trim().toLowerCase();
-          const qCsv = (q.csvCategory || '').trim().toLowerCase();
-
-          if (catSet.size > 0 && !catSet.has(qCat)) return false;
-          if (subSet.size > 0 && !subSet.has(qSub)) return false;
-          if (leafSet.size > 0 && !leafSet.has(qCsv)) return false;
-
-          return true;
-        });
+        if (fetched && fetched.length > 0) {
+          matchedQs = getRoutineMatchingQuestions(routine, fetched, subcategories);
+        }
       }
 
       if (matchedQs.length === 0) {
-        matchedQs = questions;
-      }
-
-      if (matchedQs.length === 0) {
-        showCustomAlert('দুঃখিত, এই সিলেবাসের জন্য কোনো প্রশ্ন পাওয়া যায়নি!');
+        const syllabusPaths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
+        const syllabusName = syllabusPaths.length > 0 ? syllabusPaths.join(', ') : routine.title;
+        showCustomAlert(
+          'সিলেবাসের প্রশ্ন পাওয়া যায়নি',
+          `রুটিনের নির্বাচিত সিলেবাসের ("${syllabusName}") জন্য প্রশ্নভাণ্ডারে কোনো প্রশ্ন পাওয়া যায়নি।`,
+          'info'
+        );
         return;
       }
 
+      // Strictly shuffle and take up to targetQLimit from the syllabus-matched questions only!
       const countToTake = Math.min(targetQLimit, matchedQs.length);
       finalQuestions = [...matchedQs].sort(() => 0.5 - Math.random()).slice(0, countToTake);
     }
@@ -4967,7 +4947,7 @@ export default function UserPortal({
                         </button>
 
                         <button
-                          onClick={() => downloadCourseRoutinePDF(selectedCourse.title, selectedCourse.category, courseRoutines)}
+                          onClick={() => downloadCourseRoutinePDF(selectedCourse.title, selectedCourse.category, courseRoutines, subcategories, categories, questions)}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center gap-2 shadow-xs"
                         >
                           <Download className="w-4 h-4 text-indigo-100" />
@@ -5071,7 +5051,7 @@ export default function UserPortal({
                           </h3>
 
                           <button
-                            onClick={() => downloadCourseRoutinePDF(selectedCourse.title, selectedCourse.category, courseRoutines)}
+                            onClick={() => downloadCourseRoutinePDF(selectedCourse.title, selectedCourse.category, courseRoutines, subcategories, categories, questions)}
                             className="text-xs font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                           >
                             <Download className="w-3.5 h-3.5" />
@@ -5103,28 +5083,32 @@ export default function UserPortal({
                                     <span className="text-[10px] text-gray-400 font-semibold shrink-0">{new Date(r.createdAt).toLocaleDateString('bn-BD')}</span>
                                   </div>
 
-                                  {/* Syllabus Topics Pills */}
-                                  {((r.selectedCategories && r.selectedCategories.length > 0) ||
-                                    (r.selectedSubcategories && r.selectedSubcategories.length > 0) ||
-                                    (r.selectedLeafCategories && r.selectedLeafCategories.length > 0)) && (
-                                    <div className="flex flex-wrap gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                      {(r.selectedCategories || []).map(c => (
-                                        <span key={c} className="bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-md text-[10px] font-bold border border-indigo-100">
-                                          {c}
+                                  {/* Syllabus Path Hierarchy */}
+                                  {(() => {
+                                    const syllabusPaths = formatRoutineSyllabusPaths(r, subcategories, categories, questions);
+                                    if (syllabusPaths.length === 0) return null;
+                                    return (
+                                      <div className="space-y-1.5 bg-slate-50/90 p-3 rounded-2xl border border-indigo-100/80">
+                                        <span className="text-[10px] font-black text-indigo-950 flex items-center gap-1.5">
+                                          <FolderTree className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                          📚 সিলেবাস (Selected Syllabus):
                                         </span>
-                                      ))}
-                                      {(r.selectedSubcategories || []).map(s => (
-                                        <span key={s} className="bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-md text-[10px] font-bold border border-purple-100">
-                                          {s}
-                                        </span>
-                                      ))}
-                                      {(r.selectedLeafCategories || []).map(l => (
-                                        <span key={l} className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md text-[10px] font-bold border border-emerald-100">
-                                          {l}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
+                                        <div className="flex flex-col gap-1.5">
+                                          {syllabusPaths.map((path, pIdx) => (
+                                            <div key={pIdx} className="bg-white border border-indigo-200/70 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap shadow-2xs">
+                                              <span className="text-indigo-600 font-black">📌</span>
+                                              {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                                                <React.Fragment key={sIdx}>
+                                                  <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
+                                                  {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                                </React.Fragment>
+                                              ))}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
 
                                   {r.details && (
                                     <p className="text-gray-600 text-xs whitespace-pre-line font-medium leading-relaxed bg-gray-50/50 p-3 rounded-xl border border-gray-100">
@@ -5342,7 +5326,7 @@ export default function UserPortal({
                               {/* Action Buttons */}
                               <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
                                 <button
-                                  onClick={() => downloadCourseRoutinePDF(course.title, course.category, courseRoutines)}
+                                  onClick={() => downloadCourseRoutinePDF(course.title, course.category, courseRoutines, subcategories, categories, questions)}
                                   className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 border border-indigo-200/80 shadow-2xs"
                                   title="কোর্সের সম্পূর্ণ রুটিন PDF হিসেবে ডাউনলোড করুন"
                                 >
@@ -5439,31 +5423,32 @@ export default function UserPortal({
                           </div>
                         )}
 
-                        {/* Syllabus Topics Pills */}
-                        {((item.selectedCategories && item.selectedCategories.length > 0) ||
-                          (item.selectedSubcategories && item.selectedSubcategories.length > 0) ||
-                          (item.selectedLeafCategories && item.selectedLeafCategories.length > 0)) && (
-                          <div className="space-y-1 bg-white p-3 rounded-2xl border border-gray-200/70">
-                            <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider block">📚 সিলেবাস বিষয়াবলী:</span>
-                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                              {(item.selectedCategories || []).map(c => (
-                                <span key={c} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
-                                  {c}
-                                </span>
-                              ))}
-                              {(item.selectedSubcategories || []).map(s => (
-                                <span key={s} className="bg-purple-50 text-purple-700 border border-purple-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
-                                  {s}
-                                </span>
-                              ))}
-                              {(item.selectedLeafCategories || []).map(l => (
-                                <span key={l} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
-                                  {l}
-                                </span>
-                              ))}
+                        {/* Syllabus Path Hierarchy */}
+                        {(() => {
+                          const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
+                          if (syllabusPaths.length === 0) return null;
+                          return (
+                            <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-indigo-100/80 shadow-2xs">
+                              <span className="text-[10.5px] font-black text-indigo-950 flex items-center gap-1.5">
+                                <FolderTree className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                📚 সিলেবাস (Selected Syllabus):
+                              </span>
+                              <div className="flex flex-col gap-1.5">
+                                {syllabusPaths.map((path, pIdx) => (
+                                  <div key={pIdx} className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-indigo-600 font-black">📌</span>
+                                    {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                                      <React.Fragment key={sIdx}>
+                                        <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
+                                        {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {item.details && (
                           <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs font-medium bg-white p-3 rounded-2xl border border-gray-100">
@@ -5494,7 +5479,7 @@ export default function UserPortal({
                             <button
                               onClick={() => {
                                 const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
-                                downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines);
+                                downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines, subcategories, categories, questions);
                               }}
                               className="bg-white hover:bg-gray-100 text-indigo-700 font-extrabold py-2.5 px-3.5 rounded-2xl transition text-xs border border-indigo-200 flex items-center justify-center gap-1.5 shadow-2xs"
                             >

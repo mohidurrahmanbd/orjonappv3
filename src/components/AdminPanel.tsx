@@ -4,7 +4,8 @@ import {
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
   History, FileText, CheckCircle2, Sparkles, Menu, ChevronDown, ChevronRight, ShieldAlert, AlertTriangle,
-  Download, Database, FileJson, RotateCcw, HardDrive, GraduationCap
+  Download, Database, FileJson, RotateCcw, HardDrive, GraduationCap,
+  Cloud, UploadCloud, ShieldCheck
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as ReactWindow from 'react-window';
@@ -13,13 +14,15 @@ import {
   CollectionCounts, 
   MigrationReport, 
   fetchFirestoreDocumentCounts, 
-  migrateDataToFirestore, 
+  migrateDataToFirestore,
+  syncCollectionToFirestore,
   getAllLocalStorageMap 
 } from '../lib/migration';
 
 import UserGrowthChart from './UserGrowthChart';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 
 const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || ReactWindow;
 
@@ -521,6 +524,170 @@ export default function AdminPanel({
       );
     } finally {
       setIsCountingFirestore(false);
+    }
+  };
+
+  // Cloud Sync Status & Percentage Calculation for Admin-Managed Data
+  const [isSyncingAllAdminData, setIsSyncingAllAdminData] = useState(false);
+  const [syncingSingleKey, setSyncingSingleKey] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{
+    currentStep: number;
+    totalSteps: number;
+    currentCollection: string;
+    percent: number;
+  } | null>(null);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+
+  const adminSyncStats = useMemo(() => {
+    const rawList = [
+      { key: 'questions', name: 'প্রশ্ন ভান্ডার (MCQ Bank)', local: questions.length, cloud: firestoreCounts?.questions ?? 0, icon: '📁', color: 'indigo', idPrefix: 'q' },
+      { key: 'courses', name: 'কোর্সসমূহ (Courses)', local: (courses || []).length, cloud: firestoreCounts?.courses ?? 0, icon: '🎓', color: 'purple', idPrefix: 'course' },
+      { key: 'routines', name: 'রুটিনসমূহ (Routines)', local: (routines || []).length, cloud: firestoreCounts?.routines ?? 0, icon: '📅', color: 'blue', idPrefix: 'rt' },
+      { key: 'live_exams', name: 'লাইভ পরীক্ষা (Live Exams)', local: (liveExams || []).length, cloud: firestoreCounts?.live_exams ?? 0, icon: '⏱️', color: 'amber', idPrefix: 'le' },
+      { key: 'categories', name: 'মূল বিষয়/ক্যাটাগরি (Categories)', local: (categories || []).length, cloud: firestoreCounts?.categories ?? 0, icon: '🗂️', color: 'emerald', idPrefix: 'cat' },
+      { key: 'subcategories', name: 'সাব-ক্যাটাগরি (Subcategories)', local: (subcategories || []).length, cloud: firestoreCounts?.subcategories ?? 0, icon: 'teal', idPrefix: 'subcat' },
+      { key: 'notices', name: 'পপআপ নোটিশ (Notices)', local: (notices || []).length, cloud: firestoreCounts?.notices ?? 0, icon: '📢', color: 'rose', idPrefix: 'notice' },
+      { key: 'audit_logs', name: 'অডিট লগ (Audit Logs)', local: (auditLogs || []).length, cloud: firestoreCounts?.audit_logs ?? 0, icon: '📜', color: 'violet', idPrefix: 'log' },
+    ];
+
+    let totalLocal = 0;
+    let totalSynced = 0;
+
+    const items = rawList.map(col => {
+      totalLocal += col.local;
+      const synced = col.local === 0 ? 0 : Math.min(col.local, col.cloud);
+      totalSynced += synced;
+      const pct = col.local === 0 
+        ? 100 
+        : Math.min(100, Math.round((col.cloud / col.local) * 100));
+
+      return {
+        ...col,
+        synced,
+        percent: pct,
+        isFullySynced: col.local === 0 ? true : col.cloud >= col.local
+      };
+    });
+
+    const overallPercent = totalLocal === 0 ? 100 : Math.min(100, Math.round((totalSynced / totalLocal) * 100));
+
+    return {
+      items,
+      totalLocal,
+      totalSynced,
+      overallPercent,
+      isAllSynced: overallPercent === 100,
+      hasCheckedCloud: !!firestoreCounts
+    };
+  }, [questions.length, courses, routines, liveExams, categories, subcategories, notices, auditLogs, firestoreCounts]);
+
+  const handleSyncAllAdminData = async () => {
+    setIsSyncingAllAdminData(true);
+    setSyncProgress({ currentStep: 0, totalSteps: 8, currentCollection: 'সিঙ্ক প্রস্তুতি চলছে...', percent: 0 });
+
+    try {
+      // 1. Questions
+      setSyncProgress({ currentStep: 1, totalSteps: 8, currentCollection: 'প্রশ্ন ভান্ডার (questions)...', percent: 12 });
+      if (questions.length > 0) {
+        await syncCollectionToFirestore('questions', questions, 'q');
+      }
+
+      // 2. Courses
+      setSyncProgress({ currentStep: 2, totalSteps: 8, currentCollection: 'কোর্সসমূহ (courses)...', percent: 25 });
+      if ((courses || []).length > 0) {
+        await syncCollectionToFirestore('courses', courses || [], 'course');
+      }
+
+      // 3. Routines
+      setSyncProgress({ currentStep: 3, totalSteps: 8, currentCollection: 'রুটিনসমূহ (routines)...', percent: 37 });
+      if ((routines || []).length > 0) {
+        await syncCollectionToFirestore('routines', routines || [], 'rt');
+      }
+
+      // 4. Live Exams
+      setSyncProgress({ currentStep: 4, totalSteps: 8, currentCollection: 'লাইভ পরীক্ষা (live_exams)...', percent: 50 });
+      if ((liveExams || []).length > 0) {
+        await syncCollectionToFirestore('live_exams', liveExams || [], 'le');
+      }
+
+      // 5. Categories
+      setSyncProgress({ currentStep: 5, totalSteps: 8, currentCollection: 'ক্যাটাগরি (categories)...', percent: 62 });
+      if ((categories || []).length > 0) {
+        await syncCollectionToFirestore('categories', categories || [], 'cat');
+      }
+
+      // 6. Subcategories
+      setSyncProgress({ currentStep: 6, totalSteps: 8, currentCollection: 'সাব-ক্যাটাগরি (subcategories)...', percent: 75 });
+      if ((subcategories || []).length > 0) {
+        await syncCollectionToFirestore('subcategories', subcategories || [], 'subcat');
+      }
+
+      // 7. Notices
+      setSyncProgress({ currentStep: 7, totalSteps: 8, currentCollection: 'নোটিশসমূহ (notices)...', percent: 87 });
+      if ((notices || []).length > 0) {
+        await syncCollectionToFirestore('notices', notices || [], 'notice');
+      }
+
+      // 8. Audit Logs
+      setSyncProgress({ currentStep: 8, totalSteps: 8, currentCollection: 'অডিট লগ (audit_logs)...', percent: 100 });
+      if ((auditLogs || []).length > 0) {
+        await syncCollectionToFirestore('audit_logs', auditLogs || [], 'log');
+      }
+
+      // Refresh Firestore counts
+      const res = await fetchFirestoreDocumentCounts();
+      if (res && res.counts) {
+        setFirestoreCounts(res.counts);
+      }
+
+      showCustomAlert(
+        'ক্লাউড সিঙ্ক সফল! (Cloud Sync 100%)',
+        'অ্যাডমিনের তৈরি ও আপডেট করা সকল প্রশ্ন, কোর্স, রুটিন, লাইভ এক্সাম, বিষয়/ক্যাটাগরি ও নোটিশ সফলভাবে Firebase Firestore ক্লাউডে ১০০% সিঙ্ক সম্পন্ন হয়েছে।',
+        'success'
+      );
+    } catch (err: any) {
+      showCustomAlert(
+        'সিঙ্ক ব্যর্থ হয়েছে!',
+        `ক্লাউডে সিঙ্ক করার সময় ত্রুটি ঘটেছে: ${err?.message || String(err)}`,
+        'warning'
+      );
+    } finally {
+      setIsSyncingAllAdminData(false);
+      setSyncProgress(null);
+    }
+  };
+
+  const handleSyncSingleAdminCollection = async (key: string) => {
+    setSyncingSingleKey(key);
+    try {
+      if (key === 'questions') {
+        await syncCollectionToFirestore('questions', questions, 'q');
+      } else if (key === 'courses') {
+        await syncCollectionToFirestore('courses', courses || [], 'course');
+      } else if (key === 'routines') {
+        await syncCollectionToFirestore('routines', routines || [], 'rt');
+      } else if (key === 'live_exams') {
+        await syncCollectionToFirestore('live_exams', liveExams || [], 'le');
+      } else if (key === 'categories') {
+        await syncCollectionToFirestore('categories', categories || [], 'cat');
+      } else if (key === 'subcategories') {
+        await syncCollectionToFirestore('subcategories', subcategories || [], 'subcat');
+      } else if (key === 'notices') {
+        await syncCollectionToFirestore('notices', notices || [], 'notice');
+      } else if (key === 'audit_logs') {
+        await syncCollectionToFirestore('audit_logs', auditLogs || [], 'log');
+      }
+
+      const res = await fetchFirestoreDocumentCounts();
+      if (res && res.counts) {
+        setFirestoreCounts(res.counts);
+      }
+
+      showCustomAlert('সিঙ্ক সম্পন্ন!', `"${key}" কালেকশনের ডেটা সফলভাবে Firebase Firestore-এ সিঙ্ক হয়েছে।`, 'success');
+    } catch (err: any) {
+      showCustomAlert('সিঙ্ক ব্যর্থ!', `ত্রুটি: ${err?.message || String(err)}`, 'warning');
+    } finally {
+      setSyncingSingleKey(null);
     }
   };
 
@@ -3242,6 +3409,22 @@ export default function AdminPanel({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Cloud Sync Status Indicator */}
+          <button
+            id="btn-admin-cloud-sync-status-badge"
+            type="button"
+            onClick={() => setShowSyncModal(true)}
+            className={`text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-xs flex items-center gap-2 shrink-0 cursor-pointer border ${
+              adminSyncStats.overallPercent === 100
+                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300'
+                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 animate-pulse'
+            }`}
+            title="ক্লাউড সিঙ্ক স্ট্যাটাস বিস্তারিত দেখুন"
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${adminSyncStats.overallPercent === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            <Cloud className="w-4 h-4 text-indigo-600" />
+            <span>ক্লাউড সিঙ্ক: <strong className="font-mono text-sm font-black">{adminSyncStats.overallPercent.toLocaleString('bn-BD')}%</strong></span>
+          </button>
           <button
             onClick={() => setActiveTab('firestore-migration')}
             className="bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500 text-xs font-extrabold px-3.5 py-1.5 rounded-xl transition shadow-xs flex items-center gap-1 shrink-0 cursor-pointer"
@@ -3357,6 +3540,26 @@ export default function AdminPanel({
 
               {/* Drawer Footer */}
               <div className="p-3.5 border-t border-gray-100 bg-slate-50 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    setShowSyncModal(true);
+                  }}
+                  className={`w-full p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition cursor-pointer ${
+                    adminSyncStats.overallPercent === 100
+                      ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Cloud className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>ক্লাউড সিঙ্ক স্ট্যাটাস:</span>
+                  </div>
+                  <span className="font-mono font-black text-xs px-2 py-0.5 bg-white/80 rounded-full border border-gray-200 shadow-2xs">
+                    {adminSyncStats.overallPercent.toLocaleString('bn-BD')}%
+                  </span>
+                </button>
                 <button
                   onClick={() => {
                     setDrawerOpen(false);
@@ -3496,6 +3699,210 @@ export default function AdminPanel({
               <Plus className="w-4 h-4 text-indigo-600" />
               <span>নতুন প্রশ্ন যোগ করুন</span>
             </button>
+          </div>
+
+          {/* Cloud Sync Status & Percentage Dashboard Card */}
+          <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 border border-indigo-500/30 shadow-xl flex flex-col gap-5">
+            {/* Header row */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-indigo-800/40 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-600/30 border border-indigo-400/30 rounded-2xl text-indigo-300">
+                  <Cloud className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-1.5">
+                      <span>ক্লাউড সিঙ্ক স্ট্যাটাস (Firebase Cloud Sync)</span>
+                    </h3>
+                    <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                      adminSyncStats.overallPercent === 100
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                    }`}>
+                      {adminSyncStats.overallPercent === 100 ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                      <span>{adminSyncStats.overallPercent.toLocaleString('bn-BD')}% সিঙ্কড</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200/90 mt-0.5">
+                    অ্যাডমিনের তৈরি/আপডেট করা সকল কোর্স, রুটিন, প্রশ্ন ও অন্যান্য কনটেন্ট ক্লাউডে সুরক্ষার লাইভ পরিমাপ।
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleRefreshFirestoreCounts}
+                  disabled={isCountingFirestore || isSyncingAllAdminData}
+                  className="flex-1 sm:flex-none px-3.5 py-2 bg-indigo-800/50 hover:bg-indigo-700/60 border border-indigo-500/30 text-indigo-200 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="ফায়ারস্টোর লাইভ ডাটা কাউন্ট যাচাই করুন"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCountingFirestore ? 'animate-spin' : ''}`} />
+                  <span>কাউন্ট রিফ্রেশ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSyncAllAdminData}
+                  disabled={isSyncingAllAdminData}
+                  className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-950/40 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                  title="সকল এডমিন ডাটা ক্লাউডে সিঙ্ক করুন"
+                >
+                  <UploadCloud className={`w-4 h-4 ${isSyncingAllAdminData ? 'animate-bounce' : ''}`} />
+                  <span>{isSyncingAllAdminData ? 'সিঙ্ক হচ্ছে...' : '⚡ ক্লাউডে সকল ডেটা সিঙ্ক করুন'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sync Progress Bar if Active */}
+            {syncProgress && (
+              <div className="bg-indigo-950/80 p-3.5 rounded-2xl border border-indigo-700/50 flex flex-col gap-2 animate-fade-in">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-indigo-200 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                    <span>সিঙ্ক অগ্রগতি: {syncProgress.currentCollection}</span>
+                  </span>
+                  <span className="text-emerald-400 font-mono font-black">{syncProgress.percent}%</span>
+                </div>
+                <div className="w-full bg-slate-800/80 h-2.5 rounded-full overflow-hidden border border-indigo-900">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-500 via-teal-400 to-emerald-400 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${syncProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Main KPI Summary Gauge */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+              {/* Giant Percent Display */}
+              <div className="md:col-span-4 bg-indigo-950/50 border border-indigo-800/40 p-4 sm:p-5 rounded-2xl flex flex-col items-center justify-center text-center">
+                <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">
+                  সার্বিক ক্লাউড সিঙ্ক হার (Overall Sync)
+                </span>
+                <div className="my-2 flex items-baseline gap-1">
+                  <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tight ${
+                    adminSyncStats.overallPercent === 100 ? 'text-emerald-400' : 'text-amber-400'
+                  }`}>
+                    {adminSyncStats.overallPercent.toLocaleString('bn-BD')}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden my-1">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      adminSyncStats.overallPercent === 100 
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400' 
+                        : 'bg-gradient-to-r from-amber-500 to-emerald-400'
+                    }`}
+                    style={{ width: `${adminSyncStats.overallPercent}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-indigo-200/80 mt-1">
+                  {adminSyncStats.overallPercent === 100
+                    ? '✅ সকল অ্যাডমিন ডেটা ক্লাউডে সুরক্ষিত ও শতভাগ সিঙ্কড'
+                    : `⚠️ ${Math.max(0, adminSyncStats.totalLocal - adminSyncStats.totalSynced).toLocaleString('bn-BD')} টি ডেটা ক্লাউডে সিঙ্ক করা বাকি`}
+                </span>
+              </div>
+
+              {/* Counts Breakdown Stats */}
+              <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="bg-indigo-950/40 border border-indigo-800/30 p-3 rounded-xl flex flex-col justify-between">
+                  <span className="text-[10px] text-indigo-300 font-bold uppercase">মোট অ্যাডমিন ডেটা</span>
+                  <span className="text-xl font-black text-white mt-1">
+                    {adminSyncStats.totalLocal.toLocaleString('bn-BD')} টি
+                  </span>
+                  <span className="text-[10px] text-gray-400">লোকাল স্টোরেজে সংরক্ষিত</span>
+                </div>
+
+                <div className="bg-indigo-950/40 border border-indigo-800/30 p-3 rounded-xl flex flex-col justify-between">
+                  <span className="text-[10px] text-emerald-300 font-bold uppercase">ক্লাউডে সংরক্ষিত</span>
+                  <span className="text-xl font-black text-emerald-400 mt-1">
+                    {adminSyncStats.totalSynced.toLocaleString('bn-BD')} টি
+                  </span>
+                  <span className="text-[10px] text-emerald-400/80">Firestore লাইভ রেকর্ড</span>
+                </div>
+
+                <div className="bg-indigo-950/40 border border-indigo-800/30 p-3 rounded-xl flex flex-col justify-between col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-amber-300 font-bold uppercase">পেন্ডিং সিঙ্ক ডেটা</span>
+                  <span className="text-xl font-black text-amber-400 mt-1">
+                    {Math.max(0, adminSyncStats.totalLocal - adminSyncStats.totalSynced).toLocaleString('bn-BD')} টি
+                  </span>
+                  <span className="text-[10px] text-amber-400/80">সিঙ্ক বাটনে চাপুন</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Individual 8 Admin Collections Grid */}
+            <div>
+              <div className="flex justify-between items-center mb-2 px-1">
+                <span className="text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">
+                  কালেকশনভিত্তিক ক্লাউড সিঙ্ক শতাংশ (Collection Breakdown):
+                </span>
+                <span className="text-[10px] text-indigo-400 font-mono">৮টি অ্যাডমিন কালেকশন</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                {adminSyncStats.items.map((item) => {
+                  const isSingleSyncing = syncingSingleKey === item.key;
+                  return (
+                    <div 
+                      key={item.key}
+                      className="bg-indigo-950/60 border border-indigo-800/40 hover:border-indigo-600/60 p-3 rounded-2xl flex flex-col justify-between gap-2 transition"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base">{item.icon}</span>
+                          <div>
+                            <h4 className="font-extrabold text-white text-[11.5px] leading-tight">
+                              {item.name}
+                            </h4>
+                            <span className="text-[9.5px] text-indigo-300/70 font-mono uppercase">{item.key}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSyncSingleAdminCollection(item.key)}
+                          disabled={isSingleSyncing || isSyncingAllAdminData}
+                          className="p-1 text-indigo-300 hover:text-white bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/50 rounded-lg text-[10px] font-bold transition flex items-center gap-0.5 shrink-0 cursor-pointer disabled:opacity-50"
+                          title={`শুধুমাত্র ${item.name} সিঙ্ক করুন`}
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${isSingleSyncing ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      {/* Numbers */}
+                      <div className="flex items-center justify-between text-[11px] border-t border-indigo-900/50 pt-1.5">
+                        <span className="text-indigo-200">
+                          লোকাল: <strong className="text-white font-mono">{item.local.toLocaleString('bn-BD')}</strong>
+                        </span>
+                        <span className="text-indigo-200">
+                          ক্লাউড: <strong className="text-emerald-400 font-mono">{item.cloud.toLocaleString('bn-BD')}</strong>
+                        </span>
+                      </div>
+
+                      {/* Mini Progress Bar */}
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-bold mb-1">
+                          <span className={item.isFullySynced ? 'text-emerald-400' : 'text-amber-400'}>
+                            {item.isFullySynced ? 'সিঙ্কড' : 'পেন্ডিং'}
+                          </span>
+                          <span className="font-mono text-white font-extrabold">{item.percent.toLocaleString('bn-BD')}%</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              item.isFullySynced ? 'bg-emerald-400' : 'bg-amber-400'
+                            }`}
+                            style={{ width: `${item.percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Core System Metrics Grid */}
@@ -7546,6 +7953,47 @@ export default function AdminPanel({
                     )}
                   </div>
                 </div>
+
+                {/* Live Syllabus Hierarchy Path Preview */}
+                {(() => {
+                  const dummyRoutine: Routine = {
+                    id: 'preview',
+                    title: routineTitle,
+                    details: routineDetails,
+                    selectedCategories: routineSelectedCategories,
+                    selectedSubcategories: routineSelectedSubcategories,
+                    selectedLeafCategories: routineSelectedLeafCategories,
+                    createdAt: new Date().toISOString()
+                  };
+                  const livePaths = formatRoutineSyllabusPaths(dummyRoutine, subcategories, categories, questions);
+                  if (livePaths.length === 0) return null;
+                  return (
+                    <div className="bg-indigo-50/90 border border-indigo-200 rounded-2xl p-3 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-black text-indigo-950">
+                        <span className="flex items-center gap-1.5">
+                          <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                          📚 সিলেবাস পাথ (Selected Syllabus Hierarchy):
+                        </span>
+                        <span className="text-[10px] text-indigo-700 font-bold bg-indigo-100 px-2 py-0.5 rounded-md">
+                          মোট {livePaths.length} টি শাখা
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {livePaths.map((path, pIdx) => (
+                          <div key={pIdx} className="bg-white border border-indigo-100 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
+                            <span className="text-indigo-600 font-black">📌</span>
+                            {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                              <React.Fragment key={sIdx}>
+                                <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
+                                {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* --- PRESET SCHEDULED EXAM CONFIGURATION --- */}
@@ -7771,7 +8219,7 @@ export default function AdminPanel({
                         <button
                           onClick={() => {
                             const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
-                            downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines);
+                            downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines, subcategories, categories, questions);
                           }}
                           className="w-full bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold py-1.5 px-3 rounded-xl transition text-[10px] flex items-center justify-center gap-1.5"
                         >
@@ -7792,31 +8240,32 @@ export default function AdminPanel({
                         </div>
                       )}
 
-                      {/* Selected Topics Pills */}
-                      {((item.selectedCategories && item.selectedCategories.length > 0) ||
-                        (item.selectedSubcategories && item.selectedSubcategories.length > 0) ||
-                        (item.selectedLeafCategories && item.selectedLeafCategories.length > 0)) && (
-                        <div className="space-y-1 bg-white p-2.5 rounded-xl border border-gray-100">
-                          <span className="text-[10px] font-bold text-gray-500 block">📚 সিলেবাস টপিকসমূহ:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {(item.selectedCategories || []).map(c => (
-                              <span key={c} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
-                                {c}
-                              </span>
-                            ))}
-                            {(item.selectedSubcategories || []).map(s => (
-                              <span key={s} className="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
-                                {s}
-                              </span>
-                            ))}
-                            {(item.selectedLeafCategories || []).map(l => (
-                              <span key={l} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md text-[9px] font-bold">
-                                {l}
-                              </span>
-                            ))}
+                      {/* Syllabus Path Hierarchy */}
+                      {(() => {
+                        const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
+                        if (syllabusPaths.length === 0) return null;
+                        return (
+                          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-indigo-100/90 shadow-2xs">
+                            <span className="text-[10px] font-black text-indigo-950 flex items-center gap-1">
+                              <FolderTree className="w-3 h-3 text-indigo-600" />
+                              📚 সিলেবাস (Selected Syllabus):
+                            </span>
+                            <div className="flex flex-col gap-1">
+                              {syllabusPaths.map((path, pIdx) => (
+                                <div key={pIdx} className="bg-indigo-50/70 border border-indigo-200/80 text-indigo-950 font-bold px-2 py-1 rounded-lg text-[9.5px] flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-indigo-600 font-black">📌</span>
+                                  {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                                    <React.Fragment key={sIdx}>
+                                      <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
+                                      {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {item.details && (
                         <p className="text-gray-600 text-[11px] whitespace-pre-line leading-relaxed bg-white p-2.5 rounded-xl border border-gray-100">
@@ -8679,8 +9128,16 @@ export default function AdminPanel({
                     <span className="text-sm font-extrabold text-white">{firestoreCounts.live_exams.toLocaleString('bn-BD')}</span>
                   </div>
                   <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
+                    <span className="text-[10px] text-indigo-300 font-medium block">courses</span>
+                    <span className="text-sm font-extrabold text-white">{(firestoreCounts.courses || 0).toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
                     <span className="text-[10px] text-indigo-300 font-medium block">upload_history</span>
                     <span className="text-sm font-extrabold text-white">{firestoreCounts.upload_history.toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
+                    <span className="text-[10px] text-indigo-300 font-medium block">audit_logs</span>
+                    <span className="text-sm font-extrabold text-white">{(firestoreCounts.audit_logs || 0).toLocaleString('bn-BD')}</span>
                   </div>
                 </div>
               </div>
@@ -10061,6 +10518,155 @@ export default function AdminPanel({
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* CLOUD SYNC DETAILS MODAL */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-slate-900 border border-indigo-500/30 text-white rounded-3xl p-5 sm:p-6 w-full max-w-2xl shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-indigo-800/40 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-indigo-600/30 rounded-2xl text-indigo-300 border border-indigo-500/30">
+                  <Cloud className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <span>ক্লাউড সিঙ্ক বিশদ বিবরণ (Cloud Sync Status)</span>
+                  </h3>
+                  <p className="text-xs text-indigo-200">
+                    এডমিন দ্বারা তৈরি ও আপডেট করা তথ্যের ক্লাউড স্টোরেজ লাইভ সামঞ্জস্য
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="p-1.5 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 hover:text-white rounded-xl transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Overall Percentage Card */}
+            <div className="bg-gradient-to-r from-indigo-950 to-slate-950 p-4 rounded-2xl border border-indigo-800/40 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+                <span className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider">সার্বিক সিঙ্ক শতাংশ</span>
+                <span className={`text-3xl sm:text-4xl font-black font-mono mt-0.5 ${
+                  adminSyncStats.overallPercent === 100 ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                  {adminSyncStats.overallPercent.toLocaleString('bn-BD')}%
+                </span>
+                <span className="text-[11px] text-indigo-200/80 mt-1">
+                  মোট অ্যাডমিন ডেটা: {adminSyncStats.totalLocal.toLocaleString('bn-BD')} টি | ক্লাউডে: {adminSyncStats.totalSynced.toLocaleString('bn-BD')} টি
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleSyncAllAdminData}
+                  disabled={isSyncingAllAdminData}
+                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{isSyncingAllAdminData ? 'সিঙ্ক হচ্ছে...' : '⚡ ক্লাউডে সকল ডেটা সিঙ্ক করুন'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefreshFirestoreCounts}
+                  disabled={isCountingFirestore}
+                  className="px-4 py-2 bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/50 text-indigo-200 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCountingFirestore ? 'animate-spin' : ''}`} />
+                  <span>কাউন্ট রিফ্রেশ করুন</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sync Progress Bar if Active */}
+            {syncProgress && (
+              <div className="bg-indigo-950 p-3 rounded-xl border border-indigo-700/50 flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-indigo-200">{syncProgress.currentCollection}</span>
+                  <span className="text-emerald-400 font-mono">{syncProgress.percent}%</span>
+                </div>
+                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-emerald-400 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${syncProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Collection breakdown list */}
+            <div className="space-y-2 text-xs">
+              <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider block px-1">
+                কালেকশনভিত্তিক বিবরণ ({adminSyncStats.items.length}টি কালেকশন):
+              </span>
+
+              {adminSyncStats.items.map(item => {
+                const isSingleSyncing = syncingSingleKey === item.key;
+                return (
+                  <div
+                    key={item.key}
+                    className="bg-indigo-950/40 border border-indigo-800/40 hover:border-indigo-700/60 p-3 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 transition"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-[140px]">
+                      <span className="text-xl">{item.icon}</span>
+                      <div>
+                        <h4 className="font-extrabold text-white text-xs">{item.name}</h4>
+                        <span className="text-[10px] text-indigo-300/70 font-mono uppercase">{item.key}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 w-full sm:w-auto px-1 sm:px-3">
+                      <div className="flex justify-between items-center text-[11px] mb-1 font-medium">
+                        <span className="text-indigo-200">
+                          লোকাল: <strong className="text-white font-mono">{item.local.toLocaleString('bn-BD')}</strong> | ক্লাউড: <strong className="text-emerald-400 font-mono">{item.cloud.toLocaleString('bn-BD')}</strong>
+                        </span>
+                        <span className={`font-bold font-mono ${item.isFullySynced ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {item.percent.toLocaleString('bn-BD')}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-indigo-900/50">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            item.isFullySynced ? 'bg-emerald-400' : 'bg-amber-400'
+                          }`}
+                          style={{ width: `${item.percent}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSyncSingleAdminCollection(item.key)}
+                      disabled={isSingleSyncing || isSyncingAllAdminData}
+                      className="w-full sm:w-auto px-3 py-1.5 bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/50 text-indigo-200 hover:text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
+                      title={`শুধুমাত্র ${item.name} সিঙ্ক করুন`}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isSingleSyncing ? 'animate-spin' : ''}`} />
+                      <span>{isSingleSyncing ? 'সিঙ্ক হচ্ছে...' : 'সিঙ্ক'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-indigo-800/40 pt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSyncModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

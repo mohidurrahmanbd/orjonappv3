@@ -10,7 +10,9 @@ export interface CollectionCounts {
   subcategories: number;
   notices: number;
   routines: number;
+  courses: number;
   live_exams: number;
+  audit_logs: number;
   upload_history: number;
 }
 
@@ -74,21 +76,23 @@ export interface FirestoreCountsResult {
 
 export async function fetchFirestoreDocumentCounts(): Promise<FirestoreCountsResult> {
   const collections = [
-    'questions', 'users', 'bookmarks', 'attempts', 
-    'categories', 'subcategories', 'notices', 'routines', 
-    'live_exams', 'upload_history'
+    'questions', 'courses', 'routines', 'live_exams',
+    'categories', 'subcategories', 'notices', 'audit_logs',
+    'users', 'bookmarks', 'attempts', 'upload_history'
   ] as const;
 
   const counts: CollectionCounts = {
     questions: 0,
-    users: 0,
-    bookmarks: 0,
-    attempts: 0,
+    courses: 0,
+    routines: 0,
+    live_exams: 0,
     categories: 0,
     subcategories: 0,
     notices: 0,
-    routines: 0,
-    live_exams: 0,
+    audit_logs: 0,
+    users: 0,
+    bookmarks: 0,
+    attempts: 0,
     upload_history: 0
   };
 
@@ -147,28 +151,32 @@ export async function migrateDataToFirestore(
   };
 
   const questions = parseKeyData('orjon_questions', 'medha_questions');
-  const users = parseKeyData('orjon_users', 'medha_users');
-  const bookmarks = parseKeyData('orjon_bookmarks', 'medha_bookmarks');
-  const attempts = parseKeyData('orjon_attempts', 'medha_attempts');
+  const courses = parseKeyData('orjon_courses', 'medha_courses');
+  const routines = parseKeyData('orjon_routines', 'medha_routines');
+  const liveExams = parseKeyData('orjon_live_exams', 'medha_live_exams');
   const categories = parseKeyData('orjon_categories', 'medha_categories');
   const subcategories = parseKeyData('orjon_subcategories', 'medha_subcategories');
   const notices = parseKeyData('orjon_notices', 'medha_notices');
-  const routines = parseKeyData('orjon_routines', 'medha_routines');
-  const liveExams = parseKeyData('orjon_live_exams', 'medha_live_exams');
+  const auditLogs = parseKeyData('orjon_audit_logs', 'medha_audit_logs');
+  const users = parseKeyData('orjon_users', 'medha_users');
+  const bookmarks = parseKeyData('orjon_bookmarks', 'medha_bookmarks');
+  const attempts = parseKeyData('orjon_attempts', 'medha_attempts');
   const uploadHistory = parseKeyData('orjon_upload_history', 'medha_upload_history');
 
-  addLog(`📊 স্থানান্তরের জন্য ডাটা চিহ্নিত করা হয়েছে: ${questions.length}টি প্রশ্ন, ${users.length}জন ইউজার, ${attempts.length}টি রেজাল্ট, ${categories.length}টি ক্যাটাগরি...`);
+  addLog(`📊 স্থানান্তরের জন্য ডাটা চিহ্নিত করা হয়েছে: ${questions.length}টি প্রশ্ন, ${courses.length}টি কোর্স, ${routines.length}টি রুটিন, ${users.length}জন ইউজার, ${attempts.length}টি রেজাল্ট, ${categories.length}টি ক্যাটাগরি...`);
 
   const counts: CollectionCounts = {
     questions: 0,
-    users: 0,
-    bookmarks: 0,
-    attempts: 0,
+    courses: 0,
+    routines: 0,
+    live_exams: 0,
     categories: 0,
     subcategories: 0,
     notices: 0,
-    routines: 0,
-    live_exams: 0,
+    audit_logs: 0,
+    users: 0,
+    bookmarks: 0,
+    attempts: 0,
     upload_history: 0
   };
 
@@ -176,6 +184,41 @@ export async function migrateDataToFirestore(
     if (questions.length > 0) {
       addLog('🚀 `questions` কালেকশন আপলোড হচ্ছে...');
       counts.questions = await uploadCollectionInBatches('questions', questions, 'q', onProgress);
+    }
+
+    if (courses.length > 0) {
+      addLog('🚀 `courses` কালেকশন আপলোড হচ্ছে...');
+      counts.courses = await uploadCollectionInBatches('courses', courses, 'course', onProgress);
+    }
+
+    if (routines.length > 0) {
+      addLog('🚀 `routines` কালেকশন আপলোড হচ্ছে...');
+      counts.routines = await uploadCollectionInBatches('routines', routines, 'rt', onProgress);
+    }
+
+    if (liveExams.length > 0) {
+      addLog('🚀 `live_exams` কালেকশন আপলোড হচ্ছে...');
+      counts.live_exams = await uploadCollectionInBatches('live_exams', liveExams, 'le', onProgress);
+    }
+
+    if (categories.length > 0) {
+      addLog('🚀 `categories` কালেকশন আপলোড হচ্ছে...');
+      counts.categories = await uploadCollectionInBatches('categories', categories, 'cat', onProgress);
+    }
+
+    if (subcategories.length > 0) {
+      addLog('🚀 `subcategories` কালেকশন আপলোড হচ্ছে...');
+      counts.subcategories = await uploadCollectionInBatches('subcategories', subcategories, 'subcat', onProgress);
+    }
+
+    if (notices.length > 0) {
+      addLog('🚀 `notices` কালেকশন আপলোড হচ্ছে...');
+      counts.notices = await uploadCollectionInBatches('notices', notices, 'notice', onProgress);
+    }
+
+    if (auditLogs.length > 0) {
+      addLog('🚀 `audit_logs` কালেকশন আপলোড হচ্ছে...');
+      counts.audit_logs = await uploadCollectionInBatches('audit_logs', auditLogs, 'log', onProgress);
     }
 
     if (users.length > 0) {
@@ -194,31 +237,6 @@ export async function migrateDataToFirestore(
     if (attempts.length > 0) {
       addLog('🚀 `attempts` কালেকশন আপলোড হচ্ছে...');
       counts.attempts = await uploadCollectionInBatches('attempts', attempts, 'att', onProgress);
-    }
-
-    if (categories.length > 0) {
-      addLog('🚀 `categories` কালেকশন আপলোড হচ্ছে...');
-      counts.categories = await uploadCollectionInBatches('categories', categories, 'cat', onProgress);
-    }
-
-    if (subcategories.length > 0) {
-      addLog('🚀 `subcategories` কালেকশন আপলোড হচ্ছে...');
-      counts.subcategories = await uploadCollectionInBatches('subcategories', subcategories, 'subcat', onProgress);
-    }
-
-    if (notices.length > 0) {
-      addLog('🚀 `notices` কালেকশন আপলোড হচ্ছে...');
-      counts.notices = await uploadCollectionInBatches('notices', notices, 'notice', onProgress);
-    }
-
-    if (routines.length > 0) {
-      addLog('🚀 `routines` কালেকশন আপলোড হচ্ছে...');
-      counts.routines = await uploadCollectionInBatches('routines', routines, 'rt', onProgress);
-    }
-
-    if (liveExams.length > 0) {
-      addLog('🚀 `live_exams` কালেকশন আপলোড হচ্ছে...');
-      counts.live_exams = await uploadCollectionInBatches('live_exams', liveExams, 'le', onProgress);
     }
 
     if (uploadHistory.length > 0) {

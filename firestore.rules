@@ -55,6 +55,18 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Courses collection
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Audit Logs collection
+    match /audit_logs/{logId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Live Exams collection
     match /live_exams/{liveExamId} {
       allow read: if true;
