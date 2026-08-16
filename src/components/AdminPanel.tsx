@@ -1028,6 +1028,7 @@ export default function AdminPanel({
   // Routine settings states & Cascading Topic Filters
   const [routineTitle, setRoutineTitle] = useState('');
   const [routineDetails, setRoutineDetails] = useState('');
+  const [routineSelectedRootCategory, setRoutineSelectedRootCategory] = useState<string>('বিষয়ভিত্তিক প্রস্তুতি');
   const [routineSelectedCategories, setRoutineSelectedCategories] = useState<string[]>([]);
   const [routineSelectedSubcategories, setRoutineSelectedSubcategories] = useState<string[]>([]);
   const [routineSelectedLeafCategories, setRoutineSelectedLeafCategories] = useState<string[]>([]);
@@ -1348,161 +1349,228 @@ export default function AdminPanel({
     return totalMap;
   }, [subcategories, subcategoryDescendantsMap, nodeQuestionCountMap]);
 
-  // Computed Subcategories based on selected Root Categories for Routine Management
-  const routineAvailableSubcategories = useMemo(() => {
-    if (routineSelectedCategories.length === 0) {
-      return subcategories;
+  // 1. Root categories for routine builder
+  const routineRootCategories = useMemo(() => [
+    'বিষয়ভিত্তিক প্রস্তুতি',
+    'জব সলিউশন পরীক্ষা',
+    'সাল ভিত্তিক জব সলিউশন'
+  ], []);
+
+  // 2. Computed Categories dynamically based on selected Root Category (Step 1 -> Step 2)
+  const routineAvailableCategories = useMemo(() => {
+    if (!routineSelectedRootCategory) {
+      return [];
     }
 
-    const selectedNorm = routineSelectedCategories.map(c => normalizeName(c));
-    const hasJob = routineSelectedCategories.some(c => isJobSolutionVariation(c));
-    const hasYear = routineSelectedCategories.some(c => isYearJobSolutionVariation(c));
-    const hasSubject = routineSelectedCategories.some(c => c === 'বিষয়ভিত্তিক প্রস্তুতি' || normalizeName(c) === 'বিষয়ভিত্তিক প্রস্তুতি');
+    const normRoot = normalizeName(routineSelectedRootCategory);
+    const catMap = new Map<string, number>();
 
-    return subcategories.filter(s => {
+    if (normRoot === normalizeName('বিষয়ভিত্তিক প্রস্তুতি') || normRoot === normalizeName('বিষয় ভিক্তিক প্রস্তুতি')) {
+      // Collect standard subject categories and any subcategories whose parentCategory is 'বিষয়ভিত্তিক প্রস্তুতি' or default subjects
+      const knownSubjects = new Set(STANDARD_SUBJECT_CATEGORIES);
+      subcategories.forEach(s => {
+        if (s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি' || s.parentCategory === 'বিষয় ভিক্তিক প্রস্তুতি' || (!s.parentCategory && !isJobSolutionVariation(s.name) && !isYearJobSolutionVariation(s.name))) {
+          knownSubjects.add(s.name.trim());
+        }
+      });
+      categories.forEach(c => {
+        if (!isJobSolutionVariation(c.name) && !isYearJobSolutionVariation(c.name) && c.name !== 'বিষয়ভিত্তিক প্রস্তুতি' && c.name !== 'বিষয় ভিক্তিক প্রস্তুতি') {
+          knownSubjects.add(c.name.trim());
+        }
+      });
+
+      knownSubjects.forEach(subjectName => {
+        if (!subjectName || isJobSolutionVariation(subjectName) || isYearJobSolutionVariation(subjectName)) return;
+        const subLower = subjectName.toLowerCase();
+        const count = subcategoryDescendantsCountMap.get(subLower) || nodeQuestionCountMap.get(subLower) || 0;
+        catMap.set(subjectName, count);
+      });
+    } else if (normRoot === normalizeName('জব সলিউশন পরীক্ষা') || isJobSolutionVariation(routineSelectedRootCategory)) {
+      // Collect job solution categories (BCS, Primary, NTRCA, Bank, etc.)
+      const jobCats = new Set<string>();
+      subcategories.forEach(s => {
+        if (isJobSolutionVariation(s.parentCategory || '') || s.parentCategory === 'জব সলিউশন পরীক্ষা' || s.parentCategory === 'জব সলিউশন') {
+          jobCats.add(s.name.trim());
+        }
+      });
+
+      if (jobCats.size === 0) {
+        // Fallback common job solution categories
+        ['বিসিএস প্রিলিমিনারি', 'প্রাথমিক সহকারী শিক্ষক নিয়োগ', 'এনটিআরসিএ (NTRCA)', 'ব্যাংক নিয়োগ পরীক্ষা', 'পিএসসি ও অন্যান্য নন-ক্যাডার', 'মন্ত্রণালয় ও অধিদপ্তর', 'রেলওয়ে নিয়োগ পরীক্ষা', 'অন্যান্য সরকারি ও স্বায়ত্তশাসিত প্রতিষ্ঠান'].forEach(j => jobCats.add(j));
+      }
+
+      jobCats.forEach(catName => {
+        const catLower = catName.toLowerCase();
+        const count = subcategoryDescendantsCountMap.get(catLower) || nodeQuestionCountMap.get(catLower) || 0;
+        catMap.set(catName, count);
+      });
+    } else if (normRoot === normalizeName('সাল ভিত্তিক জব সলিউশন') || isYearJobSolutionVariation(routineSelectedRootCategory)) {
+      // Collect year categories
+      const yearCats = new Set<string>();
+      subcategories.forEach(s => {
+        if (isYearJobSolutionVariation(s.parentCategory || '') || s.parentCategory === 'সাল ভিত্তিক জব সলিউশন' || isYearJobSolutionVariation(s.name)) {
+          yearCats.add(s.name.trim());
+        }
+      });
+
+      if (yearCats.size === 0) {
+        ['২০২৪', '২০২৩', '২০২২', '২০২১', '২০২০', '২০১৯', '২০১৮', '২০১৭', '২০১৬', '২০১৫'].forEach(y => yearCats.add(y));
+      }
+
+      yearCats.forEach(catName => {
+        const catLower = catName.toLowerCase();
+        const count = subcategoryDescendantsCountMap.get(catLower) || nodeQuestionCountMap.get(catLower) || 0;
+        catMap.set(catName, count);
+      });
+    } else {
+      // Custom root category
+      subcategories.forEach(s => {
+        if (s.parentCategory && normalizeName(s.parentCategory) === normRoot) {
+          const count = subcategoryDescendantsCountMap.get(s.name.toLowerCase()) || nodeQuestionCountMap.get(s.name.toLowerCase()) || 0;
+          catMap.set(s.name.trim(), count);
+        }
+      });
+    }
+
+    return Array.from(catMap.entries()).map(([name, count]) => ({ name, count }));
+  }, [routineSelectedRootCategory, subcategories, categories, subcategoryDescendantsCountMap, nodeQuestionCountMap]);
+
+  // 3. Computed Sub-categories dynamically based on selected Categories (Step 2 -> Step 3)
+  const routineAvailableSubcategories = useMemo(() => {
+    if (routineSelectedCategories.length === 0) {
+      return [];
+    }
+
+    const selectedCatNorms = routineSelectedCategories.map(c => normalizeName(c));
+    const subMap = new Map<string, { id: string; name: string; parentCategory: string; count: number }>();
+
+    subcategories.forEach(s => {
       const parentNorm = normalizeName(s.parentCategory || '');
-      if (hasJob && isJobSolutionVariation(s.parentCategory || '')) return true;
-      if (hasYear && isYearJobSolutionVariation(s.parentCategory || '')) return true;
-      if (hasSubject && (!s.parentCategory || s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')) return true;
-      if (selectedNorm.includes(parentNorm)) return true;
+      const sNorm = normalizeName(s.name);
 
-      // Check if this subcategory connects up to any selected root category
+      // Direct child of one of the selected categories
+      const isDirectChild = selectedCatNorms.includes(parentNorm);
+      
+      // Or descendant of one of the selected categories
+      let isDescendant = false;
       let currentSub: SubcategoryItem | undefined = s;
       let depth = 10;
       while (currentSub && currentSub.parentCategory && depth > 0) {
         const pNorm = normalizeName(currentSub.parentCategory);
-        if (selectedNorm.includes(pNorm)) return true;
-        if (hasJob && isJobSolutionVariation(currentSub.parentCategory)) return true;
-        if (hasYear && isYearJobSolutionVariation(currentSub.parentCategory)) return true;
-        if (hasSubject && (!currentSub.parentCategory || currentSub.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')) return true;
+        if (selectedCatNorms.includes(pNorm)) {
+          isDescendant = true;
+          break;
+        }
         currentSub = subcategories.find(item => normalizeName(item.name) === pNorm);
         depth--;
       }
 
-      return false;
+      // Do not list the category itself if it appears in subcategories
+      if ((isDirectChild || isDescendant) && !selectedCatNorms.includes(sNorm)) {
+        const count = subcategoryDescendantsCountMap.get(sNorm) || nodeQuestionCountMap.get(sNorm) || 0;
+        subMap.set(s.name.trim(), {
+          id: s.id || s.name,
+          name: s.name.trim(),
+          parentCategory: s.parentCategory || '',
+          count
+        });
+      }
     });
-  }, [subcategories, routineSelectedCategories]);
 
-  // Computed Leaf Categories (leaf subcategories and csvCategory topics) based on selected Categories & Subcategories for Routine Management
+    // Also check questions with matching category for distinct subcategories
+    questions.forEach(q => {
+      const qCatNorm = normalizeName(q.category || '');
+      const qCatsNorm = (q.categories || []).map(normalizeName);
+      const matchesCat = selectedCatNorms.includes(qCatNorm) || qCatsNorm.some(c => selectedCatNorms.includes(c));
+
+      if (matchesCat && q.subcategory) {
+        const subName = q.subcategory.trim();
+        const subNorm = normalizeName(subName);
+        if (!selectedCatNorms.includes(subNorm) && !subMap.has(subName)) {
+          const count = nodeQuestionCountMap.get(subNorm) || 1;
+          subMap.set(subName, {
+            id: `q-sub-${subName}`,
+            name: subName,
+            parentCategory: q.category || '',
+            count
+          });
+        }
+      }
+    });
+
+    return Array.from(subMap.values());
+  }, [routineSelectedCategories, subcategories, questions, subcategoryDescendantsCountMap, nodeQuestionCountMap]);
+
+  // 4. Computed Leaf Categories dynamically based on selected Subcategories (Step 3 -> Step 4)
   const routineAvailableLeafCategories = useMemo(() => {
-    const leafMap = new Map<string, number>();
-
-    if (routineSelectedSubcategories.length > 0) {
-      const activeSubNames = routineSelectedSubcategories.map(s => s.trim().toLowerCase());
-      const activeSubSet = new Set(activeSubNames);
-
-      activeSubNames.forEach(subName => {
-        const descendants = subcategoryDescendantsMap.get(subName);
-        if (descendants) {
-          descendants.forEach(d => activeSubSet.add(d));
-        }
-      });
-
-      // 1. Leaf child subcategories (subcategories under selected that have no further subcategories)
-      subcategories.forEach(s => {
-        const sLower = s.name.trim().toLowerCase();
-        const parentLower = (s.parentCategory || '').trim().toLowerCase();
-        if (activeSubSet.has(parentLower) || activeSubSet.has(sLower)) {
-          const isLeaf = !subcategories.some(child => (child.parentCategory || '').trim().toLowerCase() === sLower);
-          if (isLeaf) {
-            const count = subcategoryDescendantsCountMap.get(sLower) || nodeQuestionCountMap.get(sLower) || 0;
-            leafMap.set(s.name.trim(), count);
-          }
-        }
-      });
-
-      // 2. csvCategory values from questions matching active subcategories
-      questions.forEach(q => {
-        const qSub = (q.subcategory || '').trim().toLowerCase();
-        const qCsv = (q.csvCategory || '').trim();
-        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
-
-        const matchesSub = activeSubSet.has(qSub) || qSubArray.some(s => activeSubSet.has(s));
-        if (matchesSub && qCsv) {
-          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
-        }
-      });
-    } else if (routineSelectedCategories.length > 0) {
-      const catSet = new Set(routineSelectedCategories);
-      questions.forEach(q => {
-        const qRoots = questionRootCategoriesMap.get(q.id);
-        const matchesCat = (qRoots && routineSelectedCategories.some(c => qRoots.has(c))) || catSet.has(q.category || '');
-        const qCsv = (q.csvCategory || '').trim();
-        if (matchesCat && qCsv) {
-          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
-        }
-      });
-    } else {
-      questions.forEach(q => {
-        const qCsv = (q.csvCategory || '').trim();
-        if (qCsv) {
-          leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
-        }
-      });
+    if (routineSelectedSubcategories.length === 0) {
+      return [];
     }
+
+    const leafMap = new Map<string, number>();
+    const activeSubNames = routineSelectedSubcategories.map(s => s.trim().toLowerCase());
+    const activeSubSet = new Set(activeSubNames);
+
+    activeSubNames.forEach(subName => {
+      const descendants = subcategoryDescendantsMap.get(subName);
+      if (descendants) {
+        descendants.forEach(d => activeSubSet.add(d));
+      }
+    });
+
+    // 1. Leaf child subcategories (subcategories under selected that have no further subcategories)
+    subcategories.forEach(s => {
+      const sLower = s.name.trim().toLowerCase();
+      const parentLower = (s.parentCategory || '').trim().toLowerCase();
+      if (activeSubSet.has(parentLower)) {
+        const isLeaf = !subcategories.some(child => (child.parentCategory || '').trim().toLowerCase() === sLower);
+        if (isLeaf && !activeSubSet.has(sLower)) {
+          const count = subcategoryDescendantsCountMap.get(sLower) || nodeQuestionCountMap.get(sLower) || 0;
+          leafMap.set(s.name.trim(), count);
+        }
+      }
+    });
+
+    // 2. csvCategory values from questions matching active subcategories
+    questions.forEach(q => {
+      const qSub = (q.subcategory || '').trim().toLowerCase();
+      const qCsv = (q.csvCategory || '').trim();
+      const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
+
+      const matchesSub = activeSubSet.has(qSub) || qSubArray.some(s => activeSubSet.has(s));
+      if (matchesSub && qCsv && !activeSubSet.has(qCsv.toLowerCase())) {
+        leafMap.set(qCsv, (leafMap.get(qCsv) || 0) + 1);
+      }
+    });
 
     return Array.from(leafMap.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-  }, [questions, subcategories, routineSelectedCategories, routineSelectedSubcategories, subcategoryDescendantsMap, subcategoryDescendantsCountMap, nodeQuestionCountMap, questionRootCategoriesMap]);
+  }, [routineSelectedSubcategories, subcategories, questions, subcategoryDescendantsMap, subcategoryDescendantsCountMap, nodeQuestionCountMap]);
 
   // Questions matching selected cascading syllabus topics for Routine Management
   const routineMatchingQuestions = useMemo(() => {
+    const hasRoot = Boolean(routineSelectedRootCategory);
     const catSelected = routineSelectedCategories.length > 0;
     const subSelected = routineSelectedSubcategories.length > 0;
     const leafSelected = routineSelectedLeafCategories.length > 0;
 
-    if (!catSelected && !subSelected && !leafSelected) {
+    if (!hasRoot && !catSelected && !subSelected && !leafSelected) {
       return questions;
     }
 
-    const activeSubSet = new Set<string>();
-    if (subSelected) {
-      routineSelectedSubcategories.forEach(sub => {
-        const subLower = sub.trim().toLowerCase();
-        activeSubSet.add(subLower);
-        const descendants = subcategoryDescendantsMap.get(subLower);
-        if (descendants) {
-          descendants.forEach(d => activeSubSet.add(d));
-        }
-      });
-    }
+    const dummyRoutine: Routine = {
+      id: 'routine-draft',
+      title: routineTitle,
+      details: routineDetails,
+      selectedCategories: [routineSelectedRootCategory, ...routineSelectedCategories].filter(Boolean),
+      selectedSubcategories: routineSelectedSubcategories,
+      selectedLeafCategories: routineSelectedLeafCategories,
+      createdAt: new Date().toISOString()
+    };
 
-    const activeLeafSet = new Set(routineSelectedLeafCategories.map(l => l.trim().toLowerCase()));
-
-    return questions.filter(q => {
-      // 1. Root Category Match
-      if (catSelected) {
-        const qRoots = questionRootCategoriesMap.get(q.id);
-        const matchesRoot = qRoots && routineSelectedCategories.some(c => qRoots.has(c));
-        const directCatMatch = routineSelectedCategories.includes(q.category || '') || 
-          (q.categories && q.categories.some(c => routineSelectedCategories.includes(c)));
-        if (!matchesRoot && !directCatMatch) return false;
-      }
-
-      // 2. Subcategory Match
-      if (subSelected) {
-        const qSubLower = (q.subcategory || '').trim().toLowerCase();
-        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
-        const matchesSub = activeSubSet.has(qSubLower) || qSubArray.some(s => activeSubSet.has(s));
-        if (!matchesSub) return false;
-      }
-
-      // 3. Leaf Category Match
-      if (leafSelected) {
-        const qCsvLower = (q.csvCategory || '').trim().toLowerCase();
-        const qSubLower = (q.subcategory || '').trim().toLowerCase();
-        const qSubArray = (q.subcategories || []).map(s => s.trim().toLowerCase());
-
-        const matchesLeaf = activeLeafSet.has(qCsvLower) || 
-          activeLeafSet.has(qSubLower) || 
-          qSubArray.some(s => activeLeafSet.has(s));
-        if (!matchesLeaf) return false;
-      }
-
-      return true;
-    });
-  }, [questions, routineSelectedCategories, routineSelectedSubcategories, routineSelectedLeafCategories, questionRootCategoriesMap, subcategoryDescendantsMap]);
+    return getRoutineMatchingQuestions(dummyRoutine, questions, subcategories);
+  }, [questions, routineTitle, routineDetails, routineSelectedRootCategory, routineSelectedCategories, routineSelectedSubcategories, routineSelectedLeafCategories, subcategories]);
 
   // Populate form for editing
   const handleStartEdit = (q: Question) => {
@@ -3191,7 +3259,7 @@ export default function AdminPanel({
       routineDetails.trim(), 
       targetCourse?.id, 
       targetCourse?.title,
-      routineSelectedCategories,
+      [routineSelectedRootCategory, ...routineSelectedCategories].filter(Boolean),
       routineSelectedSubcategories,
       routineSelectedLeafCategories,
       examConfig
@@ -3203,6 +3271,7 @@ export default function AdminPanel({
     setRoutineTitle('');
     setRoutineDetails('');
     setRoutineCourseId('');
+    setRoutineSelectedRootCategory('বিষয়ভিত্তিক প্রস্তুতি');
     setRoutineSelectedCategories([]);
     setRoutineSelectedSubcategories([]);
     setRoutineSelectedLeafCategories([]);
@@ -7800,18 +7869,65 @@ export default function AdminPanel({
                 <div className="flex items-center justify-between">
                   <h4 className="font-black text-indigo-950 text-xs flex items-center gap-1.5">
                     <FolderTree className="w-4 h-4 text-indigo-600" />
-                    📚 পরীক্ষার সিলেবাস নির্বাচন (Cascading Syllabus Filters)
+                    📚 পরীক্ষার সিলেবাস নির্বাচন (Cascading Syllabus Selection)
                   </h4>
                   <span className="bg-emerald-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
                     🎯 ম্যাচিং প্রশ্ন: {routineMatchingQuestions.length.toLocaleString('bn-BD')} টি
                   </span>
                 </div>
 
-                {/* 1. Category Cascading Filter */}
-                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                {/* Step 1: Root Category Selection */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-gray-700 font-extrabold text-[11px] block">
-                      ১. মূল ক্যাটাগরি (Root Category Filter):
+                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-black">১</span>
+                      ধাপ ১: মূল ক্যাটাগরি নির্বাচন (Root Category):
+                    </label>
+                    {routineSelectedRootCategory && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                        নির্বাচিত: {routineSelectedRootCategory}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {routineRootCategories.map(rootCat => {
+                      const isSelected = routineSelectedRootCategory === rootCat;
+                      const rootMcqCount = rootCategoryMCQCounts[rootCat] || 0;
+                      return (
+                        <button
+                          key={rootCat}
+                          type="button"
+                          onClick={() => {
+                            setRoutineSelectedRootCategory(rootCat);
+                            setRoutineSelectedCategories([]);
+                            setRoutineSelectedSubcategories([]);
+                            setRoutineSelectedLeafCategories([]);
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition border cursor-pointer flex items-center gap-1.5 ${
+                            isSelected 
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm scale-[1.02]' 
+                              : 'bg-gray-50 hover:bg-indigo-50 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          <span>{isSelected ? '✓' : '📌'}</span>
+                          <span>{rootCat}</span>
+                          {rootMcqCount > 0 && (
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200/80 text-gray-700'}`}>
+                              {rootMcqCount.toLocaleString('bn-BD')}টি
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Step 2: Category Selection (Dynamically Loaded based on Step 1) */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-black">২</span>
+                      ধাপ ২: ক্যাটাগরি / বিষয় নির্বাচন (Category - ডায়নামিক লোড):
                     </label>
                     {routineSelectedCategories.length > 0 && (
                       <button
@@ -7823,43 +7939,62 @@ export default function AdminPanel({
                         }}
                         className="text-[10px] font-bold text-rose-600 hover:underline"
                       >
-                        রিসেট
+                        রিসেট ({routineSelectedCategories.length})
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pt-1">
-                    {(allRootCategories || []).map(cat => {
-                      const isSelected = routineSelectedCategories.includes(cat);
-                      const mcqCount = rootCategoryMCQCounts[cat] || 0;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setRoutineSelectedCategories(prev => prev.filter(c => c !== cat));
-                            } else {
-                              setRoutineSelectedCategories(prev => [...prev, cat]);
-                            }
-                          }}
-                          className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
-                            isSelected 
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
-                              : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          {isSelected ? '✓ ' : '+ '}{cat} {mcqCount > 0 ? `(${mcqCount.toLocaleString('bn-BD')}টি)` : ''}
-                        </button>
-                      );
-                    })}
-                  </div>
+
+                  {!routineSelectedRootCategory ? (
+                    <div className="p-3 bg-amber-50 text-amber-800 rounded-xl text-xs font-semibold">
+                      👈 অনুগ্রহ করে প্রথমে ধাপ ১ থেকে একটি মূল ক্যাটাগরি নির্বাচন করুন।
+                    </div>
+                  ) : routineAvailableCategories.length === 0 ? (
+                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
+                      এই মূল ক্যাটাগরির অধীনে কোনো ক্যাটাগরি পাওয়া যায়নি।
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+                      {routineAvailableCategories.map(cat => {
+                        const isSelected = routineSelectedCategories.includes(cat.name);
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setRoutineSelectedCategories(prev => prev.filter(c => c !== cat.name));
+                                setRoutineSelectedSubcategories([]);
+                                setRoutineSelectedLeafCategories([]);
+                              } else {
+                                setRoutineSelectedCategories(prev => [...prev, cat.name]);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition border cursor-pointer flex items-center gap-1 ${
+                              isSelected 
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
+                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
+                          >
+                            <span>{isSelected ? '✓ ' : '+ '}</span>
+                            <span>{cat.name}</span>
+                            {cat.count > 0 && (
+                              <span className={`text-[9.5px] font-medium px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
+                                ({cat.count.toLocaleString('bn-BD')}টি)
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* 2. Subcategory Cascading Filter */}
-                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                {/* Step 3: Sub-category Selection (Dynamically Loaded based on Step 2) */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-gray-700 font-extrabold text-[11px] block">
-                      ২. সাব-ক্যাটাগরি (Subcategory Filter - ডায়নামিক লোড):
+                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-black">৩</span>
+                      ধাপ ৩: সাব-ক্যাটাগরি / বিষয়াবলি (Sub-category - ডায়নামিক লোড):
                     </label>
                     {routineSelectedSubcategories.length > 0 && (
                       <button
@@ -7870,48 +8005,62 @@ export default function AdminPanel({
                         }}
                         className="text-[10px] font-bold text-rose-600 hover:underline"
                       >
-                        রিসেট
+                        রিসেট ({routineSelectedSubcategories.length})
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
-                    {routineAvailableSubcategories.length === 0 ? (
-                      <span className="text-[10px] text-gray-400 font-medium">কোনো সাব-ক্যাটাগরি পাওয়া যায়নি</span>
-                    ) : (
-                      (routineAvailableSubcategories || []).map(sub => {
-                        const subName = sub.name;
-                        const isSelected = routineSelectedSubcategories.includes(subName);
-                        const subCount = subcategoryDescendantsCountMap.get(subName.trim().toLowerCase()) || nodeQuestionCountMap.get(subName.trim().toLowerCase()) || 0;
+
+                  {routineSelectedCategories.length === 0 ? (
+                    <div className="p-3 bg-indigo-50/60 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                      <span>👈</span>
+                      <span>সাব-ক্যাটাগরি দেখতে অনুগ্রহ করে প্রথমে ধাপ ২ থেকে ক্যাটাগরি / বিষয় নির্বাচন করুন।</span>
+                    </div>
+                  ) : routineAvailableSubcategories.length === 0 ? (
+                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
+                      নির্বাচিত ক্যাটাগরির অধীনে সরাসরি কোনো সাব-ক্যাটাগরি পাওয়া যায়নি (সম্পূর্ণ ক্যাটাগরি সিলেবাসে অন্তর্ভুক্ত থাকবে)।
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+                      {routineAvailableSubcategories.map(sub => {
+                        const isSelected = routineSelectedSubcategories.includes(sub.name);
                         return (
                           <button
-                            key={sub.id || subName}
+                            key={sub.id || sub.name}
                             type="button"
                             onClick={() => {
                               if (isSelected) {
-                                setRoutineSelectedSubcategories(prev => prev.filter(s => s !== subName));
+                                setRoutineSelectedSubcategories(prev => prev.filter(s => s !== sub.name));
+                                setRoutineSelectedLeafCategories([]);
                               } else {
-                                setRoutineSelectedSubcategories(prev => [...prev, subName]);
+                                setRoutineSelectedSubcategories(prev => [...prev, sub.name]);
                               }
                             }}
-                            className={`px-2 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition border cursor-pointer flex items-center gap-1 ${
                               isSelected 
                                 ? 'bg-purple-600 text-white border-purple-600 shadow-xs' 
                                 : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
                             }`}
                           >
-                            {isSelected ? '✓ ' : '+ '}{subName} {subCount > 0 ? `(${subCount.toLocaleString('bn-BD')}টি)` : ''}
+                            <span>{isSelected ? '✓ ' : '+ '}</span>
+                            <span>{sub.name}</span>
+                            {sub.count > 0 && (
+                              <span className={`text-[9.5px] font-medium px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
+                                ({sub.count.toLocaleString('bn-BD')}টি)
+                              </span>
+                            )}
                           </button>
                         );
-                      })
-                    )}
-                  </div>
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* 3. Leaf Category / Topic Cascading Filter */}
-                <div className="bg-white p-3 rounded-xl border border-indigo-100/60 space-y-1.5">
+                {/* Step 4: Leaf Topics Selection (Optional - Dynamically Loaded based on Step 3) */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-gray-700 font-extrabold text-[11px] block">
-                      ৩. অধ্যায় / নির্দিষ্ট টপিক (Leaf Topics Filter - ডায়নামিক লোড):
+                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-black">৪</span>
+                      ধাপ ৪: নির্দিষ্ট অধ্যায় / টপিক (Leaf Topics - ঐচ্ছিক):
                     </label>
                     {routineSelectedLeafCategories.length > 0 && (
                       <button
@@ -7919,15 +8068,22 @@ export default function AdminPanel({
                         onClick={() => setRoutineSelectedLeafCategories([])}
                         className="text-[10px] font-bold text-rose-600 hover:underline"
                       >
-                        রিসেট
+                        রিসেট ({routineSelectedLeafCategories.length})
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
-                    {routineAvailableLeafCategories.length === 0 ? (
-                      <span className="text-[10px] text-gray-400 font-medium">মনোনীত ফিল্টারে কোনো টপিক পাওয়া যায়নি</span>
-                    ) : (
-                      (routineAvailableLeafCategories || []).map(item => {
+
+                  {routineSelectedSubcategories.length === 0 ? (
+                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs">
+                      নির্দিষ্ট টপিক ফিল্টার করতে ধাপ ৩ থেকে সাব-ক্যাটাগরি নির্বাচন করুন।
+                    </div>
+                  ) : routineAvailableLeafCategories.length === 0 ? (
+                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
+                      নির্বাচিত সাব-ক্যাটাগরির অধীনে আর কোনো অধস্তন অধ্যায় নেই (সম্পূর্ণ সাব-ক্যাটাগরি সিলেবাসে অন্তর্ভুক্ত থাকবে)।
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                      {routineAvailableLeafCategories.map(item => {
                         const isSelected = routineSelectedLeafCategories.includes(item.name);
                         return (
                           <button
@@ -7940,18 +8096,22 @@ export default function AdminPanel({
                                 setRoutineSelectedLeafCategories(prev => [...prev, item.name]);
                               }
                             }}
-                            className={`px-2 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer flex items-center gap-1 ${
                               isSelected 
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' 
                                 : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
                             }`}
                           >
-                            {isSelected ? '✓ ' : '+ '}{item.name} ({item.count.toLocaleString('bn-BD')}টি)
+                            <span>{isSelected ? '✓ ' : '+ '}</span>
+                            <span>{item.name}</span>
+                            <span className={`text-[9px] px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
+                              ({item.count.toLocaleString('bn-BD')}টি)
+                            </span>
                           </button>
                         );
-                      })
-                    )}
-                  </div>
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Live Syllabus Hierarchy Path Preview */}
@@ -7960,7 +8120,7 @@ export default function AdminPanel({
                     id: 'preview',
                     title: routineTitle,
                     details: routineDetails,
-                    selectedCategories: routineSelectedCategories,
+                    selectedCategories: [routineSelectedRootCategory, ...routineSelectedCategories].filter(Boolean),
                     selectedSubcategories: routineSelectedSubcategories,
                     selectedLeafCategories: routineSelectedLeafCategories,
                     createdAt: new Date().toISOString()

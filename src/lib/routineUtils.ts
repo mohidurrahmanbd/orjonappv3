@@ -62,7 +62,9 @@ export const getSubcategoryAncestryChain = (
 
 /**
  * Computes human-readable hierarchical syllabus path strings for a routine.
- * e.g. ["বিষয়ভিত্তিক প্রস্তুতি > বাংলা সাহিত্য > কাজী নজরুল ইসলাম"]
+ * If multiple subtopics share the same category & subcategory parent chain,
+ * they are grouped together with the category & subcategory as heading:
+ * e.g. "বিষয়ভিত্তিক প্রস্তুতি > ইংরেজি গ্রামার > tense, number, spelling"
  */
 export const formatRoutineSyllabusPaths = (
   routine: Routine,
@@ -70,7 +72,6 @@ export const formatRoutineSyllabusPaths = (
   categories: CategoryItem[] = [],
   questions: Question[] = []
 ): string[] => {
-  const paths: string[] = [];
   const rootCat = (routine.selectedCategories && routine.selectedCategories.length > 0)
     ? routine.selectedCategories[0]
     : undefined;
@@ -78,6 +79,9 @@ export const formatRoutineSyllabusPaths = (
   const leafList = routine.selectedLeafCategories || [];
   const subList = routine.selectedSubcategories || [];
   const catList = routine.selectedCategories || [];
+
+  // Group leaf categories by their ancestor prefix chain
+  const leafGroups = new Map<string, string[]>();
 
   // 1. Process Leaf Categories (Specific Subtopics)
   if (leafList.length > 0) {
@@ -117,12 +121,45 @@ export const formatRoutineSyllabusPaths = (
 
       // Deduplicate consecutive identical segments
       const dedupedChain = chain.filter((item, idx) => idx === 0 || normalizeText(item) !== normalizeText(chain[idx - 1]));
-      paths.push(dedupedChain.join(' > '));
+      
+      if (dedupedChain.length > 1) {
+        const prefix = dedupedChain.slice(0, -1).join(' > ');
+        const leafItem = dedupedChain[dedupedChain.length - 1];
+        if (!leafGroups.has(prefix)) {
+          leafGroups.set(prefix, []);
+        }
+        const group = leafGroups.get(prefix)!;
+        if (!group.includes(leafItem)) {
+          group.push(leafItem);
+        }
+      } else if (dedupedChain.length === 1) {
+        const single = dedupedChain[0];
+        if (!leafGroups.has('')) {
+          leafGroups.set('', []);
+        }
+        const group = leafGroups.get('')!;
+        if (!group.includes(single)) {
+          group.push(single);
+        }
+      }
     });
   }
 
+  const paths: string[] = [];
+
+  // Convert grouped leaf categories to paths
+  leafGroups.forEach((topics, prefix) => {
+    if (prefix) {
+      paths.push(`${prefix} > ${topics.join(', ')}`);
+    } else {
+      paths.push(topics.join(', '));
+    }
+  });
+
   // 2. Process Subcategories that are not already covered in leaf chains
   if (subList.length > 0) {
+    const subGroups = new Map<string, string[]>();
+
     subList.forEach(sub => {
       // Check if this sub is already an ancestor of a leaf path
       const subNorm = normalizeText(sub);
@@ -133,16 +170,41 @@ export const formatRoutineSyllabusPaths = (
           chain.unshift(rootCat);
         }
         const dedupedChain = chain.filter((item, idx) => idx === 0 || normalizeText(item) !== normalizeText(chain[idx - 1]));
-        paths.push(dedupedChain.join(' > '));
+        if (dedupedChain.length > 1) {
+          const prefix = dedupedChain.slice(0, -1).join(' > ');
+          const subItem = dedupedChain[dedupedChain.length - 1];
+          if (!subGroups.has(prefix)) {
+            subGroups.set(prefix, []);
+          }
+          const group = subGroups.get(prefix)!;
+          if (!group.includes(subItem)) {
+            group.push(subItem);
+          }
+        } else if (dedupedChain.length === 1) {
+          const single = dedupedChain[0];
+          if (!subGroups.has('')) {
+            subGroups.set('', []);
+          }
+          const group = subGroups.get('')!;
+          if (!group.includes(single)) {
+            group.push(single);
+          }
+        }
+      }
+    });
+
+    subGroups.forEach((subs, prefix) => {
+      if (prefix) {
+        paths.push(`${prefix} > ${subs.join(', ')}`);
+      } else {
+        paths.push(subs.join(', '));
       }
     });
   }
 
   // 3. Process Root Categories if no sub or leaf paths were created
   if (paths.length === 0 && catList.length > 0) {
-    catList.forEach(cat => {
-      paths.push(cat.trim());
-    });
+    paths.push(catList.join(', '));
   }
 
   // 4. Fallback: Parse from routine details or title if they contain '>' or '➔'
