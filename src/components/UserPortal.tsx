@@ -14,7 +14,7 @@ import {
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
-import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -878,6 +878,7 @@ export default function UserPortal({
     const correctMarks = (correctC * 1.0).toFixed(2);
     const negativeDeduction = (wrongC * 0.5).toFixed(2);
     const netScore = attempt.score;
+    const subjectBreakdown = calculateSubjectWiseAnalysis(attemptQuestions, attempt);
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -1119,40 +1120,38 @@ export default function UserPortal({
 
         ${includeMarkCalcTable ? `
           <div class="mark-calc-box">
-            <div class="mark-calc-title">📊 নম্বর গণনার বিস্তারিত হিসাব (Mark Calculation Table)</div>
+            <div class="mark-calc-title">📚 বিষয়ভিত্তিক নম্বর ও সঠিক-ভুল বিবরণী (Subject-wise Marking & Result Breakdown)</div>
             <table class="mark-calc-table">
               <thead>
                 <tr>
-                  <th style="text-align: left;">বিবরণ (Item)</th>
-                  <th>সংখ্যা (Count)</th>
-                  <th>প্রতিটির মান (Value per item)</th>
-                  <th>মোট নম্বর (Marks)</th>
+                  <th style="text-align: left;">বিষয় (Subject)</th>
+                  <th>মোট প্রশ্ন (Total)</th>
+                  <th style="color: #166534;">সঠিক (Right)</th>
+                  <th style="color: #9f1239;">ভুল (Wrong)</th>
+                  <th style="color: #92400e;">স্কিপড (Skipped)</th>
+                  <th style="text-align: right;">মোট নম্বর (Total Marks)</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style="text-align: left; font-weight: 700; color: #166534;">✅ সঠিক উত্তর (Correct Answers)</td>
-                  <td style="font-weight: 700;">${correctC}টি</td>
-                  <td>+১.০০</td>
-                  <td style="color: #16a34a; font-weight: 800;">+${correctMarks}</td>
-                </tr>
-                <tr>
-                  <td style="text-align: left; font-weight: 700; color: #9f1239;">❌ ভুল উত্তরের জন্য নেগেটিভ মার্ক (Wrong Answer Penalty)</td>
-                  <td style="font-weight: 700;">${wrongC}টি</td>
-                  <td>-০.৫০</td>
-                  <td style="color: #dc2626; font-weight: 800;">-${negativeDeduction}</td>
-                </tr>
-                <tr>
-                  <td style="text-align: left; font-weight: 700; color: #475569;">⚪ অনুত্তর / স্কিপড (Unanswered / Skipped)</td>
-                  <td style="font-weight: 700;">${skippedC}টি</td>
-                  <td>০.০০</td>
-                  <td style="color: #64748b; font-weight: 800;">০.০০</td>
-                </tr>
+                ${subjectBreakdown.map(item => `
+                  <tr>
+                    <td style="text-align: left; font-weight: 700; color: #1e1b4b;">📖 ${item.subject}</td>
+                    <td style="font-weight: 700;">${item.totalQuestions}টি</td>
+                    <td style="color: #16a34a; font-weight: 700;">${item.right}টি</td>
+                    <td style="color: #dc2626; font-weight: 700;">${item.wrong}টি</td>
+                    <td style="color: #d97706; font-weight: 700;">${item.skipped}টি</td>
+                    <td style="text-align: right; font-weight: 800; color: ${item.totalMarks >= 0 ? '#4338ca' : '#dc2626'};">
+                      ${item.totalMarks > 0 ? '+' : ''}${item.totalMarks.toFixed(2)}
+                    </td>
+                  </tr>
+                `).join('')}
                 <tr class="total-row">
-                  <td style="text-align: left; font-weight: 800; color: #1e1b4b;">🏆 সর্বমোট অর্জিত নম্বর (Net Final Score)</td>
+                  <td style="text-align: left; font-weight: 800; color: #1e1b4b;">🏆 সর্বমোট (Total)</td>
                   <td style="font-weight: 800; color: #1e1b4b;">${totalQ}টি</td>
-                  <td style="color: #64748b;">—</td>
-                  <td style="color: #4f46e5; font-weight: 800; font-size: 14px;">${netScore}</td>
+                  <td style="color: #16a34a; font-weight: 800;">${correctC}টি</td>
+                  <td style="color: #dc2626; font-weight: 800;">${wrongC}টি</td>
+                  <td style="color: #d97706; font-weight: 800;">${skippedC}টি</td>
+                  <td style="text-align: right; font-weight: 800; color: #312e81; font-size: 13px;">${netScore}</td>
                 </tr>
               </tbody>
             </table>
@@ -4522,7 +4521,7 @@ export default function UserPortal({
                           onChange={(e) => setIncludeMarkTableInPDF(e.target.checked)}
                           className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
                         />
-                        <span>📊 নম্বর গণনার টেবিল (PDF)</span>
+                        <span>📚 বিষয়ভিত্তিক মার্কিং টেবিল (PDF)</span>
                       </label>
                       {user.isGuest ? (
                         <button
@@ -4658,65 +4657,96 @@ export default function UserPortal({
                     );
                   })()}
 
-                  {/* Mark Calculation Table Breakdown */}
+                  {/* Subject-Wise Marking & Performance Breakdown */}
                   {(() => {
                     const totalQ = selectedAttemptForView.totalQuestions || attemptQuestions.length || 1;
                     const correctC = selectedAttemptForView.correctCount || 0;
                     const wrongC = selectedAttemptForView.wrongCount || 0;
                     const skippedC = Math.max(0, totalQ - correctC - wrongC);
+                    const subjectBreakdown = calculateSubjectWiseAnalysis(attemptQuestions, selectedAttemptForView);
 
                     return (
-                      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100">
+                      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
                           <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
-                            <span>📊 নম্বর গণনার বিস্তারিত বিবরণী (Mark Calculation Breakdown)</span>
+                            <span>📚 বিষয়ভিত্তিক সঠিক-ভুল ও নম্বর বিবরণী (Subject-wise Marking System)</span>
                           </h4>
-                          <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-200/80 px-2.5 py-0.5 rounded-full font-bold">
-                            ভুল উত্তর পেনাল্টি: -০.৫০ মার্কস / প্রশ্ন
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2.5 py-0.5 rounded-full font-bold">
+                            মোট বিষয়: {toBengaliDigits(subjectBreakdown.length)}টি
                           </span>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs border-collapse">
                             <thead>
                               <tr className="bg-slate-50 text-slate-700 border-b border-slate-200 font-bold">
-                                <th className="p-2.5 rounded-l-xl">বিবরণ</th>
-                                <th className="p-2.5 text-center">সংখ্যা</th>
-                                <th className="p-2.5 text-center">প্রতিটির মান</th>
-                                <th className="p-2.5 text-right rounded-r-xl">অর্জিত / কাটা নম্বর</th>
+                                <th className="p-2.5 rounded-l-xl">বিষয় (Subject)</th>
+                                <th className="p-2.5 text-center">মোট প্রশ্ন (Total Questions)</th>
+                                <th className="p-2.5 text-center text-emerald-700">সঠিক (Right)</th>
+                                <th className="p-2.5 text-center text-rose-700">ভুল (Wrong)</th>
+                                <th className="p-2.5 text-center text-amber-700">স্কিপড (Skipped)</th>
+                                <th className="p-2.5 text-right rounded-r-xl">মোট নম্বর (Total Marks)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                              <tr>
-                                <td className="p-2.5 text-emerald-700 font-bold flex items-center gap-1.5">
-                                  <span>✅</span> সঠিক উত্তর
-                                </td>
-                                <td className="p-2.5 text-center">{correctC}টি</td>
-                                <td className="p-2.5 text-center text-slate-400">+১.০০</td>
-                                <td className="p-2.5 text-right font-extrabold text-emerald-600">+{(correctC * 1.0).toFixed(2)}</td>
-                              </tr>
-                              <tr>
-                                <td className="p-2.5 text-rose-700 font-bold flex items-center gap-1.5">
-                                  <span>❌</span> ভুল উত্তরের পেনাল্টি
-                                </td>
-                                <td className="p-2.5 text-center">{wrongC}টি</td>
-                                <td className="p-2.5 text-center text-slate-400">-০.৫০</td>
-                                <td className="p-2.5 text-right font-extrabold text-rose-600">-{(wrongC * 0.5).toFixed(2)}</td>
-                              </tr>
-                              <tr>
-                                <td className="p-2.5 text-amber-700 font-bold flex items-center gap-1.5">
-                                  <span>⚪</span> অনুত্তর / স্কিপড
-                                </td>
-                                <td className="p-2.5 text-center">{skippedC}টি</td>
-                                <td className="p-2.5 text-center text-slate-400">০.০০</td>
-                                <td className="p-2.5 text-right font-extrabold text-slate-400">০.০০</td>
-                              </tr>
-                              <tr className="bg-indigo-50/80 font-bold text-indigo-950">
+                              {subjectBreakdown.map((item, idx) => (
+                                <tr key={`sb-row-${idx}`} className="hover:bg-slate-50/70 transition">
+                                  <td className="p-2.5 font-bold text-indigo-950 flex items-center gap-1.5">
+                                    <span className="text-indigo-400">📖</span>
+                                    <span>{item.subject}</span>
+                                  </td>
+                                  <td className="p-2.5 text-center font-bold text-slate-700">
+                                    {toBengaliDigits(item.totalQuestions)}টি
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-extrabold text-[11px]">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      {toBengaliDigits(item.right)}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200/80 font-extrabold text-[11px]">
+                                      <XCircle className="w-3 h-3 text-rose-600" />
+                                      {toBengaliDigits(item.wrong)}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200/80 font-extrabold text-[11px]">
+                                      <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                                      {toBengaliDigits(item.skipped)}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 text-right">
+                                    <span className={`font-black text-sm ${item.totalMarks > 0 ? 'text-indigo-600' : item.totalMarks < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                                      {item.totalMarks > 0 ? `+${toBengaliDigits(item.totalMarks.toFixed(2))}` : toBengaliDigits(item.totalMarks.toFixed(2))}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr className="bg-indigo-50/80 font-bold text-indigo-950 border-t-2 border-indigo-200">
                                 <td className="p-2.5 font-extrabold text-indigo-900 rounded-l-xl">
-                                  🏆 সর্বমোট অর্জিত নম্বর
+                                  🏆 সর্বমোট (Total)
                                 </td>
-                                <td className="p-2.5 text-center font-black">{totalQ}টি</td>
-                                <td className="p-2.5 text-center text-slate-400">—</td>
-                                <td className="p-2.5 text-right font-black text-indigo-700 text-sm rounded-r-xl">{selectedAttemptForView.score}</td>
+                                <td className="p-2.5 text-center font-black text-indigo-950">
+                                  {toBengaliDigits(totalQ)}টি
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black text-[11px]">
+                                    {toBengaliDigits(correctC)}টি
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 text-rose-800 font-black text-[11px]">
+                                    {toBengaliDigits(wrongC)}টি
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 font-black text-[11px]">
+                                    {toBengaliDigits(skippedC)}টি
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-right font-black text-indigo-700 text-sm rounded-r-xl">
+                                  {toBengaliDigits(typeof selectedAttemptForView.score === 'number' ? selectedAttemptForView.score.toFixed(2) : selectedAttemptForView.score)}
+                                </td>
                               </tr>
                             </tbody>
                           </table>

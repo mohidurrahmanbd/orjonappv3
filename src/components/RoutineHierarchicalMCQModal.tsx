@@ -117,9 +117,54 @@ export default function RoutineHierarchicalMCQModal({
     });
   }, [matchedRoutineQuestions, searchQuery]);
 
-  // 3. Build Tree Structure: Category -> Subcategory -> Leaf Topic -> Questions
+  // 3. Build Tree Structure matching the exact Syllabus created by Admin
   const hierarchicalTree: HierarchicalCatNode[] = useMemo(() => {
-    const rootMap = new Map<string, {
+    if (filteredQuestions.length === 0) {
+      return [];
+    }
+
+    // A. Extract explicit syllabus configuration from routine
+    const routineCatList = (routine.selectedCategories || []).map(s => s.trim()).filter(Boolean);
+    const routineSubList = (routine.selectedSubcategories || []).map(s => s.trim()).filter(Boolean);
+    const routineLeafList = (routine.selectedLeafCategories || []).map(s => s.trim()).filter(Boolean);
+
+    // B. Parse fallback syllabus paths from title / details / formatting
+    const paths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
+    let parsedRoot = '';
+    let parsedSubs: string[] = [];
+    let parsedLeaves: string[] = [];
+
+    if (paths.length > 0) {
+      const firstPath = paths[0];
+      const segments = firstPath.split(/\s*>\s*/);
+      if (segments.length >= 1) parsedRoot = segments[0].trim();
+      if (segments.length >= 2) parsedSubs = segments[1].split(/[,،]+/).map(s => s.trim()).filter(Boolean);
+      if (segments.length >= 3) parsedLeaves = segments[2].split(/[,،]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    // Determine target Root, Subcategories and Leaf Categories
+    const rootName = routineCatList.length > 0 
+      ? routineCatList[0] 
+      : (parsedRoot || 'বিষয়ভিত্তিক প্রস্তুতি');
+
+    let targetSubList: string[] = [];
+    if (routineSubList.length > 0) {
+      targetSubList = routineSubList;
+    } else if (routineCatList.length > 1) {
+      targetSubList = routineCatList.slice(1);
+    } else if (parsedSubs.length > 0) {
+      targetSubList = parsedSubs;
+    }
+
+    let targetLeafList: string[] = [];
+    if (routineLeafList.length > 0) {
+      targetLeafList = routineLeafList;
+    } else if (parsedLeaves.length > 0) {
+      targetLeafList = parsedLeaves;
+    }
+
+    // Map: RootName -> SubName -> LeafName -> Question[]
+    const rootNodeMap = new Map<string, {
       name: string;
       subMap: Map<string, {
         name: string;
@@ -131,78 +176,228 @@ export default function RoutineHierarchicalMCQModal({
       totalCount: number;
     }>();
 
-    filteredQuestions.forEach(q => {
-      const catName = (q.category || '').trim() || 'সাধারণ জ্ঞান ও অন্যান্য';
-      const subName = (q.subcategory || '').trim() || 'মূল বিষয়াবলি';
-      const topicName = (q.csvCategory || '').trim() || 'সাধারণ অধ্যায়/টপিক';
-
-      // Get or create Category Node
-      let catNode = rootMap.get(catName);
-      if (!catNode) {
-        catNode = {
-          name: catName,
+    const getOrCreateRoot = (rName: string) => {
+      let rNode = rootNodeMap.get(rName);
+      if (!rNode) {
+        rNode = {
+          name: rName,
           subMap: new Map(),
           directQuestions: [],
           totalCount: 0
         };
-        rootMap.set(catName, catNode);
+        rootNodeMap.set(rName, rNode);
       }
-      catNode.totalCount += 1;
+      return rNode;
+    };
 
-      // Get or create Subcategory Node
-      let subNode = catNode.subMap.get(subName);
-      if (!subNode) {
-        subNode = {
-          name: subName,
-          leafMap: new Map(),
+    const getOrCreateSub = (rNode: { name: string; subMap: Map<string, any>; directQuestions: Question[]; totalCount: number }, sName: string) => {
+      let sNode = rNode.subMap.get(sName);
+      if (!sNode) {
+        sNode = {
+          name: sName,
+          leafMap: new Map<string, { name: string; questions: Question[] }>(),
           directQuestions: [],
           totalCount: 0
         };
-        catNode.subMap.set(subName, subNode);
+        rNode.subMap.set(sName, sNode);
       }
-      subNode.totalCount += 1;
+      return sNode;
+    };
 
-      // Get or create Leaf Topic Node
-      let leafNode = subNode.leafMap.get(topicName);
-      if (!leafNode) {
-        leafNode = {
-          name: topicName,
+    const getOrCreateLeaf = (sNode: { name: string; leafMap: Map<string, { name: string; questions: Question[] }>; directQuestions: Question[]; totalCount: number }, lName: string) => {
+      let lNode = sNode.leafMap.get(lName);
+      if (!lNode) {
+        lNode = {
+          name: lName,
           questions: []
         };
-        subNode.leafMap.set(topicName, leafNode);
+        sNode.leafMap.set(lName, lNode);
       }
-      leafNode.questions.push(q);
+      return lNode;
+    };
+
+    // Pre-seed tree structure with the exact syllabus blueprint
+    const primaryRoot = getOrCreateRoot(rootName);
+    if (targetSubList.length > 0) {
+      targetSubList.forEach(subItem => {
+        const subNode = getOrCreateSub(primaryRoot, subItem);
+        if (targetLeafList.length > 0) {
+          targetLeafList.forEach(leafItem => {
+            getOrCreateLeaf(subNode, leafItem);
+          });
+        }
+      });
+    }
+
+    // Distribute each filtered question to the matching (Root -> Sub -> Leaf)
+    filteredQuestions.forEach(q => {
+      const qCat = (q.category || '').trim();
+      const qSub = (q.subcategory || '').trim();
+      const qCsv = (q.csvCategory || '').trim();
+      const qText = (q.text || '').toLowerCase();
+      const qSubs = (q.subcategories || []).map(s => s.trim().toLowerCase());
+
+      // 1. Root Category Resolution
+      let assignedRoot = rootName;
+      if (routineCatList.length > 0) {
+        const matchingCat = routineCatList.find(c => {
+          const cNorm = c.toLowerCase();
+          return qCat.toLowerCase().includes(cNorm) || cNorm.includes(qCat.toLowerCase());
+        });
+        if (matchingCat) {
+          assignedRoot = matchingCat;
+        }
+      }
+
+      const rNode = getOrCreateRoot(assignedRoot);
+      rNode.totalCount += 1;
+
+      // 2. Subcategory Resolution
+      let assignedSub = '';
+      if (targetSubList.length > 0) {
+        const matchedTargetSub = targetSubList.find(sub => {
+          const sNorm = sub.trim().toLowerCase();
+          return (
+            qSub.toLowerCase() === sNorm ||
+            qCat.toLowerCase() === sNorm ||
+            qSub.toLowerCase().includes(sNorm) ||
+            sNorm.includes(qSub.toLowerCase()) ||
+            qCat.toLowerCase().includes(sNorm) ||
+            sNorm.includes(qCat.toLowerCase()) ||
+            qSubs.some(s => s.includes(sNorm) || sNorm.includes(s))
+          );
+        });
+        if (matchedTargetSub) {
+          assignedSub = matchedTargetSub;
+        } else {
+          assignedSub = targetSubList[0];
+        }
+      } else {
+        assignedSub = qSub || qCat || 'মূল বিষয়াবলি';
+      }
+
+      const sNode = getOrCreateSub(rNode, assignedSub);
+      sNode.totalCount += 1;
+
+      // 3. Leaf Topic Resolution
+      let assignedLeaf = '';
+      if (targetLeafList.length > 0) {
+        const matchedTargetLeaf = targetLeafList.find(leaf => {
+          const lNorm = leaf.trim().toLowerCase();
+          return (
+            qCsv.toLowerCase() === lNorm ||
+            qSub.toLowerCase() === lNorm ||
+            qCsv.toLowerCase().includes(lNorm) ||
+            lNorm.includes(qCsv.toLowerCase()) ||
+            qSub.toLowerCase().includes(lNorm) ||
+            lNorm.includes(qSub.toLowerCase()) ||
+            qSubs.some(s => s.includes(lNorm) || lNorm.includes(s)) ||
+            (lNorm.length >= 3 && qText.includes(lNorm))
+          );
+        });
+
+        if (matchedTargetLeaf) {
+          assignedLeaf = matchedTargetLeaf;
+        } else {
+          assignedLeaf = 'অন্যান্য প্রশ্নসমূহ';
+        }
+      } else {
+        if (qCsv && qCsv.toLowerCase() !== assignedSub.toLowerCase()) {
+          assignedLeaf = qCsv;
+        } else if (qSub && qSub.toLowerCase() !== assignedSub.toLowerCase()) {
+          assignedLeaf = qSub;
+        } else {
+          assignedLeaf = 'সকল MCQ';
+        }
+      }
+
+      const lNode = getOrCreateLeaf(sNode, assignedLeaf);
+      lNode.questions.push(q);
     });
 
-    // Convert Maps to structured nested arrays
-    return Array.from(rootMap.values()).map(catItem => {
-      const subNodes: HierarchicalSubNode[] = Array.from(catItem.subMap.values()).map(subItem => {
-        const leafNodes: HierarchicalLeafNode[] = Array.from(subItem.leafMap.values()).map(leafItem => ({
-          name: leafItem.name,
-          questions: leafItem.questions
-        }));
+    // Convert to nested array structure
+    return Array.from(rootNodeMap.values())
+      .filter(r => r.totalCount > 0)
+      .map(r => {
+        const subNodes: HierarchicalSubNode[] = Array.from(r.subMap.values())
+          .filter(s => s.totalCount > 0)
+          .map(s => {
+            const leafNodes: HierarchicalLeafNode[] = Array.from(s.leafMap.values())
+              .filter(l => l.questions.length > 0)
+              .map(l => ({
+                name: l.name,
+                questions: l.questions
+              }));
+
+            return {
+              name: s.name,
+              leafNodes,
+              directQuestions: s.directQuestions,
+              totalCount: s.totalCount
+            };
+          });
 
         return {
-          name: subItem.name,
-          leafNodes,
-          directQuestions: subItem.directQuestions,
-          totalCount: subItem.totalCount
+          name: r.name,
+          subNodes,
+          directQuestions: r.directQuestions,
+          totalCount: r.totalCount
         };
       });
+  }, [filteredQuestions, routine, subcategories, categories, questions]);
 
-      return {
-        name: catItem.name,
-        subNodes,
-        directQuestions: catItem.directQuestions,
-        totalCount: catItem.totalCount
-      };
+  // Auto-collapse behavior: nodes start collapsed.
+  // Expanding an element shows its content. When the user collapses/leaves that level, child expansions are cleaned up.
+  const toggleCategoryNode = (catKey: string, catName: string) => {
+    setExpandedNodes(prev => {
+      const isCurrentlyExpanded = !!prev[catKey];
+      if (isCurrentlyExpanded) {
+        // Collapsing this category: remove this catKey and any child subcategory & leaf topic keys
+        const next = { ...prev };
+        delete next[catKey];
+        Object.keys(next).forEach(k => {
+          if (k.startsWith(`sub-${catName}-`) || k.startsWith(`leaf-${catName}-`)) {
+            delete next[k];
+          }
+        });
+        return next;
+      } else {
+        // Expand this category
+        return {
+          ...prev,
+          [catKey]: true
+        };
+      }
     });
-  }, [filteredQuestions]);
+  };
 
-  const toggleNode = (key: string) => {
+  const toggleSubcategoryNode = (subKey: string, catName: string, subName: string) => {
+    setExpandedNodes(prev => {
+      const isCurrentlyExpanded = !!prev[subKey];
+      if (isCurrentlyExpanded) {
+        // Collapsing this subcategory: remove this subKey and its child leaf keys
+        const next = { ...prev };
+        delete next[subKey];
+        Object.keys(next).forEach(k => {
+          if (k.startsWith(`leaf-${catName}-${subName}-`)) {
+            delete next[k];
+          }
+        });
+        return next;
+      } else {
+        // Expand this subcategory
+        return {
+          ...prev,
+          [subKey]: true
+        };
+      }
+    });
+  };
+
+  const toggleLeafNode = (leafKey: string) => {
     setExpandedNodes(prev => ({
       ...prev,
-      [key]: !prev[key]
+      [leafKey]: !prev[leafKey]
     }));
   };
 
@@ -676,7 +871,7 @@ export default function RoutineHierarchicalMCQModal({
               >
                 {/* 1. Category Header (Level 1) - Collapsed by default */}
                 <div 
-                  onClick={() => toggleNode(catKey)}
+                  onClick={() => toggleCategoryNode(catKey, catNode.name)}
                   className="p-4 sm:p-4.5 bg-gradient-to-r from-indigo-50/90 via-purple-50/40 to-white hover:bg-indigo-50 flex items-center justify-between gap-3 cursor-pointer border-b border-indigo-100/70 select-none transition"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -722,7 +917,7 @@ export default function RoutineHierarchicalMCQModal({
                         >
                           {/* 2. Subcategory Header (Level 2) */}
                           <div 
-                            onClick={() => toggleNode(subKey)}
+                            onClick={() => toggleSubcategoryNode(subKey, catNode.name, subNode.name)}
                             className="p-3.5 bg-purple-50/60 hover:bg-purple-100/60 flex items-center justify-between gap-3 cursor-pointer border-b border-purple-100 select-none transition"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -760,7 +955,7 @@ export default function RoutineHierarchicalMCQModal({
                                   >
                                     {/* 3. Leaf Topic Header (Level 3) */}
                                     <div 
-                                      onClick={() => toggleNode(leafKey)}
+                                      onClick={() => toggleLeafNode(leafKey)}
                                       className="px-3.5 py-2.5 bg-emerald-50/50 hover:bg-emerald-100/50 flex items-center justify-between gap-2.5 cursor-pointer border-b border-emerald-100 select-none transition"
                                     >
                                       <div className="flex items-center gap-2 min-w-0">

@@ -1367,7 +1367,7 @@ export default function AdminPanel({
 
     if (normRoot === normalizeName('বিষয়ভিত্তিক প্রস্তুতি') || normRoot === normalizeName('বিষয় ভিক্তিক প্রস্তুতি')) {
       // Collect standard subject categories and any subcategories whose parentCategory is 'বিষয়ভিত্তিক প্রস্তুতি' or default subjects
-      const knownSubjects = new Set(STANDARD_SUBJECT_CATEGORIES);
+      const knownSubjects = new Set<string>(STANDARD_SUBJECT_CATEGORIES);
       subcategories.forEach(s => {
         if (s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি' || s.parentCategory === 'বিষয় ভিক্তিক প্রস্তুতি' || (!s.parentCategory && !isJobSolutionVariation(s.name) && !isYearJobSolutionVariation(s.name))) {
           knownSubjects.add(s.name.trim());
