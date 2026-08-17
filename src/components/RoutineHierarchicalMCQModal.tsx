@@ -3,7 +3,8 @@ import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../t
 import { 
   FolderTree, BookOpen, ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
-  Check, HelpCircle, Sparkles, ArrowLeft, Layers
+  Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight, Layers,
+  BookMarked
 } from 'lucide-react';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 
@@ -37,6 +38,13 @@ interface HierarchicalCatNode {
   totalCount: number;
 }
 
+interface SelectedLeafTopic {
+  catName: string;
+  subName: string;
+  leafName: string;
+  questions: Question[];
+}
+
 const PAGE_SIZE = 20;
 
 const toBengaliDigits = (num: number | string): string => {
@@ -59,12 +67,49 @@ export default function RoutineHierarchicalMCQModal({
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
   const [selectedUserOptions, setSelectedUserOptions] = useState<Record<string, number>>({});
   
+  // Dedicated Clean Page for Selected Leaf Topic
+  const [selectedLeafTopic, setSelectedLeafTopic] = useState<SelectedLeafTopic | null>(null);
+  const [leafSearchQuery, setLeafSearchQuery] = useState('');
+
   // ALL categories and topics are COLLAPSED by default (empty state = everything collapsed)
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   // Per-topic and global search pagination (max 20 MCQs per page)
   const [topicPages, setTopicPages] = useState<Record<string, number>>({});
   const [searchPage, setSearchPage] = useState(1);
+
+  // Handlers for Leaf Topic Clean Page Navigation
+  const openLeafTopic = (catName: string, subName: string, leafName: string, leafQuestions: Question[]) => {
+    setSelectedLeafTopic({
+      catName,
+      subName,
+      leafName,
+      questions: leafQuestions
+    });
+    setLeafSearchQuery('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBackToHierarchy = () => {
+    setSelectedLeafTopic(null);
+    setLeafSearchQuery('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Filter questions for the selected leaf topic page
+  const leafFilteredQuestions = useMemo(() => {
+    if (!selectedLeafTopic) return [];
+    if (!leafSearchQuery.trim()) return selectedLeafTopic.questions;
+    const qLower = leafSearchQuery.trim().toLowerCase();
+    return selectedLeafTopic.questions.filter(q => 
+      (q.text || '').toLowerCase().includes(qLower) ||
+      (q.optionA || '').toLowerCase().includes(qLower) ||
+      (q.optionB || '').toLowerCase().includes(qLower) ||
+      (q.optionC || '').toLowerCase().includes(qLower) ||
+      (q.optionD || '').toLowerCase().includes(qLower) ||
+      (q.explanation || '').toLowerCase().includes(qLower)
+    );
+  }, [selectedLeafTopic, leafSearchQuery]);
 
   // Subcategory descendant map for deep hierarchy resolution
   const subcategoryDescendantsMap = useMemo(() => {
@@ -695,6 +740,143 @@ export default function RoutineHierarchicalMCQModal({
     );
   };
 
+  // ----------------------------------------------------
+  // DEDICATED CLEAN PAGE FOR SELECTED LEAF TOPIC
+  // ----------------------------------------------------
+  if (selectedLeafTopic) {
+    return (
+      <div 
+        id="leaf-category-clean-page"
+        className="w-full flex-grow flex flex-col gap-4 animate-fade-in pb-12"
+      >
+        {/* 1. Header with Upper Left Back Button */}
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-900 to-indigo-950 rounded-2xl sm:rounded-3xl text-white p-4 sm:p-6 shadow-md border border-emerald-700/50 space-y-3">
+          {/* Back button on upper left corner */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-700/60 pb-3">
+            <button
+              id="btn-leaf-page-back-upper-left"
+              type="button"
+              onClick={handleBackToHierarchy}
+              className="bg-white/15 hover:bg-white/25 active:scale-95 text-white font-black px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 transition border border-white/25 cursor-pointer shadow-xs"
+            >
+              <ArrowLeft className="w-4 h-4 text-amber-300" />
+              <span>← অধ্যায় তালিকায় ফিরে যান (Back to Chapters)</span>
+            </button>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-emerald-500/30 text-emerald-100 border border-emerald-400/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                <span>🌿</span> পরিচ্ছেদ MCQ পাঠ
+              </span>
+              {routine.courseName && (
+                <span className="bg-purple-500/30 text-purple-100 border border-purple-400/30 text-[11px] font-bold px-3 py-1 rounded-full">
+                  🎓 {routine.courseName}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Breadcrumb Hierarchy */}
+          <div className="flex items-center gap-1.5 flex-wrap text-xs text-emerald-100 pt-1">
+            <span className="text-white/80 font-bold">📁 {selectedLeafTopic.catName}</span>
+            <span className="text-emerald-300">›</span>
+            <span className="text-white/90 font-bold">📂 {selectedLeafTopic.subName}</span>
+            <span className="text-emerald-300">›</span>
+            <span className="text-amber-300 font-black">🌿 {selectedLeafTopic.leafName}</span>
+          </div>
+
+          {/* Title & Stats */}
+          <div className="space-y-1.5">
+            <h1 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2.5 flex-wrap">
+              <span>{selectedLeafTopic.leafName}</span>
+              <span className="bg-white/20 text-white text-xs font-black px-3 py-1 rounded-full border border-white/25">
+                {toBengaliDigits(selectedLeafTopic.questions.length)} টি MCQ
+              </span>
+            </h1>
+            <p className="text-xs text-emerald-200 font-medium">
+              রুটিন: {routine.title}
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Action Toolbar (Search, Answer Toggle, Count, Demo Exam) */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 sticky top-2 z-20">
+          {/* Search bar inside this leaf category */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              id="input-leaf-search"
+              type="text"
+              value={leafSearchQuery}
+              onChange={e => setLeafSearchQuery(e.target.value)}
+              placeholder={`"${selectedLeafTopic.leafName}" এর ভেতরে প্রশ্ন খুঁজুন...`}
+              className="w-full pl-9.5 pr-8 py-2.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+            />
+            {leafSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setLeafSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-black cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold text-xs px-3.5 py-2 rounded-xl">
+              মোট প্রশ্ন: {toBengaliDigits(leafFilteredQuestions.length)} টি
+            </span>
+
+            <button
+              id="btn-leaf-toggle-answers"
+              type="button"
+              onClick={() => setShowAllAnswers(prev => !prev)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border cursor-pointer shadow-2xs ${
+                showAllAnswers 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100' 
+                  : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              {showAllAnswers ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {showAllAnswers ? 'উত্তর প্রদর্শিত' : 'কুইজ মোড (উত্তর গোপন)'}
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Clean MCQ Content */}
+        {leafFilteredQuestions.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 p-8 space-y-3">
+            <HelpCircle className="w-14 h-14 text-slate-300 mx-auto" />
+            <h3 className="text-sm font-black text-slate-700">কোনো প্রশ্ন মেলেনি</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed font-medium">
+              {leafSearchQuery 
+                ? `"${leafSearchQuery}" অনুসন্ধানে "${selectedLeafTopic.leafName}" টপিকে কোনো প্রশ্ন মেলেনি।`
+                : 'এই পরিচ্ছেদের সাথে যুক্ত কোনো প্রশ্ন পাওয়া যায়নি।'
+              }
+            </p>
+            {leafSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setLeafSearchQuery('')}
+                className="mt-2 bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-xl hover:bg-emerald-700 transition cursor-pointer"
+              >
+                সার্চ রিসেট করুন
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-emerald-100 p-4 sm:p-6 shadow-sm">
+            {renderQuestionList(leafFilteredQuestions, `leaf-clean-page-${selectedLeafTopic.leafName}`, 0)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------
+  // FULL CHAPTER HIERARCHY PAGE
+  // ----------------------------------------------------
   return (
     <div 
       id="routine-hierarchical-page"
@@ -941,51 +1123,46 @@ export default function RoutineHierarchicalMCQModal({
                             </div>
                           </div>
 
-                          {/* Leaf Topics (Level 3) - Collapsed by default */}
+                          {/* Leaf Topics (Level 3) - Click directly opens clean page */}
                           {isSubExpanded && (
-                            <div className="p-3 sm:p-4 space-y-3 bg-slate-50/30">
+                            <div className="p-3 sm:p-4 space-y-2.5 bg-slate-50/30">
                               {subNode.leafNodes.map((leafNode, leafIdx) => {
-                                const leafKey = `leaf-${catNode.name}-${subNode.name}-${leafNode.name}`;
-                                const isLeafExpanded = !!expandedNodes[leafKey];
-
                                 return (
                                   <div 
                                     key={`leaf-${leafIdx}-${leafNode.name}`}
-                                    className="bg-white rounded-xl border border-emerald-100 shadow-2xs overflow-hidden"
+                                    onClick={() => openLeafTopic(catNode.name, subNode.name, leafNode.name, leafNode.questions)}
+                                    className="p-3 sm:p-3.5 bg-white hover:bg-emerald-50/60 active:scale-[0.99] border border-emerald-100/90 hover:border-emerald-300 rounded-xl shadow-2xs flex items-center justify-between gap-3 cursor-pointer transition select-none group"
                                   >
-                                    {/* 3. Leaf Topic Header (Level 3) */}
-                                    <div 
-                                      onClick={() => toggleLeafNode(leafKey)}
-                                      className="px-3.5 py-2.5 bg-emerald-50/50 hover:bg-emerald-100/50 flex items-center justify-between gap-2.5 cursor-pointer border-b border-emerald-100 select-none transition"
-                                    >
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-emerald-700 font-black text-xs">🌿</span>
-                                        <h5 className="text-xs font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
-                                          <span>পরিচ্ছেদ / টপিক: {leafNode.name}</span>
-                                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md border border-emerald-200">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white flex items-center justify-center font-bold text-xs shrink-0 transition">
+                                        🌿
+                                      </span>
+                                      <div>
+                                        <h5 className="text-xs sm:text-[13px] font-bold text-slate-900 group-hover:text-emerald-950 flex items-center gap-2 flex-wrap transition">
+                                          <span>পরিচ্ছেদ: {leafNode.name}</span>
+                                          <span className="bg-emerald-50 group-hover:bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md border border-emerald-200">
                                             {toBengaliDigits(leafNode.questions.length)} টি MCQ
                                           </span>
                                         </h5>
-                                      </div>
-
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                        <span className="text-[10px] text-emerald-700 font-bold hidden sm:inline">
-                                          {isLeafExpanded ? 'প্রশ্ন লুকান' : 'প্রশ্ন দেখুন (সর্বোচ্চ ২০টি)'}
+                                        <span className="text-[10px] text-slate-400 group-hover:text-emerald-700 font-medium transition">
+                                          ক্লিক করে নতুন পরিচ্ছন্ন পাতায় MCQ পড়ুন
                                         </span>
-                                        <div className={`w-5 h-5 rounded flex items-center justify-center transition ${
-                                          isLeafExpanded ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                          {isLeafExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                        </div>
                                       </div>
                                     </div>
 
-                                    {/* 4. Paginated List of MCQs (maximum 20 MCQs per page) */}
-                                    {isLeafExpanded && (
-                                      <div className="p-3 sm:p-4.5 bg-white">
-                                        {renderQuestionList(leafNode.questions, leafKey)}
-                                      </div>
-                                    )}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openLeafTopic(catNode.name, subNode.name, leafNode.name, leafNode.questions);
+                                        }}
+                                        className="bg-emerald-600 group-hover:bg-emerald-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                                      >
+                                        <span>MCQ পড়ুন</span>
+                                        <ArrowRight className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1006,7 +1183,7 @@ export default function RoutineHierarchicalMCQModal({
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 mt-4">
         <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
           <Layers className="w-4 h-4 text-indigo-600" />
-          <span>প্রতিটি অধ্যায়ে সর্বোচ্চ ২০টি করে MCQ পেজিনেশন আকারে প্রদর্শিত হচ্ছে।</span>
+          <span>যেকোনো পরিচ্ছেদ (Leaf Category)-এ ক্লিক করে সরাসরি সম্পূর্ণ MCQ পড়া যাবে।</span>
         </div>
 
         <div className="flex items-center gap-2">

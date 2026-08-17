@@ -9,7 +9,8 @@ import {
   Languages, Feather, Calculator, Binary, FlaskConical, Atom, Dna, Laptop, Cpu,
   Landmark, Flag, Globe2, BrainCircuit, Scale, ShieldCheck, Lightbulb, GraduationCap,
   Building2, Coins, School, Globe, History, BookMarked,
-  Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree
+  Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree,
+  ChevronDown, Lock, Unlock, Search
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
@@ -420,6 +421,11 @@ export default function UserPortal({
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
 
+  // Routine Tab Filter & Expansion States
+  const [routineBatchFilter, setRoutineBatchFilter] = useState<'all' | 'open' | 'enrolled' | 'unrolled'>('all');
+  const [routineSearchQuery, setRoutineSearchQuery] = useState('');
+  const [expandedRoutineId, setExpandedRoutineId] = useState<string | null>(null);
+
   useEffect(() => {
     const userKey = user?.userId || user?.phone || 'guest';
     const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
@@ -448,6 +454,96 @@ export default function UserPortal({
     }
     setEnrolledCourseIds(updated);
     localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+  };
+
+  // Helper to determine routine batch status: open, enrolled, or unrolled
+  const getRoutineBatchInfo = (item: Routine) => {
+    const targetCourse = courses ? courses.find(c => 
+      (item.courseId && c.id === item.courseId) || 
+      (item.courseName && c.title.trim().toLowerCase() === item.courseName.trim().toLowerCase())
+    ) : undefined;
+
+    const courseTitle = targetCourse?.title || item.courseName;
+    const courseId = targetCourse?.id || item.courseId;
+    const hasCourse = Boolean(courseTitle || courseId);
+
+    if (!hasCourse) {
+      return {
+        type: 'open' as const,
+        label: '🌐 ওপেন ব্যাচ (Open)',
+        shortLabel: 'উন্মুক্ত (Open)',
+        badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
+        cardBorder: 'border-blue-200/80 hover:border-blue-300',
+        description: 'উন্মুক্ত পরীক্ষা ও রুটিন — কোনো কোর্সে এনরোলমেন্ট ছাড়াই সরাসরি অংশগ্রহণযোগ্য।',
+        courseTitle: undefined,
+        courseId: undefined,
+        isEnrolled: false
+      };
+    }
+
+    const isEnrolled = courseId 
+      ? enrolledCourseIds.includes(courseId) 
+      : (courseTitle ? courses.some(c => c.title === courseTitle && enrolledCourseIds.includes(c.id)) : false);
+
+    if (isEnrolled) {
+      return {
+        type: 'enrolled' as const,
+        label: '✅ এনরোল্ড ব্যাচ (Enrolled)',
+        shortLabel: 'এনরোল্ড (Enrolled)',
+        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+        cardBorder: 'border-emerald-200/80 hover:border-emerald-300',
+        description: `আপনি "${courseTitle}" কোর্সে সফলভাবে এনরোল্ড আছেন।`,
+        courseTitle,
+        courseId: courseId || targetCourse?.id,
+        isEnrolled: true
+      };
+    }
+
+    return {
+      type: 'unrolled' as const,
+      label: '🔒 আন-এনরোল্ড (Unenrolled)',
+      shortLabel: 'আন-এনরোল্ড (Unenrolled)',
+      badgeClass: 'bg-amber-50 text-amber-900 border-amber-300',
+      cardBorder: 'border-amber-200/70 hover:border-amber-300',
+      description: `কোর্স: "${courseTitle}"। আপনি এই কোর্সে এখনও এনরোল করেননি।`,
+      courseTitle,
+      courseId: courseId || targetCourse?.id,
+      isEnrolled: false
+    };
+  };
+
+  // Helper to format Bengali Date with Starting Time (e.g. ১২ মে, ২০২৬ (সকাল ১০:০০ টা))
+  const formatExamScheduleWithTime = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const months = [
+        'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+        'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+      ];
+      const bnDigits = ['০','১','২','৩','৪','৫','৬','৭','৮','৯'];
+      const toBn = (num: number | string) => num.toString().replace(/\d/g, x => bnDigits[parseInt(x)]);
+      
+      const day = toBn(d.getDate());
+      const month = months[d.getMonth()];
+      const year = toBn(d.getFullYear());
+
+      const hours = d.getHours();
+      const minutes = d.getMinutes();
+      let period = 'সকাল';
+      if (hours >= 12 && hours < 15) period = 'দুপুর';
+      else if (hours >= 15 && hours < 18) period = 'বিকাল';
+      else if (hours >= 18 && hours < 20) period = 'সন্ধ্যা';
+      else if (hours >= 20 || hours < 6) period = 'রাত';
+
+      const displayHours = hours % 12 || 12;
+      const timeFormatted = `${period} ${toBn(displayHours)}:${minutes < 10 ? '০' : ''}${toBn(minutes)} টা`;
+
+      return `${day} ${month}, ${year} (${timeFormatted})`;
+    } catch {
+      return dateStr;
+    }
   };
 
   // Custom Exam Setup & Cascading Filter States
@@ -5407,131 +5503,366 @@ export default function UserPortal({
                 'গেস্ট (Guest) হিসেবে শুধুমাত্র "লাইভ পরীক্ষা" দেওয়া যায়। একাডেমিক পরীক্ষার সময়সূচী ও রুটিন দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন করুন।'
               )
             ) : (
-            <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4 text-xs animate-fade-in">
-              <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="font-extrabold text-sm text-indigo-950 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-indigo-600" />
-                  📅 একাডেমি ও কোর্স রুটিন সেন্টার
-                </h3>
-                <span className="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-xl text-[10px]">
-                  মোট রুটিন: {routines.length} টি
-                </span>
+            <div className="bg-white border border-gray-100 p-4 sm:p-6 rounded-3xl shadow-sm flex flex-col gap-4 text-xs animate-fade-in">
+              {/* Header & Filter Controls */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-indigo-950 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
+                    📅 একাডেমি ও কোর্স রুটিন সেন্টার
+                  </h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5 font-medium">
+                    প্রতিটি রুটিনের পরীক্ষার নাম, তারিখ ও ব্যাচ স্ট্যাটাস দেখে বিস্তারিত সিলেবাস ও MCQ প্র্যাকটিস করুন।
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="bg-indigo-50 text-indigo-700 font-extrabold px-3 py-1.5 rounded-xl text-[11px] border border-indigo-100">
+                    মোট রুটিন: {routines.length.toLocaleString('bn-BD')} টি
+                  </span>
+                </div>
               </div>
 
-              {routines.length === 0 ? (
-                <p className="text-gray-400 text-center py-10">বর্তমানে কোনো রুটিন প্রকাশিত হয়নি।</p>
-              ) : (
-                <div className="space-y-4">
-                  {routines.map((item, idx) => {
-                    const hasExam = item.examConfig && item.examConfig.enabled;
-                    const isExamLive = hasExam && item.examConfig?.startTime && new Date() >= new Date(item.examConfig.startTime);
-                    const targetCourse = courses ? courses.find(c => c.id === item.courseId || c.title === item.courseName) : undefined;
+              {/* Search & Batch Filters */}
+              {routines.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-50 p-2.5 rounded-2xl border border-slate-150">
+                  {/* Filter Pills */}
+                  <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto no-scrollbar py-0.5">
+                    {(() => {
+                      const counts = {
+                        all: routines.length,
+                        open: routines.filter(r => getRoutineBatchInfo(r).type === 'open').length,
+                        enrolled: routines.filter(r => getRoutineBatchInfo(r).type === 'enrolled').length,
+                        unrolled: routines.filter(r => getRoutineBatchInfo(r).type === 'unrolled').length,
+                      };
 
-                    return (
-                      <div key={item.id ? `usr-rt-${item.id}-${idx}` : `usr-rt-${idx}`} className="p-4 sm:p-5 bg-slate-50/70 border border-slate-200/80 hover:border-indigo-300 rounded-3xl transition space-y-3 relative shadow-2xs">
-                        <div className="flex justify-between items-start border-b pb-2.5 border-slate-200/80">
-                          <div>
-                            {item.courseName && (
-                              <span className="inline-block px-2.5 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 text-[10px] font-extrabold mb-1 border border-indigo-200">
-                                🎓 কোর্স: {item.courseName}
-                              </span>
-                            )}
-                            <h4 className="font-black text-indigo-950 text-sm sm:text-base leading-snug">{item.title}</h4>
-                          </div>
-                          <span className="text-[10px] text-gray-400 font-bold shrink-0">{new Date(item.createdAt).toLocaleDateString('bn-BD')}</span>
-                        </div>
+                      return ([
+                        { key: 'all' as const, label: `সব রুটিন (${counts.all.toLocaleString('bn-BD')})` },
+                        { key: 'open' as const, label: `🌐 ওপেন ব্যাচ (${counts.open.toLocaleString('bn-BD')})` },
+                        { key: 'enrolled' as const, label: `✅ এনরোল্ড (${counts.enrolled.toLocaleString('bn-BD')})` },
+                        { key: 'unrolled' as const, label: `🔒 আন-এনরোল্ড (${counts.unrolled.toLocaleString('bn-BD')})` },
+                      ]).map(tab => (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setRoutineBatchFilter(tab.key)}
+                          className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                            routineBatchFilter === tab.key
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 border border-slate-200/80'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ));
+                    })()}
+                  </div>
 
-                        {/* Scheduled Exam Card Badge */}
-                        {hasExam && (
-                          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-3 rounded-2xl font-bold text-xs space-y-1 shadow-xs">
-                            <p className="flex items-center gap-1.5 font-black text-sm">
-                              ⏰ শিডিউলড পরীক্ষা: {formatBengaliDate(item.examConfig?.startTime)}
-                            </p>
-                            <p className="text-emerald-100 text-[11px] font-medium">
-                              এমসিকিউ: {item.examConfig?.qLimit || 20} টি | সময়: {item.examConfig?.timeLimit || 20} মিনিট | পূর্ণমান: {item.examConfig?.totalMarks || 20} | পাস mark: {item.examConfig?.passMarks || 8}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Syllabus Path Hierarchy */}
-                        {(() => {
-                          const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
-                          if (syllabusPaths.length === 0) return null;
-                          return (
-                            <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-indigo-100/80 shadow-2xs">
-                              <span className="text-[10.5px] font-black text-indigo-950 flex items-center gap-1.5">
-                                <FolderTree className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                                📚 সিলেবাস (Selected Syllabus):
-                              </span>
-                              <div className="flex flex-col gap-1.5">
-                                {syllabusPaths.map((path, pIdx) => (
-                                  <div key={pIdx} className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-indigo-600 font-black">📌</span>
-                                    {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                                      <React.Fragment key={sIdx}>
-                                        <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
-                                        {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
-                                      </React.Fragment>
-                                    ))}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {item.details && (
-                          <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs font-medium bg-white p-3 rounded-2xl border border-gray-100">
-                            {item.details}
-                          </p>
-                        )}
-
-                        {/* Practice & Exam & PDF Action Row */}
-                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/80">
-                          <button
-                            type="button"
-                            onClick={() => setViewingHierarchyRoutine(item)}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2.5 px-3.5 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                          >
-                            <FolderTree className="w-4 h-4 text-indigo-600" />
-                            🌳 অধ্যায়ভিত্তিক MCQ দেখুন
-                          </button>
-
-                          <button
-                            onClick={() => startDemoExam(item)}
-                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                          >
-                            <BookOpen className="w-4 h-4 text-purple-200" />
-                            📝 Demo exam
-                          </button>
-
-                          {item.courseName && (
-                            <button
-                              onClick={() => {
-                                const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
-                                downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines, subcategories, categories, questions);
-                              }}
-                              className="bg-white hover:bg-gray-100 text-indigo-700 font-extrabold py-2.5 px-3.5 rounded-2xl transition text-xs border border-indigo-200 flex items-center justify-center gap-1.5 shadow-2xs"
-                            >
-                              <Download className="w-4 h-4 text-indigo-600" />
-                              📥 PDF ডাউনলোড
-                            </button>
-                          )}
-
-                          {hasExam && isExamLive && (
-                            <button
-                              onClick={() => handleTabSelect('exams')}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-bounce"
-                            >
-                              ✍️ লাইভ পরীক্ষায় অংশগ্রহণ করুন
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {/* Search Bar */}
+                  <div className="relative min-w-[200px] sm:max-w-xs w-full">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={routineSearchQuery}
+                      onChange={(e) => setRoutineSearchQuery(e.target.value)}
+                      placeholder="পরীক্ষা বা রুটিনের নাম খুঁজুন..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-medium"
+                    />
+                    {routineSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setRoutineSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {/* Routine List Cards */}
+              {(() => {
+                const filteredRoutines = routines.filter(item => {
+                  const batchInfo = getRoutineBatchInfo(item);
+                  if (routineBatchFilter !== 'all' && batchInfo.type !== routineBatchFilter) {
+                    return false;
+                  }
+                  if (routineSearchQuery.trim()) {
+                    const q = routineSearchQuery.trim().toLowerCase();
+                    const titleMatch = item.title.toLowerCase().includes(q);
+                    const courseMatch = (item.courseName || '').toLowerCase().includes(q);
+                    const detailsMatch = (item.details || '').toLowerCase().includes(q);
+                    return titleMatch || courseMatch || detailsMatch;
+                  }
+                  return true;
+                });
+
+                if (routines.length === 0) {
+                  return (
+                    <div className="p-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-gray-400 font-bold">বর্তমানে কোনো রুটিন প্রকাশিত হয়নি।</p>
+                    </div>
+                  );
+                }
+
+                if (filteredRoutines.length === 0) {
+                  return (
+                    <div className="p-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                      <p className="text-gray-500 font-bold">নির্বাচিত ফিল্টারে কোনো রুটিন পাওয়া যায়নি।</p>
+                      <button
+                        type="button"
+                        onClick={() => { setRoutineBatchFilter('all'); setRoutineSearchQuery(''); }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-extrabold underline cursor-pointer"
+                      >
+                        সব রুটিন প্রদর্শন করুন
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3.5">
+                    {filteredRoutines.map((item, idx) => {
+                      const batchInfo = getRoutineBatchInfo(item);
+                      const isExpanded = expandedRoutineId === item.id;
+                      const hasExam = item.examConfig && item.examConfig.enabled;
+                      const isExamLive = hasExam && item.examConfig?.startTime && new Date() >= new Date(item.examConfig.startTime);
+                      const targetCourse = courses ? courses.find(c => c.id === item.courseId || c.title === item.courseName) : undefined;
+                      const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
+
+                      return (
+                        <div
+                          key={item.id ? `usr-rt-${item.id}-${idx}` : `usr-rt-${idx}`}
+                          className={`bg-white border ${batchInfo.cardBorder} rounded-3xl transition-all duration-200 shadow-2xs hover:shadow-md overflow-hidden ${
+                            isExpanded ? 'ring-2 ring-indigo-500/20 border-indigo-300' : ''
+                          }`}
+                        >
+                          {/* 1. COMPACT LIST CARD (ONLY shows Course Name, Next Exam Date with Starting Time, and Batch in Upper Right Corner) */}
+                          <div
+                            onClick={() => setExpandedRoutineId(isExpanded ? null : item.id)}
+                            className="p-4 sm:p-5 cursor-pointer select-none transition-colors hover:bg-slate-50/70"
+                          >
+                            <div className="flex flex-col gap-2.5">
+                              {/* Top Row: Course Name (Left) and Batch Badge (Upper Right Corner) */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0 pr-2">
+                                  <h4 className="font-black text-indigo-950 text-sm sm:text-base leading-snug hover:text-indigo-600 transition flex items-center gap-1.5">
+                                    <GraduationCap className="w-4 h-4 text-indigo-600 shrink-0" />
+                                    <span>{item.courseName || targetCourse?.title || batchInfo.courseTitle || 'সাধারণ কোর্স / ওপেন ব্যাচ'}</span>
+                                  </h4>
+                                </div>
+
+                                {/* Upper Right Corner: Batch Badge */}
+                                <div className="shrink-0 flex items-center gap-1.5">
+                                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-xl text-[11px] font-extrabold border shadow-2xs ${batchInfo.badgeClass}`}>
+                                    {batchInfo.label}
+                                  </span>
+                                  {hasExam && isExamLive && (
+                                    <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs animate-pulse">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                      লাইভ
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Next Exam Date with Starting Time & Click Indicator */}
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-950 border border-indigo-200/80 font-extrabold text-[11.5px]">
+                                    <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    {hasExam && item.examConfig?.startTime ? (
+                                      <span>পরবর্তী পরীক্ষার তারিখ ও সময়: {formatExamScheduleWithTime(item.examConfig.startTime)}</span>
+                                    ) : item.examDate ? (
+                                      <span>পরীক্ষার তারিখ: {formatBengaliDate(item.examDate)}</span>
+                                    ) : (
+                                      <span>তারিখ: {formatBengaliDate(item.createdAt)}</span>
+                                    )}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1 text-slate-400 hover:text-indigo-600 text-[11px] font-bold transition">
+                                  <span>{isExpanded ? 'বিস্তারিত বন্ধ করুন' : 'বিস্তারিত দেখতে ক্লিক করুন'}</span>
+                                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-indigo-600' : ''}`} />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2. EXPANDED DETAILS VIEW (Shown after clicking on card) */}
+                          {isExpanded && (
+                            <div className="p-4 sm:p-5 bg-slate-50/90 border-t border-slate-200/80 space-y-4 animate-fade-in">
+                              {/* Routine & Exam Title */}
+                              <div className="bg-white p-3.5 rounded-2xl border border-indigo-100 shadow-2xs">
+                                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                                  📝 রুটিন ও পরীক্ষার শিরোনাম:
+                                </span>
+                                <h4 className="font-black text-indigo-950 text-sm sm:text-base leading-snug">
+                                  {item.title}
+                                </h4>
+                              </div>
+
+                              {/* Batch / Enrollment Info Banner */}
+                              <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                batchInfo.type === 'open'
+                                  ? 'bg-blue-50/80 border-blue-200 text-blue-950'
+                                  : batchInfo.type === 'enrolled'
+                                    ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                                    : 'bg-amber-50/80 border-amber-200 text-amber-950'
+                              }`}>
+                                <div className="space-y-1">
+                                  <p className="font-extrabold text-xs flex items-center gap-1.5">
+                                    <span>{batchInfo.type === 'open' ? '🌐' : batchInfo.type === 'enrolled' ? '✅' : '🔒'}</span>
+                                    {batchInfo.label}
+                                  </p>
+                                  <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                                    {batchInfo.description}
+                                  </p>
+                                </div>
+
+                                {batchInfo.type === 'unrolled' && batchInfo.courseId && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleEnrollCourse(batchInfo.courseId!, batchInfo.courseTitle || 'কোর্স');
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs shadow-xs transition shrink-0 flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <GraduationCap className="w-4 h-4" />
+                                    🎓 কোর্সে এনরোল করুন (Enroll Now)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Scheduled Exam Box */}
+                              {hasExam && (
+                                <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 rounded-2xl font-bold text-xs space-y-2 shadow-xs">
+                                  <div className="flex justify-between items-start flex-wrap gap-2">
+                                    <p className="flex items-center gap-1.5 font-black text-sm">
+                                      ⏰ শিডিউলড পরীক্ষা: {formatBengaliDate(item.examConfig?.startTime)}
+                                    </p>
+                                    {isExamLive && (
+                                      <span className="bg-white text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse">
+                                        🟢 পরীক্ষা চলমান
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-emerald-100 text-[11.5px] font-medium">
+                                    এমসিকিউ: {item.examConfig?.qLimit || 20} টি | সময়: {item.examConfig?.timeLimit || 20} মিনিট | পূর্ণমান: {item.examConfig?.totalMarks || 20} | পাস mark: {item.examConfig?.passMarks || 8}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Syllabus Path Hierarchy */}
+                              {syllabusPaths.length > 0 && (
+                                <div className="space-y-2 bg-white p-4 rounded-2xl border border-indigo-100 shadow-2xs">
+                                  <span className="text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
+                                    <FolderTree className="w-4 h-4 text-indigo-600 shrink-0" />
+                                    📚 সিলেবাস বিবরণী (Selected Syllabus Hierarchy):
+                                  </span>
+                                  <div className="flex flex-col gap-1.5">
+                                    {syllabusPaths.map((path, pIdx) => (
+                                      <div key={pIdx} className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-indigo-600 font-black">📌</span>
+                                        {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                                          <React.Fragment key={sIdx}>
+                                            <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
+                                            {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                          </React.Fragment>
+                                        ))}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Routine Details Text Description */}
+                              {item.details && (
+                                <div className="bg-white p-4 rounded-2xl border border-gray-100 space-y-1">
+                                  <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                                    📝 রুটিন নির্দেশিকা ও বিবরণ:
+                                  </span>
+                                  <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs font-medium">
+                                    {item.details}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Practice, Demo Exam, PDF & Live Exam Action Buttons */}
+                              <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-200/80">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewingHierarchyRoutine(item);
+                                  }}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                >
+                                  <FolderTree className="w-4 h-4 text-indigo-600" />
+                                  🌳 অধ্যায়ভিত্তিক MCQ দেখুন
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startDemoExam(item);
+                                  }}
+                                  className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                                  title="ওপেন ও এনরোল্ড সকল শিক্ষার্থী যেকোনো সময় ডেমো পরীক্ষা দিতে পারবেন"
+                                >
+                                  <BookOpen className="w-4 h-4 text-purple-200" />
+                                  <span>📝 Demo exam (অনুশীলন)</span>
+                                </button>
+
+                                {item.courseName && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
+                                      downloadCourseRoutinePDF(item.courseName || 'কোর্স রুটিন', targetCourse?.category, courseRoutines, subcategories, categories, questions);
+                                    }}
+                                    className="bg-white hover:bg-gray-100 text-indigo-700 font-extrabold py-2.5 px-3.5 rounded-2xl transition text-xs border border-indigo-200 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                  >
+                                    <Download className="w-4 h-4 text-indigo-600" />
+                                    📥 PDF ডাউনলোড
+                                  </button>
+                                )}
+
+                                {hasExam && isExamLive && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTabSelect('exams');
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-4 rounded-2xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-bounce cursor-pointer"
+                                  >
+                                    ✍️ লাইভ পরীক্ষায় অংশগ্রহণ করুন
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedRoutineId(null);
+                                  }}
+                                  className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3.5 py-2.5 rounded-2xl text-xs transition cursor-pointer"
+                                >
+                                  ▲ সংক্ষেপ করুন
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
             )
           )}
