@@ -8370,8 +8370,8 @@ export default function AdminPanel({
                         onClick={() => setViewingHierarchyRoutine(item)}
                         className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-extrabold py-1.5 px-3 rounded-xl transition text-[10.5px] flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                       >
-                        <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        🌳 অধ্যায়ভিত্তিক MCQ দেখুন
+                        <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>🎓 পরিক্ষার  প্রস্তুতি</span>
                       </button>
 
                       {/* PDF Export Action */}
