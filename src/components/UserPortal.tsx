@@ -15,6 +15,7 @@ import {
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
+import CurrentAffairsFeed from './CurrentAffairsFeed';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
@@ -272,7 +273,7 @@ export default function UserPortal({
   onFetchQuestionsLazy
 }: UserPortalProps) {
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Study & Preparation states
@@ -898,7 +899,7 @@ export default function UserPortal({
     return true;
   };
 
-  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile') => {
+  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
     if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
       checkGuestAccess(
         tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
@@ -3414,7 +3415,7 @@ export default function UserPortal({
                   <Compass className="w-4 h-4 text-indigo-600" />
                   দ্রুত নেভিগেশন ক্যাটাগরি
                 </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   <div 
                     onClick={() => { if (!checkGuestAccess('কাস্টম পরীক্ষা ও প্র্যাকটিস এক্সাম')) return; setRevisionMode(false); setSetupModalOpen(true); }}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-indigo-50/50 to-indigo-100/30 border-indigo-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
@@ -3437,6 +3438,17 @@ export default function UserPortal({
                     <div>
                       <h4 className="text-xs font-bold text-blue-950">চলমান কোর্স</h4>
                       <p className="text-[9px] text-blue-700/80 mt-0.5">সকল প্রকার কোর্স ও স্টাডি</p>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => handleTabSelect('currentAffairs')}
+                    className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-teal-50/50 to-teal-100/30 border-teal-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
+                  >
+                    <span className="text-xl">🌍</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-teal-950">সাম্প্রতিক বিষয়াবলী</h4>
+                      <p className="text-[9px] text-teal-700/80 mt-0.5">দৈনিক বুলেট পয়েন্ট ও প্রশ্ন</p>
                     </div>
                   </div>
 
@@ -6193,6 +6205,35 @@ export default function UserPortal({
               })()}
             </div>
             )
+          )}
+
+          {/* VIEW: CURRENT AFFAIRS */}
+          {activeTab === 'currentAffairs' && (
+            <CurrentAffairsFeed
+              subcategories={subcategories}
+              questions={questions}
+              bookmarkedIds={bookmarks.map(b => b.questionId)}
+              onToggleBookmark={(qId: string) => {
+                const existing = bookmarks.find(b => b.questionId === qId);
+                if (existing) {
+                  onRemoveBookmark(existing.id);
+                } else {
+                  handleOpenBookmarkDialog(qId);
+                }
+              }}
+              onStartExamWithQuestions={(caQuestions, caTitle) => {
+                setQuizQuestions(caQuestions);
+                setQuizTitle(caTitle);
+                setQuizExamId(`ca_${Date.now()}`);
+                setQuizTimeLimitMinutes('unlimited');
+                setQuizAnswerMode('instant');
+                setCurrentQIndex(0);
+                setUserSelectedAnswers({});
+                setSecondsRemaining(0);
+                setIsQuizTimerRunning(false);
+                setQuizActive(true);
+              }}
+            />
           )}
 
           {/* VIEW: PROFILE */}

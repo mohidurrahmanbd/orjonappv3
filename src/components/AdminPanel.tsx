@@ -23,6 +23,7 @@ import UserGrowthChart from './UserGrowthChart';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
+import CurrentAffairsAdmin from './CurrentAffairsAdmin';
 
 const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || ReactWindow;
 
@@ -37,13 +38,13 @@ interface AdminPanelProps {
   categories: CategoryItem[];
   subcategories: SubcategoryItem[];
   onAddCategory: (name: string, subHeading?: string) => void;
-  onAddSubcategory: (name: string, parentCategory: string, date?: string, subHeading?: string) => void;
+  onAddSubcategory: (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string) => void;
   onDeleteCategory: (id: string) => void;
   onDeleteSubcategory: (id: string) => void;
   onBulkDeleteSubcategories?: (ids: string[]) => void;
   onBulkMoveSubcategories?: (ids: string[], newParentCategory: string) => void;
   onUpdateCategory?: (id: string, newName: string, subHeading?: string) => void;
-  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string) => void;
+  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => void;
   onAddQuestion: (q: Omit<Question, 'id'>) => void;
   onUpdateQuestion: (id: string, q: Partial<Question>) => void;
   onDeleteQuestion: (id: string) => void;
@@ -143,6 +144,24 @@ const isYearJobSolutionVariation = (name: string): boolean => {
   );
 };
 
+// Helper to detect variations/typos of "সাম্প্রতিক বিষয়াবলী"
+const isCurrentAffairVariation = (name: string): boolean => {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক তথ্য' ||
+    normalized === 'কারেন্ট অ্যাফেয়ার্স' ||
+    normalized === 'কারেন্ট অ্যাফেয়ার্স' ||
+    normalized === 'current affairs' ||
+    normalized === 'current affair' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'সাম্প্রতিক'
+  );
+};
+
 export default function AdminPanel({
   questions = [],
   liveExams = [],
@@ -191,7 +210,7 @@ export default function AdminPanel({
   onLoadAuditLogsOnDemand,
   onLoadAttemptsOnDemand
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'manage' | 'categories' | 'exams' | 'courses' | 'routines' | 'results' | 'users' | 'feedback' | 'backup' | 'firestore-migration' | 'audit-logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'manage' | 'categories' | 'current-affairs' | 'exams' | 'courses' | 'routines' | 'results' | 'users' | 'feedback' | 'backup' | 'firestore-migration' | 'audit-logs'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Course Form States
@@ -3445,6 +3464,7 @@ export default function AdminPanel({
     { id: 'add', label: 'প্রশ্ন যোগ করুন', icon: '📝', description: 'নতুন MCQ তৈরি বা প্রশ্ন এডিটিং' },
     { id: 'manage', label: 'প্রশ্ন ব্যাংক ম্যানেজ', icon: '📁', count: questions.length, description: 'প্রশ্ন খোঁজা, এডিট ও বাল্ক ডিলিট' },
     { id: 'categories', label: 'ক্যাটাগরি ও সাব-ক্যাটাগরি', icon: '🗂️', count: categories.length, description: 'বিষয়ভিত্তিক ট্রি স্ট্রাকচার তৈরি' },
+    { id: 'current-affairs', label: 'সাম্প্রতিক বিষয়াবলী', icon: '🌍', count: subcategories.filter(s => s.parentCategory === 'সাম্প্রতিক বিষয়াবলী' || isCurrentAffairVariation(s.parentCategory)).length, description: 'দৈনিক সাম্প্রতিক তথ্য বুলেট আকারে পোস্ট ও MCQ প্রশ্ন আপলোড' },
     { id: 'exams', label: 'পরীক্ষা ও নোটিশ সেন্ট্রাল', icon: '⏱️', count: liveExams.length, description: 'লাইভ পরীক্ষা ও পপআপ নোটিশ' },
     { id: 'courses', label: 'কোর্স ম্যানেজমেন্ট', icon: '🎓', count: courses.length, description: 'চলমান ও নতুন কোর্স এবং কোর্স রুটিন ম্যানেজমেন্ট' },
     { id: 'routines', label: 'রুটিন ম্যানেজমেন্ট', icon: '📅', count: routines.length, description: 'ডেইলি/উইকলি স্টাডি রুটিন' },
@@ -3676,6 +3696,12 @@ export default function AdminPanel({
           className={`flex-1 min-w-[90px] py-2 px-3 border-b-2 font-bold text-center transition shrink-0 ${activeTab === 'categories' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-indigo-600'}`}
         >
           🗂️ ক্যাটাগরি ও সাব-ক্যাটাগরি
+        </button>
+        <button 
+          onClick={() => setActiveTab('current-affairs')}
+          className={`flex-1 min-w-[105px] py-2 px-3 border-b-2 font-bold text-center transition shrink-0 ${activeTab === 'current-affairs' ? 'border-teal-600 text-teal-600 font-black' : 'border-transparent text-gray-500 hover:text-teal-600'}`}
+        >
+          🌍 সাম্প্রতিক বিষয়াবলী
         </button>
         <button 
           onClick={() => setActiveTab('exams')}
@@ -6858,6 +6884,21 @@ export default function AdminPanel({
           </div>
         );
       })()}
+
+      {/* CURRENT AFFAIRS MANAGEMENT TAB */}
+      {activeTab === 'current-affairs' && (
+        <CurrentAffairsAdmin
+          subcategories={subcategories}
+          questions={questions}
+          categories={categories}
+          onAddSubcategory={onAddSubcategory}
+          onUpdateSubcategory={onUpdateSubcategory ? (id, newName, newParent, date, subHeading, text) => onUpdateSubcategory(id, newName, newParent, date, subHeading, text) : () => {}}
+          onDeleteSubcategory={onDeleteSubcategory}
+          onAddQuestion={(q) => onAddQuestion(q)}
+          onUpdateQuestion={(q) => onUpdateQuestion(q.id, q)}
+          onDeleteQuestion={onDeleteQuestion}
+        />
+      )}
 
       {/* 3. EXAMS & NOTICE BOARD */}
       {activeTab === 'exams' && (

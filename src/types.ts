@@ -169,6 +169,9 @@ export interface SubcategoryItem {
   parentCategory: string;
   date?: string; // e.g. YYYY-MM-DD
   subHeading?: string;
+  text?: string; // Text bullet points for current affairs & notes
+  details?: string;
+  createdAt?: string;
 }
 
 export interface AuditLog {

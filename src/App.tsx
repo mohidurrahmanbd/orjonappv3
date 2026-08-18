@@ -75,6 +75,21 @@ const isYearJobSolutionVariation = (name: string): boolean => {
   );
 };
 
+// Helper to detect variations/typos of "সাম্প্রতিক বিষয়াবলী"
+export const isCurrentAffairVariation = (name: string): boolean => {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'current affairs' ||
+    normalized === 'current affair' ||
+    normalized === 'সাম্প্রতিক'
+  );
+};
+
 export default function App() {
   // Database States
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -567,7 +582,8 @@ export default function App() {
     const targetCats: CategoryItem[] = [
       { id: 'cat-prep', name: 'বিষয়ভিত্তিক প্রস্তুতি' },
       { id: 'cat-job', name: 'জব সলিউশন পরীক্ষা' },
-      { id: 'cat-year', name: 'সাল ভিত্তিক জব সলিউশন' }
+      { id: 'cat-year', name: 'সাল ভিত্তিক জব সলিউশন' },
+      { id: 'cat-current', name: 'সাম্প্রতিক বিষয়াবলী' }
     ];
     setCategories(targetCats);
     localStorage.setItem('orjon_categories', JSON.stringify(targetCats));
@@ -591,7 +607,7 @@ export default function App() {
           loadedSubcats.push({
             id: `subcat-${i + 1}`,
             name: q.subcategory,
-            parentCategory: 'জব সলিউশন পরীক্ষা'
+            parentCategory: isCurrentAffairVariation(q.category) ? 'সাম্প্রতিক বিষয়াবলী' : 'জব সলিউশন পরীক্ষা'
           });
         }
       });
@@ -607,6 +623,32 @@ export default function App() {
           name: yr,
           parentCategory: 'সাল ভিত্তিক জব সলিউশন'
         });
+      }
+    });
+
+    // Ensure default Current Affairs date categories exist if none present
+    const defaultCurrentAffairs = [
+      {
+        id: 'subcat-ca-2026-08-18',
+        name: '১৮ আগস্ট ২০২৬',
+        parentCategory: 'সাম্প্রতিক বিষয়াবলী',
+        date: '2026-08-18',
+        text: `জাতীয় সংসদ ভবনে গুরুত্বপূর্ণ বাজেট অধিবেশন সম্পন্ন হয়েছে।\nবাংলাদেশ ব্যাংক মুদ্রাস্ফীতি নিয়ন্ত্রণে নতুন পলিসি রেপো রেট ১০% ঘোষণা করেছে।\nআন্তর্জাতিক সৌর জোটে (ISA) নতুন সদস্য হিসেবে যুক্ত হয়েছে একাধিক দেশ।\nপ্যারিস অলিম্পিকে সর্বকালের সর্বোচ্চ পদক তালিকা প্রকাশ।`,
+        createdAt: '2026-08-18T10:00:00.000Z'
+      },
+      {
+        id: 'subcat-ca-2026-08-15',
+        name: '১৫ আগস্ট ২০২৬',
+        parentCategory: 'সাম্প্রতিক বিষয়াবলী',
+        date: '2026-08-15',
+        text: `বঙ্গবন্ধু শেখ মুজিবুর রহমান টানেলে দৈনিক যান চলাচলের নতুন রেকর্ড স্থাপিত হয়েছে।\nচাঁদে নতুন অনুসন্ধান মিশনের সফল উৎক্ষেপণ পরিচালনা করেছে নাসা।\nটেস্ট ক্রিকেটে দ্রুততম ৫০০ উইকেটের নতুন বিশ্বরেকর্ড অর্জিত।`,
+        createdAt: '2026-08-15T09:00:00.000Z'
+      }
+    ];
+    defaultCurrentAffairs.forEach(ca => {
+      const exists = loadedSubcats.some(s => s.name.trim() === ca.name && isCurrentAffairVariation(s.parentCategory));
+      if (!exists) {
+        loadedSubcats.push(ca);
       }
     });
 
@@ -627,7 +669,7 @@ export default function App() {
     // Convert old main categories (like বাংলা, ইংরেজি, সাধারণ জ্ঞান) to subcategories under 'বিষয়ভিত্তিক প্রস্তুতি'
     const oldCategoryNames = new Set<string>();
     normalizedQ.forEach((q: any) => {
-      if (q.category && q.category !== 'বিষয়ভিত্তিক প্রস্তুতি' && !isJobSolutionVariation(q.category) && !isYearJobSolutionVariation(q.category)) {
+      if (q.category && q.category !== 'বিষয়ভিত্তিক প্রস্তুতি' && !isJobSolutionVariation(q.category) && !isYearJobSolutionVariation(q.category) && !isCurrentAffairVariation(q.category)) {
         oldCategoryNames.add(q.category);
       }
     });
@@ -636,7 +678,7 @@ export default function App() {
       try {
         const parsedCats = JSON.parse(storedCat);
         parsedCats.forEach((c: any) => {
-          if (c.name && c.name !== 'বিষয়ভিত্তিক প্রস্তুতি' && !isJobSolutionVariation(c.name) && !isYearJobSolutionVariation(c.name)) {
+          if (c.name && c.name !== 'বিষয়ভিত্তিক প্রস্তুতি' && !isJobSolutionVariation(c.name) && !isYearJobSolutionVariation(c.name) && !isCurrentAffairVariation(c.name)) {
             oldCategoryNames.add(c.name);
           }
         });
@@ -661,8 +703,10 @@ export default function App() {
       return nameLower !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() &&
              nameLower !== 'জব সলিউশন পরীক্ষা'.toLowerCase() &&
              nameLower !== 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() &&
+             nameLower !== 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() &&
              !isJobSolutionVariation(nameLower) &&
              !isYearJobSolutionVariation(nameLower) &&
+             !isCurrentAffairVariation(nameLower) &&
              nameLower !== parentLower;
     });
 
@@ -674,6 +718,7 @@ export default function App() {
     validParentNames.add('বিষয়ভিত্তিক প্রস্তুতি');
     validParentNames.add('জব সলিউশন পরীক্ষা');
     validParentNames.add('সাল ভিত্তিক জব সলিউশন');
+    validParentNames.add('সাম্প্রতিক বিষয়াবলী');
     oldCategoryNames.forEach(name => {
       validParentNames.add(name.trim());
     });
@@ -686,13 +731,15 @@ export default function App() {
       const nameLower = sub.name.trim().toLowerCase();
       const parentLower = parent.toLowerCase();
 
-      // 1. If own name is a job solution or year solution variation
+      // 1. If own name is a job solution or year solution or current affairs variation
       if (isJobSolutionVariation(sub.name)) {
         parent = 'জব সলিউশন পরীক্ষা';
       } else if (isYearJobSolutionVariation(sub.name)) {
         parent = 'সাল ভিত্তিক জব সলিউশন';
+      } else if (isCurrentAffairVariation(sub.name)) {
+        parent = 'সাম্প্রতিক বিষয়াবলী';
       }
-      // 2. If parent is a job/year solution variation:
+      // 2. If parent is a job/year/current affairs solution variation:
       else if (isJobSolutionVariation(parent)) {
         if (!loadedSubcatNames.has(parentLower)) {
           parent = 'জব সলিউশন পরীক্ষা';
@@ -700,6 +747,10 @@ export default function App() {
       } else if (isYearJobSolutionVariation(parent)) {
         if (!loadedSubcatNames.has(parentLower)) {
           parent = 'সাল ভিত্তিক জব সলিউশন';
+        }
+      } else if (isCurrentAffairVariation(parent)) {
+        if (!loadedSubcatNames.has(parentLower)) {
+          parent = 'সাম্প্রতিক বিষয়াবলী';
         }
       }
       // 3. Fallbacks for empty or invalid parents
@@ -2078,7 +2129,7 @@ export default function App() {
     const trimmed = name.trim();
     if (!trimmed) return;
     const lowerName = trimmed.toLowerCase();
-    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName)) {
+    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || lowerName === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName) || isCurrentAffairVariation(lowerName)) {
       alert('⚠️ ত্রুটি: মূল রুট ক্যাটাগরির নামে কোনো নতুন ক্যাটাগরি তৈরি করা সম্ভব নয়!');
       return;
     }
@@ -2098,7 +2149,7 @@ export default function App() {
     alert('🎯 নতুন বিষয়ভিত্তিক প্রস্তুতি ক্যাটাগরি সফলভাবে যোগ করা হয়েছে!');
   };
 
-  const handleAddSubcategory = (name: string, parentCategory: string, date?: string, subHeading?: string) => {
+  const handleAddSubcategory = (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string) => {
     const trimmed = name.trim();
     if (!trimmed || !parentCategory) return;
     
@@ -2107,10 +2158,12 @@ export default function App() {
       normalizedParent = 'জব সলিউশন পরীক্ষা';
     } else if (isYearJobSolutionVariation(normalizedParent)) {
       normalizedParent = 'সাল ভিত্তিক জব সলিউশন';
+    } else if (isCurrentAffairVariation(normalizedParent)) {
+      normalizedParent = 'সাম্প্রতিক বিষয়াবলী';
     }
 
     const lowerName = trimmed.toLowerCase();
-    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName)) {
+    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || lowerName === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName) || isCurrentAffairVariation(lowerName)) {
       alert('⚠️ ত্রুটি: মূল রুট ক্যাটাগরির নামে কোনো সাব-ক্যাটাগরি তৈরি করা সম্ভব নয়!');
       return;
     }
@@ -2123,7 +2176,22 @@ export default function App() {
     let currentSubcats = [...subcategories];
     
     if (currentSubcats.some(s => s.name.toLowerCase() === trimmed.toLowerCase() && s.parentCategory === normalizedParent)) {
-      alert('এই সাব-ক্যাটাগরি ইতিমধ্যে বিদ্যমান রয়েছে!');
+      // If already exists, update its text / date / subHeading if provided
+      const updated = currentSubcats.map(s => {
+        if (s.name.toLowerCase() === trimmed.toLowerCase() && s.parentCategory === normalizedParent) {
+          const u: SubcategoryItem = {
+            ...s,
+            date: date !== undefined ? date : s.date,
+            subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading,
+            text: text !== undefined ? text : s.text
+          };
+          saveItemToFirestore('subcategories', u, 'subcat');
+          return u;
+        }
+        return s;
+      });
+      updateSubcategoriesDB(updated);
+      alert(`🎯 "${trimmed}" সাব-ক্যাটাগরি সফলভাবে আপডেট করা হয়েছে!`);
       return;
     }
     
@@ -2132,7 +2200,9 @@ export default function App() {
       name: trimmed,
       parentCategory: normalizedParent,
       date: date || undefined,
-      subHeading: subHeading ? subHeading.trim() : undefined
+      subHeading: subHeading ? subHeading.trim() : undefined,
+      text: text || undefined,
+      createdAt: new Date().toISOString()
     };
     
     currentSubcats.push(newSub);
@@ -2155,7 +2225,7 @@ export default function App() {
         break;
       }
       const childLower = childTrimmed.toLowerCase();
-      if (childLower === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || childLower === 'জব সলিউশন পরীক্ষা'.toLowerCase() || childLower === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || isJobSolutionVariation(childLower) || isYearJobSolutionVariation(childLower)) {
+      if (childLower === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || childLower === 'জব সলিউশন পরীক্ষা'.toLowerCase() || childLower === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || childLower === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() || isJobSolutionVariation(childLower) || isYearJobSolutionVariation(childLower) || isCurrentAffairVariation(childLower)) {
         alert('⚠️ ত্রুটি: মূল রুট ক্যাটাগরির নামে কোনো সাব-ক্যাটাগরি তৈরি করা সম্ভব নয়!');
         break;
       }
@@ -2184,7 +2254,7 @@ export default function App() {
   const handleDeleteCategory = (id: string) => {
     const cat = categories.find(c => c.id === id);
     if (!cat) return;
-    if (cat.name === 'বিষয়ভিত্তিক প্রস্তুতি' || cat.name === 'জব সলিউশন পরীক্ষা' || cat.name === 'সাল ভিত্তিক জব সলিউশন' || isJobSolutionVariation(cat.name) || isYearJobSolutionVariation(cat.name)) {
+    if (cat.name === 'বিষয়ভিত্তিক প্রস্তুতি' || cat.name === 'জব সলিউশন পরীক্ষা' || cat.name === 'সাল ভিত্তিক জব সলিউশন' || cat.name === 'সাম্প্রতিক বিষয়াবলী' || isJobSolutionVariation(cat.name) || isYearJobSolutionVariation(cat.name) || isCurrentAffairVariation(cat.name)) {
       alert('সতর্কতা: মূল রুট ক্যাটাগরি ডিলিট করা সম্ভব নয়!');
       return;
     }
@@ -2255,6 +2325,8 @@ export default function App() {
       normalizedParent = 'জব সলিউশন পরীক্ষা';
     } else if (isYearJobSolutionVariation(normalizedParent)) {
       normalizedParent = 'সাল ভিত্তিক জব সলিউশন';
+    } else if (isCurrentAffairVariation(normalizedParent)) {
+      normalizedParent = 'সাম্প্রতিক বিষয়াবলী';
     }
 
     const updatedSubcats = subcategories.map(s => {
@@ -2275,7 +2347,7 @@ export default function App() {
     if (!trimmed) return;
     const cat = categories.find(c => c.id === id);
     if (!cat) return;
-    if (cat.name === 'বিষয়ভিত্তিক প্রস্তুতি' || cat.name === 'জব সলিউশন পরীক্ষা' || cat.name === 'সাল ভিত্তিক জব সলিউশন' || isJobSolutionVariation(cat.name) || isYearJobSolutionVariation(cat.name)) {
+    if (cat.name === 'বিষয়ভিত্তিক প্রস্তুতি' || cat.name === 'জব সলিউশন পরীক্ষা' || cat.name === 'সাল ভিত্তিক জব সলিউশন' || cat.name === 'সাম্প্রতিক বিষয়াবলী' || isJobSolutionVariation(cat.name) || isYearJobSolutionVariation(cat.name) || isCurrentAffairVariation(cat.name)) {
       alert('সতর্কতা: মূল রুট ক্যাটাগরির নাম পরিবর্তন করা সম্ভব নয়!');
       return;
     }
@@ -2314,7 +2386,7 @@ export default function App() {
     alert('🎯 ক্যাটাগরি সফলভাবে আপডেট করা হয়েছে!');
   };
 
-  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string) => {
+  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     
@@ -2323,10 +2395,12 @@ export default function App() {
       normalizedParent = 'জব সলিউশন পরীক্ষা';
     } else if (isYearJobSolutionVariation(normalizedParent)) {
       normalizedParent = 'সাল ভিত্তিক জব সলিউশন';
+    } else if (isCurrentAffairVariation(normalizedParent)) {
+      normalizedParent = 'সাম্প্রতিক বিষয়াবলী';
     }
 
     const lowerName = trimmed.toLowerCase();
-    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName)) {
+    if (lowerName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() || lowerName === 'জব সলিউশন পরীক্ষা'.toLowerCase() || lowerName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() || lowerName === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() || isJobSolutionVariation(lowerName) || isYearJobSolutionVariation(lowerName) || isCurrentAffairVariation(lowerName)) {
       alert('⚠️ ত্রুটি: মূল রুট ক্যাটাগরির নামে কোনো সাব-ক্যাটাগরি পরিবর্তন বা স্থানান্তর করা সম্ভব নয়!');
       return;
     }
@@ -2347,7 +2421,8 @@ export default function App() {
           name: trimmed, 
           parentCategory: normalizedParent,
           date: date !== undefined ? date : s.date,
-          subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading
+          subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading,
+          text: text !== undefined ? text : s.text
         };
       }
       if (s.parentCategory === oldName) {
@@ -2372,8 +2447,10 @@ export default function App() {
           parentName === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() ||
           parentName === 'জব সলিউশন পরীক্ষা'.toLowerCase() ||
           parentName === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() ||
+          parentName === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() ||
           isJobSolutionVariation(parentName) ||
-          isYearJobSolutionVariation(parentName)
+          isYearJobSolutionVariation(parentName) ||
+          isCurrentAffairVariation(parentName)
         ) {
           break;
         }
