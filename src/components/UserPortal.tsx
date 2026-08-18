@@ -283,6 +283,8 @@ export default function UserPortal({
 
   // Hierarchical Routine MCQ Viewer Modal State
   const [viewingHierarchyRoutine, setViewingHierarchyRoutine] = useState<Routine | null>(null);
+  // Routine Syllabus Pop-up Modal State
+  const [syllabusModalRoutine, setSyllabusModalRoutine] = useState<Routine | null>(null);
 
   const startDemoExam = async (routine: Routine) => {
     // 1. Find corresponding original exam config or linked live exam
@@ -998,6 +1000,11 @@ export default function UserPortal({
         undefined,
         'চলমান পরীক্ষা স্থগিত'
       );
+      return true;
+    }
+
+    if (syllabusModalRoutine) {
+      setSyllabusModalRoutine(null);
       return true;
     }
 
@@ -2267,6 +2274,163 @@ export default function UserPortal({
   const renderModals = () => {
     return (
       <>
+        {/* Syllabus Popup Modal for a Routine Date */}
+        {syllabusModalRoutine && (() => {
+          const routine = syllabusModalRoutine;
+          const targetCourse = courses ? courses.find(c => c.id === routine.courseId || c.title === routine.courseName) : undefined;
+          const syllabusPaths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
+          const hasExam = routine.examConfig && routine.examConfig.enabled;
+          const isExamLive = hasExam && routine.examConfig?.startTime && new Date() >= new Date(routine.examConfig.startTime);
+          const examDateStr = routine.examConfig?.startTime
+            ? formatExamScheduleWithTime(routine.examConfig.startTime)
+            : routine.examDate
+              ? formatBengaliDate(routine.examDate)
+              : formatBengaliDate(routine.createdAt);
+
+          const totalMark = routine.examConfig?.totalMarks || 20;
+          const passMark = routine.examConfig?.passMarks || 8;
+          const timeLimit = routine.examConfig?.timeLimit || 20;
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in"
+              onClick={() => setSyllabusModalRoutine(null)}
+            >
+              <div 
+                className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-5 sm:p-6 relative border border-slate-100 flex flex-col gap-4 text-xs max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Close Button */}
+                <button
+                  type="button"
+                  id="btn-close-syllabus-modal"
+                  onClick={() => setSyllabusModalRoutine(null)}
+                  className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-full transition cursor-pointer"
+                  title="বন্ধ করুন"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Header */}
+                <div className="pr-8 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10.5px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-lg">
+                      {routine.courseName || targetCourse?.title || 'কোর্স রুটিন'}
+                    </span>
+                    {isExamLive && (
+                      <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs animate-pulse">
+                        লাইভ পরীক্ষা চলছে
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="font-black text-indigo-950 text-base sm:text-lg leading-snug">
+                    {routine.title}
+                  </h3>
+
+                  <div className="text-[11px] text-slate-600 font-semibold">
+                    <span>তারিখ ও সময়: {examDateStr}</span>
+                  </div>
+                </div>
+
+                {/* Exam Quick Specs Grid */}
+                <div className="grid grid-cols-3 gap-2 text-[11px] p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-center font-bold">
+                  <div className="bg-white p-2 rounded-xl border border-slate-100 text-indigo-950">
+                    <span className="block text-[10px] text-slate-400 font-medium">পূর্ণমান</span>
+                    <span>{totalMark.toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-100 text-slate-800">
+                    <span className="block text-[10px] text-slate-400 font-medium">পাস মার্ক</span>
+                    <span>{passMark.toLocaleString('bn-BD')}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-100 text-slate-800">
+                    <span className="block text-[10px] text-slate-400 font-medium">সময়</span>
+                    <span>{timeLimit.toLocaleString('bn-BD')} মি.</span>
+                  </div>
+                </div>
+
+                {/* Syllabus Section */}
+                <div className="space-y-2">
+                  <span className="text-xs font-black text-indigo-950 block">
+                    সিলেবাস ও বিষয়সমূহ (Syllabus):
+                  </span>
+
+                  {syllabusPaths.length > 0 ? (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {syllabusPaths.map((path, pIdx) => (
+                        <div
+                          key={pIdx}
+                          className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 flex-wrap"
+                        >
+                          {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
+                            <React.Fragment key={sIdx}>
+                              <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700 font-semibold"}>
+                                {seg}
+                              </span>
+                              {sIdx < arr.length - 1 && <span className="text-indigo-300 font-black">›</span>}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 font-medium">
+                      {routine.title}
+                    </div>
+                  )}
+                </div>
+
+                {/* Details / Instructions */}
+                {routine.details && (
+                  <div className="space-y-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      রুটিন নির্দেশিকা ও বিবরণ:
+                    </span>
+                    <p className="text-slate-700 leading-relaxed whitespace-pre-line text-xs font-medium">
+                      {routine.details}
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions Footer */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = routine;
+                      setSyllabusModalRoutine(null);
+                      startDemoExam(r);
+                    }}
+                    className="flex-1 min-w-[120px] bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
+                  >
+                    <span>Demo exam দিন</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = routine;
+                      setSyllabusModalRoutine(null);
+                      setViewingHierarchyRoutine(r);
+                    }}
+                    className="flex-1 min-w-[120px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
+                  >
+                    <span>পরিক্ষার প্রস্তুতি</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSyllabusModalRoutine(null)}
+                    className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl transition text-center cursor-pointer"
+                  >
+                    বন্ধ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Explanation Popup Modal */}
         {popupExplanationQ && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2640,7 +2804,7 @@ export default function UserPortal({
             </button>
 
             {/* Quick Stack Unwind Back Button when in sub-views/paths/tabs */}
-            {(activeTab !== 'dashboard' || prepPath.length > 0 || jobPath.length > 0 || yearJobPath.length > 0 || selectedAttemptForView || selectedBookmarkFolder || setupModalOpen || viewingHierarchyRoutine) && (
+            {(activeTab !== 'dashboard' || prepPath.length > 0 || jobPath.length > 0 || yearJobPath.length > 0 || selectedAttemptForView || selectedBookmarkFolder || setupModalOpen || viewingHierarchyRoutine || syllabusModalRoutine) && (
               <button
                 onClick={() => handleStackUnwind()}
                 className="p-1.5 sm:p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm transition-all hover:scale-105 active:scale-95 duration-150 flex items-center justify-center gap-1 shrink-0 text-xs font-extrabold cursor-pointer"
@@ -5294,8 +5458,8 @@ export default function UserPortal({
                         </div>
                       </div>
 
-                      {/* Course Routines Cards */}
-                      <div className="bg-slate-50/90 border border-slate-200/80 p-5 rounded-3xl space-y-4">
+                      {/* Course Routines List */}
+                      <div className="space-y-4">
                         <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                           <h3 className="font-extrabold text-sm text-indigo-950">
                             কোর্স রুটিন ও স্টাডি প্ল্যান ({courseRoutines.length})
@@ -5630,9 +5794,8 @@ export default function UserPortal({
                   {/* Header & Filter Controls */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b pb-3">
                     <div>
-                      <h3 className="font-black text-sm sm:text-base text-indigo-950 flex items-center gap-2">
-                        <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
-                        📅 একাডেমি ও কোর্স রুটিন সেন্টার
+                      <h3 className="font-black text-sm sm:text-base text-indigo-950">
+                        একাডেমিক ও কোর্স রুটিন সেন্টার
                       </h3>
                       <p className="text-[11px] text-gray-500 mt-0.5 font-medium">
                         কোর্স নির্বাচন করে তার তারিখভিত্তিক রুটিন ও সিলেবাস দেখুন।
@@ -5660,9 +5823,9 @@ export default function UserPortal({
 
                           return ([
                             { key: 'all' as const, label: `সব কোর্স (${counts.all.toLocaleString('bn-BD')})` },
-                            { key: 'open' as const, label: `🌐 ওপেন (${counts.open.toLocaleString('bn-BD')})` },
-                            { key: 'enrolled' as const, label: `✅ এনরোল্ড (${counts.enrolled.toLocaleString('bn-BD')})` },
-                            { key: 'unrolled' as const, label: `🔒 আন-এনরোল্ড (${counts.unrolled.toLocaleString('bn-BD')})` },
+                            { key: 'open' as const, label: `ওপেন (${counts.open.toLocaleString('bn-BD')})` },
+                            { key: 'enrolled' as const, label: `এনরোল্ড (${counts.enrolled.toLocaleString('bn-BD')})` },
+                            { key: 'unrolled' as const, label: `আন-এনরোল্ড (${counts.unrolled.toLocaleString('bn-BD')})` },
                           ]).map(tab => (
                             <button
                               key={tab.key}
@@ -5753,10 +5916,10 @@ export default function UserPortal({
                               : 'bg-amber-50 text-amber-700 border-amber-200';
 
                           const badgeLabel = group.batchType === 'open'
-                            ? '🌐 ওপেন ব্যাচ'
+                            ? 'ওপেন ব্যাচ'
                             : group.batchType === 'enrolled'
-                              ? '✅ এনরোল্ড'
-                              : '🔒 আন-এনরোল্ড';
+                              ? 'এনরোল্ড'
+                              : 'আন-এনরোল্ড';
 
                           return (
                             <div
@@ -5770,24 +5933,19 @@ export default function UserPortal({
                             >
                               {/* Top Row: Course Name & Batch Badge */}
                               <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                    <GraduationCap className="w-4 h-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h4 className="font-black text-indigo-950 text-xs sm:text-sm leading-snug group-hover:text-indigo-600 transition truncate">
-                                      {group.courseTitle}
-                                    </h4>
-                                    {group.category && (
-                                      <p className="text-[10px] text-slate-400 font-semibold truncate">
-                                        {group.category}
-                                      </p>
-                                    )}
-                                  </div>
+                                <div className="min-w-0">
+                                  <h4 className="font-black text-indigo-950 text-xs sm:text-sm leading-snug group-hover:text-indigo-600 transition truncate">
+                                    {group.courseTitle}
+                                  </h4>
+                                  {group.category && (
+                                    <p className="text-[10px] text-slate-400 font-semibold truncate">
+                                      {group.category}
+                                    </p>
+                                  )}
                                 </div>
 
                                 <div className="shrink-0 flex items-center gap-1">
-                                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px] font-extrabold border shadow-2xs ${badgeStyle}`}>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-extrabold border shadow-2xs ${badgeStyle}`}>
                                     {badgeLabel}
                                   </span>
                                   {group.hasLiveExam && (
@@ -5800,8 +5958,7 @@ export default function UserPortal({
 
                               {/* Next Exam Date & Routine Count */}
                               <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-100 text-[11px]">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50/90 text-indigo-950 border border-indigo-200/70 font-extrabold text-[11px]">
-                                  <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-xl bg-indigo-50/90 text-indigo-950 border border-indigo-200/70 font-extrabold text-[11px]">
                                   <span>পরবর্তী পরীক্ষা: {group.nextExamDateStr}</span>
                                 </span>
 
@@ -5854,9 +6011,8 @@ export default function UserPortal({
                           <span>কোর্স তালিকা</span>
                         </button>
                         <div className="min-w-0">
-                          <h3 className="font-black text-sm sm:text-base text-indigo-950 truncate flex items-center gap-1.5">
-                            <GraduationCap className="w-4 h-4 text-indigo-600 shrink-0" />
-                            <span>{currentGroup.courseTitle}</span>
+                          <h3 className="font-black text-sm sm:text-base text-indigo-950 truncate">
+                            {currentGroup.courseTitle}
                           </h3>
                           <p className="text-[10.5px] text-slate-500 font-medium">
                             তারিখভিত্তিক রুটিনের তালিকা থেকে সিলেবাস ও ডেমো পরীক্ষা দিন।
@@ -5869,9 +6025,8 @@ export default function UserPortal({
                           <button
                             type="button"
                             onClick={() => handleToggleEnrollCourse(currentGroup.courseId, currentGroup.courseTitle)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-xs shadow-2xs transition flex items-center cursor-pointer"
                           >
-                            <GraduationCap className="w-3.5 h-3.5" />
                             <span>এনরোল করুন</span>
                           </button>
                         )}
@@ -5931,48 +6086,60 @@ export default function UserPortal({
 
                               {isExamLive && (
                                 <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs animate-pulse shrink-0">
-                                  🟢 লাইভ পরীক্ষা চলছে
+                                  লাইভ পরীক্ষা চলছে
                                 </span>
                               )}
                             </div>
 
                             {/* Metadata Row: Exam Date, Total Mark, Pass Mark, Duration */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
-                              <div className="bg-indigo-50/80 border border-indigo-100/80 px-2 py-1 rounded-xl flex items-center gap-1 text-indigo-950 font-bold">
-                                <Calendar className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <div className="bg-indigo-50/80 border border-indigo-100/80 px-2 py-1 rounded-xl flex items-center justify-center text-indigo-950 font-bold">
                                 <span className="truncate">{examDateStr}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center gap-1 text-slate-700 font-bold">
-                                <span className="text-indigo-600 font-black">🎯</span>
+                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>পূর্ণমান: {totalMark.toLocaleString('bn-BD')}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center gap-1 text-slate-700 font-bold">
-                                <span className="text-amber-600 font-black">🏆</span>
+                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>পাস: {passMark.toLocaleString('bn-BD')}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center gap-1 text-slate-700 font-bold">
-                                <Clock className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>সময়: {timeLimit.toLocaleString('bn-BD')} মি.</span>
                               </div>
                             </div>
 
-                            {/* Bottom Row: Demo Exam Button & Open Syllabus Button */}
-                            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
-                              <button
-                                type="button"
-                                id={`btn-demo-exam-${routine.id || rIdx}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startDemoExam(routine);
-                                }}
-                                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                              >
-                                <BookOpen className="w-3.5 h-3.5 text-purple-200" />
-                                <span>📝 Demo exam</span>
-                              </button>
+                            {/* Bottom Row: Syllabus Button, Demo Exam Button & Open Syllabus Button */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  id={`btn-syllabus-${routine.id || rIdx}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSyllabusModalRoutine(routine);
+                                  }}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer"
+                                >
+                                  <span>Syllabus</span>
+                                </button>
 
-                              <div className="flex items-center gap-1 text-indigo-600 font-extrabold text-[11px] group-hover:translate-x-0.5 transition-transform">
-                                <span>🎓 পরিক্ষার  প্রস্তুতি</span>
+                                <button
+                                  type="button"
+                                  id={`btn-demo-exam-${routine.id || rIdx}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startDemoExam(routine);
+                                  }}
+                                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer"
+                                >
+                                  <span>Demo exam</span>
+                                </button>
+                              </div>
+
+                              <div 
+                                onClick={() => setSelectedRoutineItem(routine)}
+                                className="flex items-center gap-1 text-indigo-600 font-extrabold text-[11px] group-hover:translate-x-0.5 transition-transform cursor-pointer"
+                              >
+                                <span>পরিক্ষার  প্রস্তুতি</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
                               </div>
                             </div>
@@ -6046,7 +6213,7 @@ export default function UserPortal({
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            📝 পরীক্ষার শিরোনাম:
+                            পরীক্ষার শিরোনাম:
                           </span>
                           <h4 className="font-black text-indigo-950 text-sm sm:text-base leading-snug">
                             {item.title}
@@ -6054,24 +6221,22 @@ export default function UserPortal({
                         </div>
                         {isExamLive && (
                           <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse shrink-0">
-                            🟢 পরীক্ষা চলমান
+                            পরীক্ষা চলমান
                           </span>
                         )}
                       </div>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] pt-1 border-t border-slate-200/70">
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center gap-1 text-indigo-950 font-bold">
-                          <Calendar className="w-3 h-3 text-indigo-600 shrink-0" />
+                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-indigo-950 font-bold">
                           <span className="truncate">{examDateStr}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center gap-1 text-slate-700 font-bold">
-                          <span>🎯 পূর্ণমান: {totalMark.toLocaleString('bn-BD')}</span>
+                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+                          <span>পূর্ণমান: {totalMark.toLocaleString('bn-BD')}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center gap-1 text-slate-700 font-bold">
-                          <span>🏆 পাস: {passMark.toLocaleString('bn-BD')}</span>
+                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+                          <span>পাস: {passMark.toLocaleString('bn-BD')}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center gap-1 text-slate-700 font-bold">
-                          <Clock className="w-3 h-3 text-indigo-600 shrink-0" />
+                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
                           <span>সময়: {timeLimit.toLocaleString('bn-BD')} মি.</span>
                         </div>
                       </div>
@@ -6080,9 +6245,8 @@ export default function UserPortal({
                     {/* 3. Syllabus Section with "অধ্যায়ভিক্তিক MCQ পড়ুন" Button */}
                     <div className="bg-white border border-indigo-100 p-3 sm:p-4 rounded-2xl shadow-2xs space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
-                          <FolderTree className="w-4 h-4 text-indigo-600 shrink-0" />
-                          📚 সিলেবাস ও অধ্যায়সমূহ (Syllabus Hierarchy):
+                        <span className="text-xs font-black text-indigo-950">
+                          সিলেবাস ও অধ্যায়সমূহ (Syllabus Hierarchy):
                         </span>
 
                         {/* User Requested Button: "পরিক্ষার  প্রস্তুতি" */}
@@ -6090,10 +6254,9 @@ export default function UserPortal({
                           type="button"
                           id="btn-read-chapter-mcq"
                           onClick={() => setViewingHierarchyRoutine(item)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
                         >
-                          <GraduationCap className="w-3.5 h-3.5" />
-                          <span>🎓 পরিক্ষার  প্রস্তুতি</span>
+                          <span>পরিক্ষার  প্রস্তুতি</span>
                         </button>
                       </div>
 
@@ -6105,7 +6268,6 @@ export default function UserPortal({
                               key={pIdx}
                               className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 flex-wrap"
                             >
-                              <span className="text-indigo-600 font-black">📌</span>
                               {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
                                 <React.Fragment key={sIdx}>
                                   <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>
@@ -6127,7 +6289,7 @@ export default function UserPortal({
                       {item.details && (
                         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-0.5">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                            📝 রুটিন নির্দেশিকা ও বিবরণ:
+                            রুটিন নির্দেশিকা ও বিবরণ:
                           </span>
                           <p className="text-gray-700 leading-relaxed whitespace-pre-line text-xs font-medium">
                             {item.details}
@@ -6141,10 +6303,9 @@ export default function UserPortal({
                           type="button"
                           id="btn-syllabus-demo-exam"
                           onClick={() => startDemoExam(item)}
-                          className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
                         >
-                          <BookOpen className="w-3.5 h-3.5 text-purple-200" />
-                          <span>📝 Demo exam (অনুশীলন পরীক্ষা)</span>
+                          <span>Demo exam (অনুশীলন পরীক্ষা)</span>
                         </button>
 
                         {hasExam && isExamLive && (
@@ -6152,9 +6313,9 @@ export default function UserPortal({
                             type="button"
                             id="btn-syllabus-live-exam"
                             onClick={() => handleTabSelect('exams')}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-bounce cursor-pointer"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs animate-bounce cursor-pointer"
                           >
-                            ✍️ লাইভ পরীক্ষায় অংশগ্রহণ করুন
+                            লাইভ পরীক্ষায় অংশগ্রহণ করুন
                           </button>
                         )}
                       </div>

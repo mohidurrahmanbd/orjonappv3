@@ -923,14 +923,12 @@ export default function RoutineHierarchicalMCQModal({
             if (paths.length > 0) {
               return (
                 <div className="space-y-1.5 pt-1">
-                  <span className="text-[11px] text-indigo-200 font-bold flex items-center gap-1">
-                    <FolderTree className="w-3.5 h-3.5 text-indigo-300" />
+                  <span className="text-[11px] text-indigo-200 font-bold">
                     সিলেবাস শাখা (Syllabus Hierarchy):
                   </span>
                   <div className="flex flex-col gap-1.5">
                     {paths.map((p, pIdx) => (
                       <div key={pIdx} className="bg-white/15 backdrop-blur-xs border border-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
-                        <span className="text-amber-300 font-black">📌</span>
                         {p.split(/\s*>\s*/).map((seg, sIdx, arr) => (
                           <React.Fragment key={sIdx}>
                             <span className={sIdx === arr.length - 1 ? "text-amber-200 font-black" : "text-white"}>{seg}</span>
