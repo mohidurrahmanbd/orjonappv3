@@ -6155,13 +6155,6 @@ export default function UserPortal({
                                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                       ✓ এনরোলড
                                     </span>
-                                    <button
-                                      onClick={() => handleToggleEnrollCourse(course.id, course.title)}
-                                      className="bg-gray-100 hover:bg-rose-50 hover:text-rose-600 text-gray-500 font-bold py-2.5 px-3 rounded-xl transition text-xs"
-                                      title="কোর্স আন-এনরোল করুন"
-                                    >
-                                      আন-এনরোল
-                                    </button>
                                   </div>
                                 ) : (
                                   <button
@@ -6169,7 +6162,7 @@ export default function UserPortal({
                                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-xl transition text-center shadow flex items-center justify-center gap-2 text-xs"
                                   >
                                     <GraduationCap className="w-4 h-4 text-indigo-200" />
-                                    🎓 কোর্সে এনরোল করুন (Enroll Now)
+                                    Enroll Now
                                   </button>
                                 )}
                               </div>
