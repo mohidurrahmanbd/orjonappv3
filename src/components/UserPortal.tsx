@@ -10,7 +10,7 @@ import {
   Landmark, Flag, Globe2, BrainCircuit, Scale, ShieldCheck, Lightbulb, GraduationCap,
   Building2, Coins, School, Globe, History, BookMarked,
   Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree,
-  ChevronDown, Lock, Unlock, Search
+  ChevronDown, ChevronLeft, Lock, Unlock, Search
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
@@ -529,6 +529,8 @@ export default function UserPortal({
     setQuizTimeLimitMinutes(targetTimeLimit);
     setQuizAnswerMode('after_exam'); // CRITICAL: answers are NOT visible instantly during the test
     setCurrentQIndex(0);
+    setQuizPage(1);
+    setQuizFilterMode('all');
     setUserSelectedAnswers({});
     setSecondsRemaining(targetTimeLimit * 60);
     setIsQuizTimerRunning(true);
@@ -899,6 +901,8 @@ export default function UserPortal({
   const [quizTimeLimitMinutes, setQuizTimeLimitMinutes] = useState<number | 'unlimited'>('unlimited');
   const [quizAnswerMode, setQuizAnswerMode] = useState<'instant' | 'after_exam'>('after_exam');
   
+  const [quizPage, setQuizPage] = useState(1);
+  const [quizFilterMode, setQuizFilterMode] = useState<'all' | 'answered' | 'unanswered'>('all');
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [userSelectedAnswers, setUserSelectedAnswers] = useState<Record<number, string>>({});
   const [secondsRemaining, setSecondsRemaining] = useState(0);
@@ -1897,6 +1901,8 @@ export default function UserPortal({
     setQuizTimeLimitMinutes(setupTimeLimit === 999 ? 'unlimited' : setupTimeLimit);
     setQuizAnswerMode(setupAnswerView);
     setCurrentQIndex(0);
+    setQuizPage(1);
+    setQuizFilterMode('all');
     setUserSelectedAnswers({});
     
     if (setupTimeLimit !== 999) {
@@ -2047,6 +2053,8 @@ export default function UserPortal({
         setQuizTimeLimitMinutes(setupTimeLimit === 999 ? 'unlimited' : setupTimeLimit);
         setQuizAnswerMode(setupAnswerView);
         setCurrentQIndex(0);
+        setQuizPage(1);
+        setQuizFilterMode('all');
         setUserSelectedAnswers({});
         if (setupTimeLimit !== 999) {
           setSecondsRemaining(setupTimeLimit * 60);
@@ -2152,6 +2160,8 @@ export default function UserPortal({
     setQuizTimeLimitMinutes(exam.timeLimit || 20);
     setQuizAnswerMode('after_exam');
     setCurrentQIndex(0);
+    setQuizPage(1);
+    setQuizFilterMode('all');
     setUserSelectedAnswers({});
     setSecondsRemaining((exam.timeLimit || 20) * 60);
     setIsQuizTimerRunning(true);
@@ -2203,6 +2213,39 @@ export default function UserPortal({
     };
 
     startOfficialLiveExam(liveExamObj);
+  };
+
+  const handleSelectOptionForIndex = (qIdx: number, key: string) => {
+    // If user clicks on answer, they cannot change it (permanent selection)
+    if (userSelectedAnswers.hasOwnProperty(qIdx)) {
+      return;
+    }
+    setUserSelectedAnswers(prev => ({
+      ...prev,
+      [qIdx]: key
+    }));
+  };
+
+  const handleClearAnswerForIndex = (qIdx: number) => {
+    if (quizAnswerMode === 'instant') return;
+    setUserSelectedAnswers(prev => {
+      const updated = { ...prev };
+      delete updated[qIdx];
+      return updated;
+    });
+  };
+
+  const handleJumpToExamQuestion = (targetQIndex: number) => {
+    const targetPage = Math.floor(targetQIndex / 20) + 1;
+    if (targetPage !== quizPage) {
+      setQuizPage(targetPage);
+    }
+    setTimeout(() => {
+      const el = document.getElementById(`exam-card-q-${targetQIndex}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
   };
 
   const handleSelectOption = (key: string) => {
@@ -3148,216 +3191,402 @@ export default function UserPortal({
         </div>
       )}
 
-      {/* -------------------- ACTIVE QUIZ ENGINE CONTAINER -------------------- */}
-      {quizActive && (
-        <div className="flex-grow flex flex-col justify-between bg-white border border-gray-100 shadow-xl rounded-2xl p-3 sm:p-4 md:p-5 animate-fade-in">
-          
-          {/* Header */}
-          <div className="flex justify-between items-start border-b pb-2.5 gap-2">
-            <div className="min-w-0 flex-1 pr-1">
-              <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200 inline-block">
-                ACTIVE TEST
-              </span>
-              <h3 className="text-xs sm:text-sm font-bold text-gray-800 mt-1 truncate">
-                {quizTitle}
-              </h3>
-              <p className="text-[10px] text-gray-400 mt-0.5 font-semibold truncate">
-                ক্যাটাগরি: {quizQuestions[currentQIndex]?.category} {quizQuestions[currentQIndex]?.subcategory ? `| ${quizQuestions[currentQIndex].subcategory}` : ''}
-              </p>
-            </div>
+      {/* -------------------- ACTIVE QUIZ ENGINE CONTAINER (SCROLL SYSTEM + PAGINATION) -------------------- */}
+      {quizActive && (() => {
+        const filteredQuizItems = quizQuestions.map((q, origIdx) => ({ q, origIdx })).filter(({ origIdx }) => {
+          const isAnswered = userSelectedAnswers.hasOwnProperty(origIdx) && userSelectedAnswers[origIdx] !== 'Skipped';
+          if (quizFilterMode === 'answered') return isAnswered;
+          if (quizFilterMode === 'unanswered') return !isAnswered;
+          return true;
+        });
 
-            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end max-w-[65%] sm:max-w-none">
-              {/* Timer indicator */}
-              {quizTimeLimitMinutes !== 'unlimited' && (
-                <div className="bg-rose-50 border border-rose-100 text-rose-600 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 animate-pulse shrink-0 whitespace-nowrap">
-                  <Clock className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    {Math.floor(secondsRemaining / 60).toString().padStart(2, '0')}:
-                    {(secondsRemaining % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
-              )}
-              
-              <button 
-                onClick={() => handleOpenBookmarkDialog(quizQuestions[currentQIndex]?.id)}
-                className={`p-1 sm:p-1.5 rounded-xl border transition shrink-0 ${
-                  quizQuestions[currentQIndex]?.id && bookmarks.some(b => b.questionId === quizQuestions[currentQIndex].id)
-                    ? 'bg-yellow-50 border-yellow-200 text-yellow-600' 
-                    : 'bg-gray-50 hover:bg-amber-50 text-gray-500 hover:text-amber-600'
-                }`}
-                title={quizQuestions[currentQIndex]?.id && bookmarks.some(b => b.questionId === quizQuestions[currentQIndex].id) ? 'বুকমার্ক করা হয়েছে' : 'বুকমার্ক করুন'}
-              >
-                <BookmarkIcon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                  quizQuestions[currentQIndex]?.id && bookmarks.some(b => b.questionId === quizQuestions[currentQIndex].id)
-                    ? 'fill-yellow-300 text-yellow-500' 
-                    : ''
-                }`} />
-              </button>
+        const EXAM_PAGE_SIZE = 20;
+        const totalExamPages = Math.ceil(filteredQuizItems.length / EXAM_PAGE_SIZE) || 1;
+        const safeQuizPage = Math.min(Math.max(1, quizPage), totalExamPages);
+        const startIdx = (safeQuizPage - 1) * EXAM_PAGE_SIZE;
+        const endIdx = Math.min(startIdx + EXAM_PAGE_SIZE, filteredQuizItems.length);
+        const currentPagedItems = filteredQuizItems.slice(startIdx, endIdx);
+        const answeredExamCount = Object.keys(userSelectedAnswers).filter(
+          k => userSelectedAnswers[Number(k)] && userSelectedAnswers[Number(k)] !== 'Skipped'
+        ).length;
+        const unansweredCount = Math.max(0, quizQuestions.length - answeredExamCount);
 
-              <div className="bg-indigo-600 text-white text-[11px] sm:text-xs font-extrabold px-2 sm:px-2.5 py-1 rounded-xl shadow-sm shrink-0 whitespace-nowrap">
-                {(currentQIndex + 1).toLocaleString('bn-BD')} / {quizQuestions.length.toLocaleString('bn-BD')}
-              </div>
-            </div>
-          </div>
+        const handleExamPageChange = (newPage: number) => {
+          if (newPage < 1 || newPage > totalExamPages) return;
+          setQuizPage(newPage);
+          const topEl = document.getElementById('exam-scroll-top');
+          if (topEl) {
+            topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        };
 
-          {/* Question Text */}
-          <div className="my-3 sm:my-4">
-            <h4 className="text-base sm:text-lg font-bold text-gray-900 leading-relaxed bg-gray-50/50 p-2.5 sm:p-3 rounded-xl border border-gray-100">
-              {(currentQIndex + 1).toLocaleString('bn-BD')}. {quizQuestions[currentQIndex]?.text}
-            </h4>
-          </div>
+        const handleFilterChange = (mode: 'all' | 'answered' | 'unanswered') => {
+          setQuizFilterMode(mode);
+          setQuizPage(1);
+          const topEl = document.getElementById('exam-scroll-top');
+          if (topEl) {
+            topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        };
 
-          {/* Options Grid */}
-          <div className="flex flex-col gap-2">
-            {[
-              { key: 'Option A', label: 'ক) ', text: quizQuestions[currentQIndex]?.optionA },
-              { key: 'Option B', label: 'খ) ', text: quizQuestions[currentQIndex]?.optionB },
-              { key: 'Option C', label: 'গ) ', text: quizQuestions[currentQIndex]?.optionC },
-              { key: 'Option D', label: 'ঘ) ', text: quizQuestions[currentQIndex]?.optionD }
-            ].map(opt => {
-              const isSelected = userSelectedAnswers[currentQIndex] === opt.key;
-              const hasAnsweredThis = userSelectedAnswers.hasOwnProperty(currentQIndex);
-              const isCorrect = opt.key === quizQuestions[currentQIndex]?.correct;
-
-              let btnStyle = "border-gray-200 text-gray-700 hover:bg-gray-50";
-              if (hasAnsweredThis) {
-                if (quizAnswerMode === 'instant') {
-                  if (isCorrect) {
-                    btnStyle = "bg-green-50 border-green-400 text-green-800 font-bold shadow-sm";
-                  } else if (isSelected) {
-                    btnStyle = "bg-rose-50 border-rose-400 text-rose-800 font-bold";
-                  } else {
-                    btnStyle = "border-gray-100 text-gray-400 opacity-60";
-                  }
-                } else {
-                  if (isSelected) {
-                    btnStyle = "bg-indigo-50 border-indigo-400 text-indigo-800 font-bold shadow-sm";
-                  } else {
-                    btnStyle = "border-gray-100 text-gray-400 opacity-60";
-                  }
-                }
-              }
-
-              return (
-                <button
-                  key={opt.key}
-                  disabled={hasAnsweredThis}
-                  onClick={() => handleSelectOption(opt.key)}
-                  className={`w-full text-left px-3 py-2 sm:py-2.5 border rounded-xl text-xs font-semibold transition flex justify-between items-center ${btnStyle}`}
-                >
-                  <span>{opt.label}{opt.text}</span>
-                  {hasAnsweredThis && quizAnswerMode === 'instant' && (
-                    isCorrect ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" /> : isSelected ? <XCircle className="w-4 h-4 text-rose-600 shrink-0" /> : null
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Instant explanation card replaced with feedback / popup triggers */}
-          {userSelectedAnswers.hasOwnProperty(currentQIndex) && quizAnswerMode === 'instant' && (() => {
-            const currentQ = quizQuestions[currentQIndex];
-            const masterQ = questions.find(mq => mq.id === currentQ?.id) || currentQ;
-            const hasPendingReport = !!masterQ?.comments?.some(c => !c.pointsApproved);
-            const hasPendingExplanation = !!masterQ?.userExplanations?.some(e => !e.approved);
-
-            return (
-              <div className="flex flex-row flex-wrap gap-2 items-center mt-6 pt-3 border-t border-gray-150">
-                <button
-                  type="button"
-                  onClick={() => setPopupExplanationQ(masterQ)}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] transition cursor-pointer flex items-center gap-1.5"
-                >
-                  💡 ব্যাখা
-                </button>
-                <button
-                  type="button"
-                  disabled={hasPendingReport}
-                  onClick={() => {
-                    if (hasPendingReport) return;
-                    setFlagModalQ(masterQ);
-                    setFlagCommentText('');
-                  }}
-                  className="px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-100/50 cursor-pointer disabled:bg-rose-100/80 disabled:text-rose-700/80 disabled:border-rose-200/50 disabled:opacity-100 disabled:cursor-not-allowed"
-                >
-                  🚩 রিপোর্ট
-                </button>
-                <button
-                  type="button"
-                  disabled={hasPendingExplanation || !allowUserExplanation}
-                  onClick={() => {
-                    if (hasPendingExplanation || !allowUserExplanation) return;
-                    setUserExplModalQ(masterQ);
-                    setUserExplText('');
-                  }}
-                  className="px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-100/50 cursor-pointer disabled:bg-amber-100/85 disabled:text-amber-700/80 disabled:border-amber-200/50 disabled:opacity-100 disabled:cursor-not-allowed"
-                >
-                  {allowUserExplanation ? '✍️ ব্যাখ্যা +' : '✍️ ব্যাখ্যা (বন্ধ)'}
-                </button>
-              </div>
-            );
-          })()}
-
-          {/* Nav Buttons */}
-          <div className="flex flex-col gap-3 mt-8">
-            <div className="flex justify-between items-center gap-3">
-              <button
-                onClick={handlePrevQuestion}
-                disabled={currentQIndex === 0}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-bold py-3 rounded-2xl text-xs transition"
-              >
-                ◀ পূর্ববর্তী প্রশ্ন
-              </button>
-              
-              {!userSelectedAnswers.hasOwnProperty(currentQIndex) && (
-                <button
-                  onClick={handleSkipQuestion}
-                  className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold py-3 rounded-2xl text-xs transition border border-amber-100"
-                >
-                  বাদ দিন (Skip) ↷
-                </button>
-              )}
-
-              <button
-                onClick={handleNextQuestion}
-                disabled={currentQIndex === quizQuestions.length - 1}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold py-3 rounded-2xl text-xs transition shadow"
-              >
-                পরবর্তী প্রশ্ন ▶
-              </button>
-            </div>
-
-            <button
-              onClick={() => {
-                showCustomConfirm(
-                  'আপনি কি এই পরীক্ষাটি এখনই সমাপ্ত করে আপনার মার্কস ফলাফল হিসেবে রেকর্ড করতে চান?',
-                  () => {
-                    handleForceEndExam();
-                  }
-                );
-              }}
-              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-md shadow-rose-100 mt-2 text-center"
-            >
-              🛑 পরীক্ষা সমাপ্ত করুন ও মার্কস জমা দিন
-            </button>
+        return (
+          <div className="flex-grow flex flex-col bg-white border border-slate-200/90 shadow-xl rounded-2xl p-3.5 sm:p-5 md:p-6 animate-fade-in space-y-4">
+            <div id="exam-scroll-top" />
             
-            <button 
-              onClick={() => {
-                showCustomConfirm(
-                  'আপনি কি নিশ্চিত পরীক্ষা বাতিল করতে চান? এতে পরীক্ষার প্রগ্রেস হারিয়ে যাবে।',
-                  () => {
-                    setIsQuizTimerRunning(false);
-                    setQuizActive(false);
-                  }
-                );
-              }}
-              className="text-center text-gray-400 hover:text-gray-600 underline text-[10px] mt-1 transition"
-            >
-              বাতিল করে চলে যান (ফলাফল সংরক্ষণ হবে না)
-            </button>
+            {/* Sticky/Fixed Header Bar during Exam */}
+            <div className="sticky top-2 z-20 bg-white/95 backdrop-blur-md border border-indigo-100 shadow-sm rounded-2xl p-3 sm:p-4 transition-all">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] bg-indigo-600 text-white font-black px-2.5 py-0.5 rounded-full shadow-xs tracking-wider uppercase">
+                      চলমান পরীক্ষা (Active Exam)
+                    </span>
+                    {totalExamPages > 1 && (
+                      <span className="text-[11px] bg-amber-50 text-amber-800 font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
+                        পৃষ্ঠা {toBengaliDigits(safeQuizPage)} / {toBengaliDigits(totalExamPages)}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 mt-1 truncate">
+                    {quizTitle}
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-between sm:justify-end w-full sm:w-auto">
+                  {/* Timer indicator */}
+                  {quizTimeLimitMinutes !== 'unlimited' && (
+                    <div className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 shrink-0 whitespace-nowrap shadow-xs ${
+                      secondsRemaining < 120 
+                        ? 'bg-rose-500 text-white animate-pulse' 
+                        : 'bg-rose-50 border border-rose-200 text-rose-700'
+                    }`}>
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>
+                        {Math.floor(secondsRemaining / 60).toString().padStart(2, '0')}:
+                        {(secondsRemaining % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Answered Counter */}
+                  <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs sm:text-sm font-black px-2.5 sm:px-3 py-1.5 rounded-xl shrink-0 whitespace-nowrap shadow-2xs">
+                    উত্তর: {toBengaliDigits(answeredExamCount)} / {toBengaliDigits(quizQuestions.length)}
+                  </div>
+
+                  {/* Header Submit Button */}
+                  <button
+                    onClick={() => {
+                      showCustomConfirm(
+                        `আপনি কি এই পরীক্ষাটি সমাপ্ত করতে চান?\n\n• মোট প্রশ্ন: ${toBengaliDigits(quizQuestions.length)}টি\n• উত্তর দিয়েছেন: ${toBengaliDigits(answeredExamCount)}টি\n• অনুত্তর/বাকি: ${toBengaliDigits(unansweredCount)}টি\n\nজমা দিলে আপনার ফলাফল তাৎক্ষণিক রেকর্ড হবে।`,
+                        () => {
+                          handleForceEndExam();
+                        }
+                      );
+                    }}
+                    className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs transition shrink-0 flex items-center gap-1 cursor-pointer"
+                  >
+                    🛑 জমা দিন
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Tabs (Answered / Unanswered / All) Replacing Question Palette */}
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => handleFilterChange('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      quizFilterMode === 'all'
+                        ? 'bg-white text-indigo-900 shadow-xs border border-indigo-100'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                    }`}
+                  >
+                    সব প্রশ্ন ({toBengaliDigits(quizQuestions.length)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFilterChange('answered')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      quizFilterMode === 'answered'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:text-emerald-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${quizFilterMode === 'answered' ? 'bg-white' : 'bg-emerald-500'}`} />
+                    উত্তর দিয়েছেন ({toBengaliDigits(answeredExamCount)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFilterChange('unanswered')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      quizFilterMode === 'unanswered'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-700 hover:text-rose-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${quizFilterMode === 'unanswered' ? 'bg-white' : 'bg-rose-500'}`} />
+                    অনুত্তর / বাকি ({toBengaliDigits(unansweredCount)})
+                  </button>
+                </div>
+
+                {totalExamPages > 1 && (
+                  <span className="text-[11px] bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg border border-slate-200">
+                    পৃষ্ঠা {toBengaliDigits(safeQuizPage)} / {toBengaliDigits(totalExamPages)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Page Subtitle & Info */}
+            <div className="flex justify-between items-center px-1 text-xs text-slate-500 font-semibold">
+              <span>
+                {filteredQuizItems.length > 0 ? (
+                  <>
+                    প্রশ্ন তালিকা: <strong className="text-slate-800">{toBengaliDigits(startIdx + 1)}</strong> হতে <strong className="text-slate-800">{toBengaliDigits(endIdx)}</strong> (প্রতি পেজে সর্বোচ্চ ২০টি MCQ)
+                  </>
+                ) : (
+                  <span className="text-rose-600">এই ফিল্টারে কোনো প্রশ্ন নেই</span>
+                )}
+              </span>
+              {totalExamPages > 1 && (
+                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                  পৃষ্ঠা {toBengaliDigits(safeQuizPage)} / {toBengaliDigits(totalExamPages)}
+                </span>
+              )}
+            </div>
+
+            {/* ---------------- SCROLLABLE QUESTIONS LIST (MAX 20 PER PAGE) ---------------- */}
+            <div className="space-y-4">
+              {currentPagedItems.length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-sm font-semibold">
+                  {quizFilterMode === 'answered' ? 'আপনি এখনো কোনো প্রশ্নের উত্তর দেননি।' : 'সকল প্রশ্নের উত্তর দেওয়া সম্পন্ন হয়েছে!'}
+                </div>
+              ) : (
+                currentPagedItems.map(({ q, origIdx }) => {
+                  const isSelected = userSelectedAnswers.hasOwnProperty(origIdx);
+                  const selectedKey = userSelectedAnswers[origIdx];
+                  const masterQ = questions.find(mq => mq.id === q?.id) || q;
+
+                  return (
+                    <div
+                      key={q.id || origIdx}
+                      id={`exam-card-q-${origIdx}`}
+                      className="bg-white border border-slate-200/90 hover:border-indigo-300/80 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3.5 transition-all"
+                    >
+                      {/* Question Text with Number */}
+                      <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-relaxed">
+                        {toBengaliDigits(origIdx + 1)}. {q.text}
+                      </h4>
+
+                      {/* 4 Options Grid (Responsive) - Locked after selection */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        {[
+                          { key: 'Option A', label: 'ক) ', text: q.optionA },
+                          { key: 'Option B', label: 'খ) ', text: q.optionB },
+                          { key: 'Option C', label: 'গ) ', text: q.optionC },
+                          { key: 'Option D', label: 'ঘ) ', text: q.optionD }
+                        ].map(opt => {
+                          const isThisSelected = selectedKey === opt.key;
+                          const isCorrect = opt.key === q.correct;
+
+                          let cardStyle = "bg-white hover:bg-slate-50/80 border-slate-200 text-slate-800 font-medium cursor-pointer";
+                          let radioStyle = "border-slate-300 bg-white";
+
+                          if (isSelected) {
+                            if (quizAnswerMode === 'instant') {
+                              if (isCorrect) {
+                                cardStyle = "bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-xs cursor-default";
+                                radioStyle = "border-emerald-600 bg-emerald-600 text-white";
+                              } else if (isThisSelected) {
+                                cardStyle = "bg-rose-50 border-rose-500 text-rose-950 font-bold shadow-xs cursor-default";
+                                radioStyle = "border-rose-600 bg-rose-600 text-white";
+                              } else {
+                                cardStyle = "border-slate-150 text-slate-400 opacity-60 bg-slate-50/50 cursor-default";
+                                radioStyle = "border-slate-200 bg-slate-100";
+                              }
+                            } else {
+                              if (isThisSelected) {
+                                cardStyle = "bg-indigo-50/90 border-indigo-600 text-indigo-950 font-extrabold ring-2 ring-indigo-500/20 shadow-xs cursor-default";
+                                radioStyle = "border-indigo-600 bg-indigo-600 text-white";
+                              } else {
+                                cardStyle = "bg-white border-slate-200 text-slate-400 opacity-70 cursor-not-allowed";
+                                radioStyle = "border-slate-200 bg-slate-50";
+                              }
+                            }
+                          }
+
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              disabled={isSelected}
+                              onClick={() => handleSelectOptionForIndex(origIdx, opt.key)}
+                              className={`w-full text-left p-3 border rounded-xl text-xs sm:text-sm transition flex items-center justify-between gap-2.5 ${cardStyle}`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 text-[9px] font-black transition ${radioStyle}`}>
+                                  {isThisSelected && <div className="w-1.5 h-1.5 rounded-full bg-current" />}
+                                </div>
+                                <span className="font-bold shrink-0">{opt.label}</span>
+                                <span className="leading-snug break-words">{opt.text}</span>
+                              </div>
+
+                              {isSelected && quizAnswerMode === 'instant' && (
+                                <div className="shrink-0">
+                                  {isCorrect ? (
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  ) : isThisSelected ? (
+                                    <XCircle className="w-4 h-4 text-rose-600" />
+                                  ) : null}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Instant Mode Feedback Buttons */}
+                      {isSelected && quizAnswerMode === 'instant' && (() => {
+                        const hasPendingReport = !!masterQ?.comments?.some(c => !c.pointsApproved);
+                        const hasPendingExplanation = !!masterQ?.userExplanations?.some(e => !e.approved);
+
+                        return (
+                          <div className="flex flex-row flex-wrap gap-2 items-center pt-2.5 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => setPopupExplanationQ(masterQ)}
+                              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                            >
+                              💡 ব্যাখ্যা
+                            </button>
+                            <button
+                              type="button"
+                              disabled={hasPendingReport}
+                              onClick={() => {
+                                if (hasPendingReport) return;
+                                setFlagModalQ(masterQ);
+                                setFlagCommentText('');
+                              }}
+                              className="px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              🚩 রিপোর্ট
+                            </button>
+                            <button
+                              type="button"
+                              disabled={hasPendingExplanation || !allowUserExplanation}
+                              onClick={() => {
+                                if (hasPendingExplanation || !allowUserExplanation) return;
+                                setUserExplModalQ(masterQ);
+                                setUserExplText('');
+                              }}
+                              className="px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {allowUserExplanation ? '✍️ ব্যাখ্যা +' : '✍️ ব্যাখ্যা (বন্ধ)'}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* ---------------- PAGINATION CONTROLS ---------------- */}
+            {totalExamPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 p-3 sm:p-4 rounded-2xl shadow-2xs mt-4">
+                <button
+                  type="button"
+                  disabled={safeQuizPage === 1}
+                  onClick={() => handleExamPageChange(safeQuizPage - 1)}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition shadow-2xs flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" /> পূর্ববর্তী পৃষ্ঠা
+                </button>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto max-w-[60vw]">
+                  {Array.from({ length: totalExamPages }, (_, i) => i + 1).map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => handleExamPageChange(p)}
+                      className={`w-8 h-8 rounded-xl text-xs font-black transition cursor-pointer ${
+                        safeQuizPage === p
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {toBengaliDigits(p)}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={safeQuizPage === totalExamPages}
+                  onClick={() => handleExamPageChange(safeQuizPage + 1)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-bold text-xs rounded-xl transition shadow-2xs flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  পরবর্তী পৃষ্ঠা <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* ---------------- BOTTOM ACTIONS & SUBMIT ---------------- */}
+            <div className="flex flex-col gap-3 pt-4 border-t border-slate-200">
+              {/* Stats Summary Bar */}
+              <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center">
+                <div className="p-1">
+                  <div className="text-[11px] text-slate-500 font-bold">মোট প্রশ্ন</div>
+                  <div className="text-sm sm:text-base font-black text-slate-900">{toBengaliDigits(quizQuestions.length)}টি</div>
+                </div>
+                <div className="p-1 border-x border-slate-200">
+                  <div className="text-[11px] text-emerald-700 font-bold">উত্তর দিয়েছেন</div>
+                  <div className="text-sm sm:text-base font-black text-emerald-600">{toBengaliDigits(answeredExamCount)}টি</div>
+                </div>
+                <div className="p-1">
+                  <div className="text-[11px] text-rose-700 font-bold">অনুত্তর / বাকি</div>
+                  <div className="text-sm sm:text-base font-black text-rose-600">{toBengaliDigits(unansweredCount)}টি</div>
+                </div>
+              </div>
+
+              {/* Big Submit Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  showCustomConfirm(
+                    `আপনি কি এই পরীক্ষাটি সমাপ্ত করতে চান?\n\n• মোট প্রশ্ন: ${toBengaliDigits(quizQuestions.length)}টি\n• উত্তর দিয়েছেন: ${toBengaliDigits(answeredExamCount)}টি\n• অনুত্তর/বাকি: ${toBengaliDigits(unansweredCount)}টি\n\nজমা দিলে আপনার ফলাফল তাৎক্ষণিক তৈরি হবে।`,
+                    () => {
+                      handleForceEndExam();
+                    }
+                  );
+                }}
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl text-sm transition shadow-lg shadow-rose-200/50 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>🛑 পরীক্ষা সমাপ্ত করুন ও মার্কস জমা দিন</span>
+              </button>
+
+              {/* Cancel Button */}
+              <button 
+                type="button"
+                onClick={() => {
+                  showCustomConfirm(
+                    'আপনি কি নিশ্চিত পরীক্ষা বাতিল করতে চান? এতে আপনার এই পরীক্ষার সমস্ত প্রগ্রেস হারিয়ে যাবে।',
+                    () => {
+                      setIsQuizTimerRunning(false);
+                      setQuizActive(false);
+                    }
+                  );
+                }}
+                className="text-center text-slate-400 hover:text-slate-600 underline text-xs font-semibold py-1 transition cursor-pointer"
+              >
+                বাতিল করে চলে যান (ফলাফল সংরক্ষণ হবে না)
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* -------------------- IMMERSIVE FULL SCREEN READER MODE -------------------- */}
       {readerModeActive && (() => {
