@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../types';
 import { 
-  FolderTree, BookOpen, ChevronDown, ChevronRight, Search, 
+  FolderTree, ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
   Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight, Layers,
   BookMarked
@@ -1001,19 +1001,6 @@ export default function RoutineHierarchicalMCQModal({
             {showAllAnswers ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             {showAllAnswers ? 'উত্তর প্রদর্শিত' : 'কুইজ মোড (উত্তর গোপন)'}
           </button>
-
-          {/* Demo Exam Button */}
-          {onStartPractice && (
-            <button
-              id="btn-start-demo-exam-from-page"
-              type="button"
-              onClick={() => onStartPractice(routine)}
-              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>Demo exam</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -1185,18 +1172,6 @@ export default function RoutineHierarchicalMCQModal({
         </div>
 
         <div className="flex items-center gap-2">
-          {onStartPractice && (
-            <button
-              id="btn-bottom-start-demo-exam"
-              type="button"
-              onClick={() => onStartPractice(routine)}
-              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-            >
-              <BookOpen className="w-4 h-4" />
-              Demo exam শুরু
-            </button>
-          )}
-
           <button
             type="button"
             onClick={onClose}

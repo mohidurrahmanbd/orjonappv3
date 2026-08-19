@@ -281,12 +281,174 @@ export default function UserPortal({
   const [prepMode, setPrepMode] = useState<'verify' | 'read' | 'exam'>('verify');
   const [prepExamLimit, setPrepExamLimit] = useState(10);
 
+  // Custom Alert and Confirm Dialog States
+  const [customAlert, setCustomAlert] = useState<{
+    open: boolean;
+    title?: string;
+    message: string;
+    onConfirm?: () => void;
+    showCancel?: boolean;
+    confirmText?: string;
+    cancelText?: string;
+  } | null>(null);
+  const [customConfirm, setCustomConfirm] = useState<{ open: boolean; title?: string; message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
+
+  const showCustomAlert = (
+    param1: string,
+    param2?: (() => void) | string,
+    param3?: string,
+    showCancel?: boolean,
+    confirmText?: string,
+    cancelText?: string
+  ) => {
+    let title = '📢 তথ্য';
+    let message = '';
+    let onConfirmFunc: (() => void) | undefined = undefined;
+
+    if (typeof param2 === 'function') {
+      message = param1;
+      onConfirmFunc = param2;
+      if (param3) title = param3;
+    } else if (typeof param2 === 'string') {
+      title = param1;
+      message = param2;
+      if (param3 && param3 !== 'success' && param3 !== 'info' && param3 !== 'warning' && param3 !== 'error') {
+        title = `${param3} ${param1}`;
+      }
+    } else {
+      message = param1;
+      if (param3) title = param3;
+    }
+
+    setCustomAlert({ open: true, title, message, onConfirm: onConfirmFunc, showCancel, confirmText, cancelText });
+  };
+
+  const showCustomConfirm = (message: string, onConfirm: () => void, onCancel?: () => void, title?: string) => {
+    setCustomConfirm({ open: true, title, message, onConfirm, onCancel });
+  };
+
+  // Course States
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return []; }
+    }
+    return [];
+  });
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+
+  const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    let updated: string[];
+    if (enrolledCourseIds.includes(courseId)) {
+      updated = enrolledCourseIds.filter(id => id !== courseId);
+      showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
+    } else {
+      updated = [...enrolledCourseIds, courseId];
+      showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
+      setSelectedCourseFilter('enrolled');
+    }
+    setEnrolledCourseIds(updated);
+    localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+  };
+
+  // Helper to determine routine batch status: open, enrolled, or unrolled
+  const getRoutineBatchInfo = (item: Routine) => {
+    const targetCourse = courses ? courses.find(c => 
+      (item.courseId && c.id === item.courseId) || 
+      (item.courseName && c.title.trim().toLowerCase() === item.courseName.trim().toLowerCase())
+    ) : undefined;
+
+    const courseTitle = targetCourse?.title || item.courseName;
+    const courseId = targetCourse?.id || item.courseId;
+    const hasCourse = Boolean(courseTitle || courseId);
+
+    if (!hasCourse) {
+      return {
+        type: 'open' as const,
+        label: '🌐 ওপেন ব্যাচ (Open)',
+        shortLabel: 'উন্মুক্ত (Open)',
+        badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
+        cardBorder: 'border-blue-200/80 hover:border-blue-300',
+        description: 'উন্মুক্ত পরীক্ষা ও রুটিন — কোনো কোর্সে এনরোলমেন্ট ছাড়াই সরাসরি অংশগ্রহণযোগ্য।',
+        courseTitle: undefined,
+        courseId: undefined,
+        isEnrolled: false
+      };
+    }
+
+    const isEnrolled = courseId 
+      ? enrolledCourseIds.includes(courseId) 
+      : (courseTitle ? courses.some(c => c.title === courseTitle && enrolledCourseIds.includes(c.id)) : false);
+
+    if (isEnrolled) {
+      return {
+        type: 'enrolled' as const,
+        label: '✅ এনরোল্ড ব্যাচ (Enrolled)',
+        shortLabel: 'এনরোল্ড (Enrolled)',
+        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+        cardBorder: 'border-emerald-200/80 hover:border-emerald-300',
+        description: `আপনি "${courseTitle}" কোর্সে সফলভাবে এনরোল্ড আছেন।`,
+        courseTitle,
+        courseId: courseId || targetCourse?.id,
+        isEnrolled: true
+      };
+    }
+
+    return {
+      type: 'unrolled' as const,
+      label: '🔒 আন-এনরোল্ড (Unenrolled)',
+      shortLabel: 'আন-এনরোল্ড (Unenrolled)',
+      badgeClass: 'bg-amber-50 text-amber-900 border-amber-300',
+      cardBorder: 'border-amber-200/70 hover:border-amber-300',
+      description: `কোর্স: "${courseTitle}"। আপনি এই কোর্সে এখনও এনরোল করেননি।`,
+      courseTitle,
+      courseId: courseId || targetCourse?.id,
+      isEnrolled: false
+    };
+  };
+
+  // Check whether a routine's course is enrolled before allowing exams or preparation
+  const checkCourseEnrollmentAccess = (routine: Routine, featureName: string = 'পরীক্ষা ও প্রস্তুতি'): boolean => {
+    const batchInfo = getRoutineBatchInfo(routine);
+    if (batchInfo.type === 'unrolled') {
+      const courseTitle = batchInfo.courseTitle || 'এই কোর্সটি';
+      const courseId = batchInfo.courseId;
+      showCustomAlert(
+        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের ${featureName} শুধুমাত্র এনরোল্ড শিক্ষার্থীদের জন্য উন্মুক্ত।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন। ${featureName} আনলক করতে অনুগ্রহ করে কোর্সে এনরোল (Enroll) করুন।`,
+        () => {
+          if (courseId) {
+            handleToggleEnrollCourse(courseId, courseTitle);
+          }
+        },
+        '🔒 কোর্সটি লক করা আছে',
+        true,
+        'এনরোল করুন',
+        'বন্ধ করুন'
+      );
+      return false;
+    }
+    return true;
+  };
+
   // Hierarchical Routine MCQ Viewer Modal State
   const [viewingHierarchyRoutine, setViewingHierarchyRoutine] = useState<Routine | null>(null);
   // Routine Syllabus Pop-up Modal State
   const [syllabusModalRoutine, setSyllabusModalRoutine] = useState<Routine | null>(null);
 
+  const handleOpenRoutinePreparation = (routine: Routine) => {
+    if (!checkCourseEnrollmentAccess(routine, 'পরিক্ষার প্রস্তুতি (Chapter MCQ)')) {
+      return;
+    }
+    setViewingHierarchyRoutine(routine);
+  };
+
   const startDemoExam = async (routine: Routine) => {
+    if (!checkCourseEnrollmentAccess(routine, 'ডেমো পরীক্ষা (Demo Exam)')) {
+      return;
+    }
     // 1. Find corresponding original exam config or linked live exam
     const linkedExam = liveExams.find(e => 
       (e.routineId && e.routineId === routine.id) || 
@@ -412,18 +574,6 @@ export default function UserPortal({
   // Challenge Modal State
   const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
 
-  // Course States
-  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
-    const userKey = user?.userId || user?.phone || 'guest';
-    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { return []; }
-    }
-    return [];
-  });
-  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
-  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
-
   // Routine Tab Filter & Multi-Page Hierarchy Navigation States
   // Level 1: Course Main Cards -> Level 2: Date-wise Routine List -> Level 3: Syllabus & Chapter MCQ Page
   const [routineBatchFilter, setRoutineBatchFilter] = useState<'all' | 'open' | 'enrolled' | 'unrolled'>('all');
@@ -463,62 +613,6 @@ export default function UserPortal({
     } catch {
       return dateStr;
     }
-  };
-
-  // Helper to determine routine batch status: open, enrolled, or unrolled
-  const getRoutineBatchInfo = (item: Routine) => {
-    const targetCourse = courses ? courses.find(c => 
-      (item.courseId && c.id === item.courseId) || 
-      (item.courseName && c.title.trim().toLowerCase() === item.courseName.trim().toLowerCase())
-    ) : undefined;
-
-    const courseTitle = targetCourse?.title || item.courseName;
-    const courseId = targetCourse?.id || item.courseId;
-    const hasCourse = Boolean(courseTitle || courseId);
-
-    if (!hasCourse) {
-      return {
-        type: 'open' as const,
-        label: '🌐 ওপেন ব্যাচ (Open)',
-        shortLabel: 'উন্মুক্ত (Open)',
-        badgeClass: 'bg-blue-50 text-blue-800 border-blue-200',
-        cardBorder: 'border-blue-200/80 hover:border-blue-300',
-        description: 'উন্মুক্ত পরীক্ষা ও রুটিন — কোনো কোর্সে এনরোলমেন্ট ছাড়াই সরাসরি অংশগ্রহণযোগ্য।',
-        courseTitle: undefined,
-        courseId: undefined,
-        isEnrolled: false
-      };
-    }
-
-    const isEnrolled = courseId 
-      ? enrolledCourseIds.includes(courseId) 
-      : (courseTitle ? courses.some(c => c.title === courseTitle && enrolledCourseIds.includes(c.id)) : false);
-
-    if (isEnrolled) {
-      return {
-        type: 'enrolled' as const,
-        label: '✅ এনরোল্ড ব্যাচ (Enrolled)',
-        shortLabel: 'এনরোল্ড (Enrolled)',
-        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-300',
-        cardBorder: 'border-emerald-200/80 hover:border-emerald-300',
-        description: `আপনি "${courseTitle}" কোর্সে সফলভাবে এনরোল্ড আছেন।`,
-        courseTitle,
-        courseId: courseId || targetCourse?.id,
-        isEnrolled: true
-      };
-    }
-
-    return {
-      type: 'unrolled' as const,
-      label: '🔒 আন-এনরোল্ড (Unenrolled)',
-      shortLabel: 'আন-এনরোল্ড (Unenrolled)',
-      badgeClass: 'bg-amber-50 text-amber-900 border-amber-300',
-      cardBorder: 'border-amber-200/70 hover:border-amber-300',
-      description: `কোর্স: "${courseTitle}"। আপনি এই কোর্সে এখনও এনরোল করেননি।`,
-      courseTitle,
-      courseId: courseId || targetCourse?.id,
-      isEnrolled: false
-    };
   };
 
   // Group routines by course so each course has strictly ONE main card (Level 1)
@@ -664,21 +758,6 @@ export default function UserPortal({
       setEnrolledCourseIds([]);
     }
   }, [user?.userId, user?.phone]);
-
-  const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
-    const userKey = user?.userId || user?.phone || 'guest';
-    let updated: string[];
-    if (enrolledCourseIds.includes(courseId)) {
-      updated = enrolledCourseIds.filter(id => id !== courseId);
-      showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
-    } else {
-      updated = [...enrolledCourseIds, courseId];
-      showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
-      setSelectedCourseFilter('enrolled');
-    }
-    setEnrolledCourseIds(updated);
-    localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
-  };
 
   // Custom Exam Setup & Cascading Filter States
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -836,52 +915,6 @@ export default function UserPortal({
   const [selectedAttemptForView, setSelectedAttemptForView] = useState<Attempt | null>(null);
   const [includeMarkTableInPDF, setIncludeMarkTableInPDF] = useState(true);
   const [resultFilterMode, setResultFilterMode] = useState<'user' | 'admin'>('user');
-
-  // Custom Alert and Confirm Dialog States
-  const [customAlert, setCustomAlert] = useState<{
-    open: boolean;
-    title?: string;
-    message: string;
-    onConfirm?: () => void;
-    showCancel?: boolean;
-    confirmText?: string;
-    cancelText?: string;
-  } | null>(null);
-  const [customConfirm, setCustomConfirm] = useState<{ open: boolean; title?: string; message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
-
-  const showCustomAlert = (
-    param1: string,
-    param2?: (() => void) | string,
-    param3?: string,
-    showCancel?: boolean,
-    confirmText?: string,
-    cancelText?: string
-  ) => {
-    let title = '📢 তথ্য';
-    let message = '';
-    let onConfirmFunc: (() => void) | undefined = undefined;
-
-    if (typeof param2 === 'function') {
-      message = param1;
-      onConfirmFunc = param2;
-      if (param3) title = param3;
-    } else if (typeof param2 === 'string') {
-      title = param1;
-      message = param2;
-      if (param3 && param3 !== 'success' && param3 !== 'info' && param3 !== 'warning' && param3 !== 'error') {
-        title = `${param3} ${param1}`;
-      }
-    } else {
-      message = param1;
-      if (param3) title = param3;
-    }
-
-    setCustomAlert({ open: true, title, message, onConfirm: onConfirmFunc, showCancel, confirmText, cancelText });
-  };
-
-  const showCustomConfirm = (message: string, onConfirm: () => void, onCancel?: () => void, title?: string) => {
-    setCustomConfirm({ open: true, title, message, onConfirm, onCancel });
-  };
 
   // Guest Limitation Guard & Helpers
   const checkGuestAccess = (featureName: string = 'এই ফিচারটি'): boolean => {
@@ -2032,6 +2065,25 @@ export default function UserPortal({
   };
 
   const startOfficialLiveExam = async (exam: LiveExam) => {
+    // Check if course is enrolled if this exam belongs to an unenrolled course
+    if (exam.courseId && !enrolledCourseIds.includes(exam.courseId)) {
+      const course = courses ? courses.find(c => c.id === exam.courseId) : undefined;
+      const courseTitle = course?.title || exam.courseName || 'এই কোর্সটি';
+      showCustomAlert(
+        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের অফিশিয়াল লাইভ পরীক্ষায় অংশগ্রহণ করতে অনুগ্রহ করে প্রথমে কোর্সে এনরোল (Enroll) করুন।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন।`,
+        () => {
+          if (exam.courseId) {
+            handleToggleEnrollCourse(exam.courseId, courseTitle);
+          }
+        },
+        '🔒 কোর্সটি লক করা আছে',
+        true,
+        'এনরোল করুন',
+        'বন্ধ করুন'
+      );
+      return;
+    }
+
     // Check if already completed
     const alreadyTaken = attempts.some(a => a.examId === exam.id);
     if (alreadyTaken) {
@@ -2048,7 +2100,7 @@ export default function UserPortal({
       if (finalQuestions.length === 0 && onFetchQuestionsLazy) {
         const fetched = await onFetchQuestionsLazy({ examId: exam.id, category: exam.category === 'ALL' ? undefined : exam.category });
         idSet = new Set(exam.questionIds);
-        finalQuestions = fetched.filter(q => idSet.has(q.id));
+        finalQuestions = (fetched || []).filter(q => idSet.has(q.id));
       }
       
       // Keep original order of selected questions if possible
@@ -2059,21 +2111,31 @@ export default function UserPortal({
       });
     } else {
       let pool = questions;
-      if (exam.category !== 'ALL') {
+
+      // If exam is linked to a routine, strictly match the routine syllabus topics
+      if (exam.routineId) {
+        const targetRoutine = routines.find(r => r.id === exam.routineId);
+        if (targetRoutine) {
+          const matched = getRoutineMatchingQuestions(targetRoutine, questions, subcategories);
+          if (matched.length > 0) {
+            pool = matched;
+          }
+        }
+      } else if (exam.category !== 'ALL') {
         pool = questions.filter(q => q.category === exam.category || (q.categories && q.categories.includes(exam.category)));
         if (pool.length === 0 && onFetchQuestionsLazy) {
           const fetched = await onFetchQuestionsLazy({ category: exam.category, examId: exam.id });
-          pool = fetched.filter(q => q.category === exam.category || (q.categories && q.categories.includes(exam.category)));
+          pool = (fetched || []).filter(q => q.category === exam.category || (q.categories && q.categories.includes(exam.category)));
         }
       } else if (pool.length === 0 && onFetchQuestionsLazy) {
-        pool = await onFetchQuestionsLazy({ examId: exam.id });
+        pool = (await onFetchQuestionsLazy({ examId: exam.id })) || [];
       }
 
       if (pool.length === 0) {
         showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
         return;
       }
-      const limit = Math.min(exam.qLimit, pool.length);
+      const limit = Math.min(exam.qLimit || 20, pool.length);
       finalQuestions = [...pool].sort(() => 0.5 - Math.random()).slice(0, limit);
     }
 
@@ -2082,16 +2144,65 @@ export default function UserPortal({
       return;
     }
 
+    setViewingHierarchyRoutine(null);
+    setSyllabusModalRoutine(null);
     setQuizQuestions(finalQuestions);
     setQuizTitle(exam.title);
     setQuizExamId(exam.id);
-    setQuizTimeLimitMinutes(exam.timeLimit);
+    setQuizTimeLimitMinutes(exam.timeLimit || 20);
     setQuizAnswerMode('after_exam');
     setCurrentQIndex(0);
     setUserSelectedAnswers({});
-    setSecondsRemaining(exam.timeLimit * 60);
-    setQuizActive(true);
+    setSecondsRemaining((exam.timeLimit || 20) * 60);
     setIsQuizTimerRunning(true);
+    setReaderModeActive(false);
+    setQuizActive(true);
+  };
+
+  const handleStartLiveExamForRoutine = (routine: Routine) => {
+    if (!checkCourseEnrollmentAccess(routine, 'লাইভ পরীক্ষা (Live Exam)')) {
+      return;
+    }
+
+    // 1. Check if linked official LiveExam already exists in liveExams list
+    const linked = liveExams.find(e => 
+      (e.routineId && e.routineId === routine.id) || 
+      (routine.id && e.id === routine.id) ||
+      (routine.courseId && e.courseId === routine.courseId && e.title?.trim().toLowerCase() === routine.title?.trim().toLowerCase())
+    );
+
+    if (linked) {
+      startOfficialLiveExam(linked);
+      return;
+    }
+
+    // 2. Build live exam object from routine exam config or defaults
+    const examConfig = routine.examConfig;
+    const targetQLimit = examConfig?.qLimit || 20;
+    const targetTimeLimit = examConfig?.timeLimit || 20;
+
+    const liveExamObj: LiveExam = {
+      id: routine.id || `live_routine_${Date.now()}`,
+      title: routine.title,
+      qLimit: targetQLimit,
+      timeLimit: targetTimeLimit,
+      category: routine.selectedCategories?.[0] || 'ALL',
+      startTime: examConfig?.startTime || routine.examDate || routine.createdAt,
+      expiryTime: examConfig?.expiryTime || new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      createdAt: routine.createdAt,
+      questionIds: examConfig?.questionIds,
+      routineId: routine.id,
+      courseId: routine.courseId,
+      courseName: routine.courseName,
+      selectedCategories: routine.selectedCategories,
+      selectedSubcategories: routine.selectedSubcategories,
+      selectedLeafCategories: routine.selectedLeafCategories,
+      totalMarks: examConfig?.totalMarks || 20,
+      passMarks: examConfig?.passMarks || 8,
+      questionSelection: examConfig?.questionSelection || 'auto'
+    };
+
+    startOfficialLiveExam(liveExamObj);
   };
 
   const handleSelectOption = (key: string) => {
@@ -2392,31 +2503,86 @@ export default function UserPortal({
                   </div>
                 )}
 
+                {/* Course Unenrolled Notice Banner if locked */}
+                {(() => {
+                  const rBatch = getRoutineBatchInfo(routine);
+                  if (rBatch.type === 'unrolled') {
+                    return (
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl flex items-center justify-between gap-2.5 text-xs text-amber-900 animate-fade-in">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span className="font-bold leading-tight">
+                            কোর্সটি আন-এনরোল্ড! পরীক্ষা ও প্রস্তুতি লক করা আছে।
+                          </span>
+                        </div>
+                        {rBatch.courseId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (rBatch.courseId) {
+                                handleToggleEnrollCourse(rBatch.courseId, rBatch.courseTitle || 'এই কোর্স');
+                              }
+                            }}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-black px-3 py-1.5 rounded-xl text-xs shrink-0 shadow-2xs cursor-pointer"
+                          >
+                            এনরোল করুন
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* Actions Footer */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const r = routine;
-                      setSyllabusModalRoutine(null);
-                      startDemoExam(r);
-                    }}
-                    className="flex-1 min-w-[120px] bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
-                  >
-                    <span>Demo exam দিন</span>
-                  </button>
+                  {(() => {
+                    const rBatch = getRoutineBatchInfo(routine);
+                    const isLocked = rBatch.type === 'unrolled';
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const r = routine;
-                      setSyllabusModalRoutine(null);
-                      setViewingHierarchyRoutine(r);
-                    }}
-                    className="flex-1 min-w-[120px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
-                  >
-                    <span>পরিক্ষার প্রস্তুতি</span>
-                  </button>
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = routine;
+                            setSyllabusModalRoutine(null);
+                            handleStartLiveExamForRoutine(r);
+                          }}
+                          className={`flex-1 min-w-[110px] ${isLocked ? 'bg-emerald-700/85 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
+                        >
+                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                          <span>Live exam দিন</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = routine;
+                            setSyllabusModalRoutine(null);
+                            startDemoExam(r);
+                          }}
+                          className={`flex-1 min-w-[110px] bg-gradient-to-r ${isLocked ? 'from-purple-700/85 to-indigo-700/85' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
+                        >
+                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                          <span>Demo exam</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = routine;
+                            setSyllabusModalRoutine(null);
+                            handleOpenRoutinePreparation(r);
+                          }}
+                          className={`flex-1 min-w-[110px] ${isLocked ? 'bg-indigo-700/85 hover:bg-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
+                        >
+                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                          <span>পরিক্ষার প্রস্তুতি</span>
+                        </button>
+                      </>
+                    );
+                  })()}
 
                   <button
                     type="button"
@@ -5530,34 +5696,44 @@ export default function UserPortal({
 
                                   {/* Action Buttons: Practice & Live Exam */}
                                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setViewingHierarchyRoutine(r)}
-                                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center shadow-2xs cursor-pointer"
-                                    >
-                                      <span>পরিক্ষার  প্রস্তুতি</span>
-                                    </button>
-                                    <button
-                                      onClick={() => startDemoExam(r)}
-                                      className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-3 rounded-xl transition text-xs flex items-center justify-center shadow-2xs cursor-pointer"
-                                    >
-                                      Demo exam
-                                    </button>
+                                    {(() => {
+                                      const isCourseLocked = !enrolledCourseIds.includes(selectedCourse.id);
+                                      return (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenRoutinePreparation(r)}
+                                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                          >
+                                            {isCourseLocked && <Lock className="w-3 h-3 text-indigo-700" />}
+                                            <span>পরিক্ষার প্রস্তুতি</span>
+                                          </button>
+                                          <button
+                                            onClick={() => startDemoExam(r)}
+                                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                          >
+                                            {isCourseLocked && <Lock className="w-3 h-3 text-white/90" />}
+                                            <span>Demo exam</span>
+                                          </button>
 
-                                    {hasExam && (
-                                      isExamLive ? (
-                                        <button
-                                          onClick={() => handleTabSelect('exams')}
-                                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1 shadow-2xs animate-pulse"
-                                        >
-                                          লাইভ পরীক্ষা চলমান (পরীক্ষা দিন)
-                                        </button>
-                                      ) : (
-                                        <span className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-2 rounded-xl text-xs font-extrabold">
-                                          পরিক্ষা শুরু হয়নি
-                                        </span>
-                                      )
-                                    )}
+                                          {hasExam && (
+                                            isExamLive ? (
+                                              <button
+                                                onClick={() => handleStartLiveExamForRoutine(r)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs animate-pulse cursor-pointer"
+                                              >
+                                                {isCourseLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                                                <span>লাইভ পরীক্ষা চলমান (পরীক্ষা দিন)</span>
+                                              </button>
+                                            ) : (
+                                              <span className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-2 rounded-xl text-xs font-extrabold">
+                                                পরিক্ষা শুরু হয়নি
+                                              </span>
+                                            )
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               );
@@ -6066,11 +6242,14 @@ export default function UserPortal({
                         const passMark = routine.examConfig?.passMarks || 8;
                         const timeLimit = routine.examConfig?.timeLimit || 20;
 
+                        const rBatch = getRoutineBatchInfo(routine);
+                        const isCardLocked = rBatch.type === 'unrolled';
+
                         return (
                           <div
                             key={routine.id || `course-rt-${rIdx}`}
                             id={`routine-card-${routine.id || rIdx}`}
-                            onClick={() => setSelectedRoutineItem(routine)}
+                            onClick={() => handleOpenRoutinePreparation(routine)}
                             className="bg-white border border-slate-200/90 hover:border-indigo-400 p-2.5 sm:p-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col gap-2 group"
                           >
                             {/* 2. Date Wise Routine Header (e.g. "বাংলা, ইংরেজি") */}
@@ -6107,9 +6286,9 @@ export default function UserPortal({
                               </div>
                             </div>
 
-                            {/* Bottom Row: Syllabus Button, Demo Exam Button & Open Syllabus Button */}
+                            {/* Bottom Row: Syllabus Button, Demo Exam Button, Live Exam Button & Open Preparation Button */}
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <button
                                   type="button"
                                   id={`btn-syllabus-${routine.id || rIdx}`}
@@ -6129,19 +6308,39 @@ export default function UserPortal({
                                     e.stopPropagation();
                                     startDemoExam(routine);
                                   }}
-                                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer"
+                                  className={`bg-gradient-to-r ${isCardLocked ? 'from-purple-700/90 to-indigo-700/90' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
                                 >
+                                  {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
                                   <span>Demo exam</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  id={`btn-live-exam-${routine.id || rIdx}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartLiveExamForRoutine(routine);
+                                  }}
+                                  className={`${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
+                                >
+                                  {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
+                                  <span>Live exam</span>
                                 </button>
                               </div>
 
-                              <div 
-                                onClick={() => setSelectedRoutineItem(routine)}
-                                className="flex items-center gap-1 text-indigo-600 font-extrabold text-[11px] group-hover:translate-x-0.5 transition-transform cursor-pointer"
+                              <button
+                                type="button"
+                                id={`btn-prep-${routine.id || rIdx}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenRoutinePreparation(routine);
+                                }}
+                                className="flex items-center gap-1 text-indigo-600 font-extrabold text-[11px] group-hover:translate-x-0.5 transition-transform cursor-pointer bg-transparent border-none p-0"
                               >
+                                {isCardLocked && <Lock className="w-3 h-3 text-indigo-700" />}
                                 <span>পরিক্ষার  প্রস্তুতি</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
-                              </div>
+                              </button>
                             </div>
                           </div>
                         );
@@ -6167,6 +6366,9 @@ export default function UserPortal({
                 const totalMark = item.examConfig?.totalMarks || 20;
                 const passMark = item.examConfig?.passMarks || 8;
                 const timeLimit = item.examConfig?.timeLimit || 20;
+
+                const itemBatch = getRoutineBatchInfo(item);
+                const isItemLocked = itemBatch.type === 'unrolled';
 
                 return (
                   <div className="flex flex-col gap-3 animate-fade-in">
@@ -6207,6 +6409,36 @@ export default function UserPortal({
                         )}
                       </div>
                     </div>
+
+                    {/* Unenrolled Notice Banner if Locked */}
+                    {isItemLocked && (
+                      <div className="bg-amber-50 border border-amber-200 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+                        <div className="flex items-start gap-2.5">
+                          <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-black block text-amber-950 text-sm">
+                              🔒 কোর্সটি লক করা আছে (আন-এনরোল্ড)
+                            </span>
+                            <p className="text-amber-800 text-[11px] font-medium mt-0.5">
+                              আপনি রুটিন ও সিলেবাস দেখতে পারবেন। তবে "পরিক্ষার প্রস্তুতি", "Demo exam" এবং "Live exam"-এ অংশগ্রহণ করতে কোর্সে এনরোল করুন।
+                            </p>
+                          </div>
+                        </div>
+                        {itemBatch.courseId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (itemBatch.courseId) {
+                                handleToggleEnrollCourse(itemBatch.courseId, itemBatch.courseTitle || 'এই কোর্স');
+                              }
+                            }}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs shrink-0 shadow-2xs cursor-pointer text-center"
+                          >
+                            এখনই এনরোল করুন
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Routine Header Summary Card (Minimal padding) */}
                     <div className="bg-slate-50 border border-slate-200/90 p-2.5 sm:p-3 rounded-2xl flex flex-col gap-2">
@@ -6253,9 +6485,10 @@ export default function UserPortal({
                         <button
                           type="button"
                           id="btn-read-chapter-mcq"
-                          onClick={() => setViewingHierarchyRoutine(item)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
+                          onClick={() => handleOpenRoutinePreparation(item)}
+                          className={`${isItemLocked ? 'bg-indigo-700/90 hover:bg-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
                         >
+                          {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
                           <span>পরিক্ষার  প্রস্তুতি</span>
                         </button>
                       </div>
@@ -6303,8 +6536,9 @@ export default function UserPortal({
                           type="button"
                           id="btn-syllabus-demo-exam"
                           onClick={() => startDemoExam(item)}
-                          className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center shadow-xs cursor-pointer"
+                          className={`flex-1 bg-gradient-to-r ${isItemLocked ? 'from-purple-700/90 to-indigo-700/90' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
                         >
+                          {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
                           <span>Demo exam (অনুশীলন পরীক্ষা)</span>
                         </button>
 
@@ -6312,10 +6546,11 @@ export default function UserPortal({
                           <button
                             type="button"
                             id="btn-syllabus-live-exam"
-                            onClick={() => handleTabSelect('exams')}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center shadow-xs animate-bounce cursor-pointer"
+                            onClick={() => handleStartLiveExamForRoutine(item)}
+                            className={`${isItemLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-pulse cursor-pointer`}
                           >
-                            লাইভ পরীক্ষায় অংশগ্রহণ করুন
+                            {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                            <span>লাইভ পরীক্ষায় অংশগ্রহণ করুন</span>
                           </button>
                         )}
                       </div>
