@@ -548,7 +548,7 @@ export default function App() {
         const parsed: Attempt[] = JSON.parse(storedAttempts);
         const cutoff = Date.now() - 72 * 60 * 60 * 1000;
         const validAttempts = parsed.filter(a => {
-          const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_');
+          const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
           if (isUserCreated) {
             return new Date(a.submittedAt).getTime() >= cutoff;
           }
@@ -1199,7 +1199,15 @@ export default function App() {
   const updateAttemptsDB = (newA: Attempt[]) => {
     setAttempts(newA);
     localStorage.setItem('orjon_attempts', JSON.stringify(newA));
-    syncCollectionToFirestore('attempts', newA, 'att');
+    // REQUIREMENT: Chapter/Custom/Demo exam results are stored ONLY in localStorage and NOT synced to Firebase.
+    // Official Live Exam results are stored in localStorage AND synced to Firebase.
+    const officialAttemptsOnly = newA.filter(a => 
+      !a.examId.startsWith('prep_') && 
+      !a.examId.startsWith('job_') && 
+      !a.examId.startsWith('custom_') && 
+      !a.examId.startsWith('demo_')
+    );
+    syncCollectionToFirestore('attempts', officialAttemptsOnly, 'att');
   };
 
   const updateBookmarksDB = (newB: Bookmark[]) => {
@@ -1826,8 +1834,17 @@ export default function App() {
     try {
       const fsAttempts = await fetchCollectionFromFirestore<Attempt>('attempts');
       if (fsAttempts && fsAttempts.length > 0) {
-        setAttempts(fsAttempts);
-        localStorage.setItem('orjon_attempts', JSON.stringify(fsAttempts));
+        // Merge with local chapter/custom/demo attempts so local results remain preserved
+        const localAttempts: Attempt[] = JSON.parse(localStorage.getItem('orjon_attempts') || '[]');
+        const localOnlyAttempts = localAttempts.filter(a => 
+          a.examId.startsWith('prep_') || 
+          a.examId.startsWith('job_') || 
+          a.examId.startsWith('custom_') || 
+          a.examId.startsWith('demo_')
+        );
+        const combined = [...fsAttempts, ...localOnlyAttempts.filter(l => !fsAttempts.some(f => f.id === l.id))];
+        setAttempts(combined);
+        localStorage.setItem('orjon_attempts', JSON.stringify(combined));
       }
     } catch (e) {
       console.warn('On-demand attempts load notice:', e);
@@ -2525,7 +2542,7 @@ export default function App() {
 
     const cutoff = Date.now() - 72 * 60 * 60 * 1000;
     const cleanAttempts = [fullAttempt, ...attempts].filter(a => {
-      const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_');
+      const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
       if (isUserCreated) {
         return new Date(a.submittedAt).getTime() >= cutoff;
       }

@@ -3450,7 +3450,7 @@ export default function AdminPanel({
   });
 
   // Result mapping
-  const adminAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_'));
+  const adminAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_') && !a.examId.startsWith('demo_'));
   const activeExamResults = adminAttempts.filter(a => a.examId === selectedExamIdForResults);
 
   const pendingFeedbackCount = (() => {
@@ -8489,7 +8489,7 @@ export default function AdminPanel({
           {/* User Exams Stat block */}
           {(() => {
             const userAttempts7Days = attempts.filter(a => {
-              const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_');
+              const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
               if (!isUserCreated) return false;
               const submittedTime = new Date(a.submittedAt).getTime();
               const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -8634,7 +8634,8 @@ export default function AdminPanel({
             a.userPhone === u.phone && 
             !a.examId.startsWith('prep_') && 
             !a.examId.startsWith('job_') && 
-            !a.examId.startsWith('custom_')
+            !a.examId.startsWith('custom_') &&
+            !a.examId.startsWith('demo_')
           ).length;
 
           return {

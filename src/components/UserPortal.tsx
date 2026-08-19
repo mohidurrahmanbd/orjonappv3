@@ -338,6 +338,7 @@ export default function UserPortal({
   });
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+  const [expandedSyllabusMap, setExpandedSyllabusMap] = useState<Record<string, boolean>>({});
 
   const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
     const userKey = user?.userId || user?.phone || 'guest';
@@ -2169,6 +2170,19 @@ export default function UserPortal({
     setQuizActive(true);
   };
 
+  const findRoutineAttempt = (routine: Routine): Attempt | undefined => {
+    const linkedLiveExam = liveExams.find(e => 
+      (e.routineId && e.routineId === routine.id) || 
+      (routine.id && e.id === routine.id) ||
+      (routine.courseId && e.courseId === routine.courseId && e.title?.trim().toLowerCase() === routine.title?.trim().toLowerCase())
+    );
+    return attempts.find(a => 
+      a.examId === routine.id || 
+      (linkedLiveExam && a.examId === linkedLiveExam.id) ||
+      (routine.title && a.examTitle?.trim().toLowerCase() === routine.title?.trim().toLowerCase())
+    );
+  };
+
   const handleStartLiveExamForRoutine = (routine: Routine) => {
     if (!checkCourseEnrollmentAccess(routine, 'লাইভ পরীক্ষা (Live Exam)')) {
       return;
@@ -2578,59 +2592,11 @@ export default function UserPortal({
                 })()}
 
                 {/* Actions Footer */}
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-1">
-                  {(() => {
-                    const rBatch = getRoutineBatchInfo(routine);
-                    const isLocked = rBatch.type === 'unrolled';
-
-                    return (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const r = routine;
-                            setSyllabusModalRoutine(null);
-                            handleStartLiveExamForRoutine(r);
-                          }}
-                          className={`flex-1 min-w-[110px] ${isLocked ? 'bg-emerald-700/85 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
-                        >
-                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                          <span>Live exam দিন</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const r = routine;
-                            setSyllabusModalRoutine(null);
-                            startDemoExam(r);
-                          }}
-                          className={`flex-1 min-w-[110px] bg-gradient-to-r ${isLocked ? 'from-purple-700/85 to-indigo-700/85' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
-                        >
-                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                          <span>Demo exam</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const r = routine;
-                            setSyllabusModalRoutine(null);
-                            handleOpenRoutinePreparation(r);
-                          }}
-                          className={`flex-1 min-w-[110px] ${isLocked ? 'bg-indigo-700/85 hover:bg-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
-                        >
-                          {isLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                          <span>পরিক্ষার প্রস্তুতি</span>
-                        </button>
-                      </>
-                    );
-                  })()}
-
+                <div className="flex items-center justify-end pt-2 border-t border-slate-100 mt-1">
                   <button
                     type="button"
                     onClick={() => setSyllabusModalRoutine(null)}
-                    className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl transition text-center cursor-pointer"
+                    className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-5 rounded-xl transition text-center cursor-pointer"
                   >
                     বন্ধ করুন
                   </button>
@@ -5303,8 +5269,8 @@ export default function UserPortal({
                 'গেস্ট (Guest) হিসেবে দেওয়া পরীক্ষার উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন সম্পন্ন করুন।'
               );
             }
-            const userCreatedAttempts = attempts.filter(a => a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_'));
-            const adminCreatedAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_'));
+            const userCreatedAttempts = attempts.filter(a => a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_'));
+            const adminCreatedAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_') && !a.examId.startsWith('demo_'));
             const activeFilteredAttempts = resultFilterMode === 'user' ? userCreatedAttempts : adminCreatedAttempts;
 
             if (selectedAttemptForView) {
@@ -5317,16 +5283,30 @@ export default function UserPortal({
                       ? questions.filter(q => selectedAttemptForView.incorrectQuestionIds.includes(q.id))
                       : [];
 
+              const linkedRoutine = routines.find(r => r.id === selectedAttemptForView.examId || (r.title && r.title.trim().toLowerCase() === selectedAttemptForView.examTitle?.trim().toLowerCase()));
+              const linkedLiveExam = liveExams.find(e => e.id === selectedAttemptForView.examId || (e.routineId && e.routineId === selectedAttemptForView.examId) || (e.title && e.title.trim().toLowerCase() === selectedAttemptForView.examTitle?.trim().toLowerCase()));
+              const courseId = linkedRoutine?.courseId || linkedLiveExam?.courseId;
+              const attemptCourseName = linkedRoutine?.courseName || linkedLiveExam?.courseName || (courses.find(c => c.id === courseId)?.title);
+              const attemptDateStr = formatBengaliDate(selectedAttemptForView.submittedAt) || new Date(selectedAttemptForView.submittedAt).toLocaleString('bn-BD');
+
               return (
                 <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4">
                   {/* Top Bar with Title, PDF Export & Back */}
                   <div className="flex flex-wrap justify-between items-center border-b pb-3 gap-2">
                     <div>
-                      <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base flex items-center gap-1.5">
-                        🛡️ {selectedAttemptForView.examTitle}
-                      </h3>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        তারিখ: {new Date(selectedAttemptForView.submittedAt).toLocaleString('bn-BD')} | মোট প্রশ্ন: {selectedAttemptForView.totalQuestions}টি | সঠিক: {selectedAttemptForView.correctCount}টি | ভুল: {selectedAttemptForView.wrongCount}টি
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base flex items-center gap-1.5">
+                          🛡️ {selectedAttemptForView.examTitle}
+                        </h3>
+                        {attemptCourseName && (
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1">
+                            <GraduationCap className="w-3 h-3 text-indigo-500" />
+                            <span>{attemptCourseName}</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                        তারিখ: {attemptDateStr} | মোট প্রশ্ন: {toBengaliDigits(selectedAttemptForView.totalQuestions)}টি | সঠিক: {toBengaliDigits(selectedAttemptForView.correctCount)}টি | ভুল: {toBengaliDigits(selectedAttemptForView.wrongCount)}টি
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -5714,7 +5694,7 @@ export default function UserPortal({
                     ) : (
                       <div className="divide-y divide-gray-100">
                         {activeFilteredAttempts.map((a, aIdx) => {
-                          const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_');
+                          const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
                           let hoursLeft = 0;
                           if (isUserCreated) {
                             const submittedTime = new Date(a.submittedAt).getTime();
@@ -5722,16 +5702,31 @@ export default function UserPortal({
                             hoursLeft = Math.max(0, 72 - diffMs / (1000 * 60 * 60));
                           }
 
+                          const linkedRoutine = routines.find(r => r.id === a.examId || (r.title && r.title.trim().toLowerCase() === a.examTitle?.trim().toLowerCase()));
+                          const linkedLiveExam = liveExams.find(e => e.id === a.examId || (e.routineId && e.routineId === a.examId) || (e.title && e.title.trim().toLowerCase() === a.examTitle?.trim().toLowerCase()));
+                          const courseId = linkedRoutine?.courseId || linkedLiveExam?.courseId;
+                          const courseName = linkedRoutine?.courseName || linkedLiveExam?.courseName || (courses.find(c => c.id === courseId)?.title);
+                          const formattedDate = formatBengaliDate(a.submittedAt) || new Date(a.submittedAt).toLocaleDateString('bn-BD');
+
                           return (
-                            <div key={a.id ? `att-${a.id}-${aIdx}` : `att-${aIdx}`} className="py-3 flex justify-between items-center hover:bg-gray-50/50 px-1 transition rounded-lg">
-                              <div>
-                                <h4 className="font-bold text-indigo-950">{a.examTitle}</h4>
-                                <p className="text-[10px] text-gray-400 mt-0.5">
-                                  মোট প্রশ্ন: {a.totalQuestions}টি | সঠিক: {a.correctCount}টি | ভুল: {a.wrongCount}টি 
+                            <div key={a.id ? `att-${a.id}-${aIdx}` : `att-${aIdx}`} className="py-3 flex justify-between items-center hover:bg-gray-50/50 px-2 transition rounded-xl">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-indigo-950 text-xs sm:text-sm">{a.examTitle}</h4>
+                                  {courseName && (
+                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1">
+                                      <GraduationCap className="w-3 h-3 text-indigo-500" />
+                                      <span>{courseName}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-gray-500 font-medium">
+                                  মোট প্রশ্ন: {toBengaliDigits(a.totalQuestions)}টি | সঠিক: {toBengaliDigits(a.correctCount)}টি | ভুল: {toBengaliDigits(a.wrongCount)}টি 
                                 </p>
-                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                  <span className="text-[9px] text-gray-400 font-medium">
-                                    তারিখ: {new Date(a.submittedAt).toLocaleDateString('bn-BD')}
+                                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                  <span className="text-[9.5px] text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 border border-slate-200/60">
+                                    <Calendar className="w-3 h-3 text-slate-500" />
+                                    <span>তারিখ: {formattedDate}</span>
                                   </span>
                                   {isUserCreated && (
                                     <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-100">
@@ -5739,23 +5734,24 @@ export default function UserPortal({
                                     </span>
                                   )}
                                   {!isUserCreated && (
-                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">
-                                      🛡️ আজীবন সংরক্ষিত
+                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/80">
+                                      🛡️ অফিশিয়াল লাইভ পরীক্ষা
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3 shrink-0">
-                                <span className="text-indigo-600 font-extrabold text-xs bg-indigo-50 px-2.5 py-1.5 rounded-xl border border-indigo-100">
-                                  {a.score.toLocaleString('bn-BD')} মার্কস
+                              <div className="flex items-center gap-2.5 shrink-0">
+                                <span className="text-indigo-700 font-extrabold text-xs bg-indigo-50 px-2.5 py-1.5 rounded-xl border border-indigo-200/80">
+                                  {toBengaliDigits(typeof a.score === 'number' ? a.score.toFixed(2) : a.score)} মার্কস
                                 </span>
                                 
                                 <button 
                                   onClick={() => setSelectedAttemptForView(a)}
-                                  className="text-indigo-600 font-extrabold text-[10px] hover:underline cursor-pointer"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1"
                                 >
-                                  বিশ্লেষণ ➔
+                                  <span>বিশ্লেষণ</span>
+                                  <span>➔</span>
                                 </button>
                               </div>
                             </div>
@@ -5895,24 +5891,70 @@ export default function UserPortal({
                                   {/* Syllabus Path Hierarchy */}
                                   {(() => {
                                     const syllabusPaths = formatRoutineSyllabusPaths(r, subcategories, categories, questions);
-                                    if (syllabusPaths.length === 0) return null;
+                                    if (!syllabusPaths || syllabusPaths.length === 0) return null;
+
+                                    // Group paths by root category name (shown only once per root)
+                                    const rootMap = new Map<string, string[]>();
+                                    syllabusPaths.forEach(path => {
+                                      const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
+                                      if (parts.length === 0) return;
+                                      const root = parts[0];
+                                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
+                                      if (!rootMap.has(root)) {
+                                        rootMap.set(root, []);
+                                      }
+                                      if (subHierarchy && !rootMap.get(root)!.includes(subHierarchy)) {
+                                        rootMap.get(root)!.push(subHierarchy);
+                                      }
+                                    });
+
+                                    // Build discrete lines: Root category name is a heading, hierarchy under it starts on a new line
+                                    const displayLines: React.ReactNode[] = [];
+                                    rootMap.forEach((subList, root) => {
+                                      // Root Category Heading
+                                      displayLines.push(
+                                        <div key={`${root}-head`} className="font-bold text-black text-xs leading-snug">
+                                          {root}
+                                        </div>
+                                      );
+
+                                      // Hierarchy under respective root category starting on new lines
+                                      subList.forEach((sub, sIdx) => {
+                                        displayLines.push(
+                                          <div key={`${root}-sub-${sIdx}`} className="text-black font-normal text-xs pl-2.5 flex items-start gap-1 leading-snug">
+                                            <span className="text-black font-bold select-none">›</span>
+                                            <span className="text-black">{sub}</span>
+                                          </div>
+                                        );
+                                      });
+                                    });
+
+                                    const routineKey = r.id || `routine-${rIdx}`;
+                                    const isExpanded = !!expandedSyllabusMap[routineKey];
+                                    const hasMore = displayLines.length > 2;
+                                    const visibleLines = (hasMore && !isExpanded) ? displayLines.slice(0, 2) : displayLines;
+
                                     return (
-                                      <div className="space-y-1.5 bg-slate-50/90 p-3 rounded-2xl border border-indigo-100/80">
-                                        <span className="text-[10px] font-black text-indigo-950 flex items-center gap-1.5">
+                                      <div className="space-y-1 pt-0.5 text-black">
+                                        <span className="text-[10.5px] font-black text-black flex items-center gap-1.5">
                                           সিলেবাস (Selected Syllabus):
                                         </span>
-                                        <div className="flex flex-col gap-1.5">
-                                          {syllabusPaths.map((path, pIdx) => (
-                                            <div key={pIdx} className="bg-white border border-indigo-200/70 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap shadow-2xs">
-                                              {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                                                <React.Fragment key={sIdx}>
-                                                  <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
-                                                  {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
-                                                </React.Fragment>
-                                              ))}
+                                        <div className="flex flex-col gap-1 pl-1 text-xs text-black font-medium leading-relaxed">
+                                          {visibleLines.map((lineNode, lIdx) => (
+                                            <div key={lIdx} className="text-black text-xs leading-snug">
+                                              {lineNode}
                                             </div>
                                           ))}
                                         </div>
+                                        {hasMore && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setExpandedSyllabusMap(prev => ({ ...prev, [routineKey]: !prev[routineKey] }))}
+                                            className="text-emerald-600 hover:text-emerald-700 font-bold text-xs inline-flex items-center gap-1 cursor-pointer mt-0.5"
+                                          >
+                                            {isExpanded ? "See less" : "See more"}
+                                          </button>
+                                        )}
                                       </div>
                                     );
                                   })()}
@@ -5927,6 +5969,10 @@ export default function UserPortal({
                                   <div className="flex flex-wrap items-center gap-2 pt-1">
                                     {(() => {
                                       const isCourseLocked = !enrolledCourseIds.includes(selectedCourse.id);
+                                      const hasExam = r.examConfig && r.examConfig.enabled;
+                                      const isExamLive = hasExam && r.examConfig?.startTime && new Date() >= new Date(r.examConfig.startTime);
+                                      const routineAttempt = findRoutineAttempt(r);
+
                                       return (
                                         <>
                                           <button
@@ -5945,19 +5991,35 @@ export default function UserPortal({
                                             <span>Demo exam</span>
                                           </button>
 
-                                          {hasExam && (
-                                            isExamLive ? (
-                                              <button
-                                                onClick={() => handleStartLiveExamForRoutine(r)}
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs animate-pulse cursor-pointer"
-                                              >
-                                                {isCourseLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                                                <span>লাইভ পরীক্ষা চলমান (পরীক্ষা দিন)</span>
-                                              </button>
-                                            ) : (
-                                              <span className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-2 rounded-xl text-xs font-extrabold">
-                                                পরিক্ষা শুরু হয়নি
-                                              </span>
+                                          {routineAttempt ? (
+                                            <button
+                                              type="button"
+                                              id={`btn-course-routine-result-${r.id || rIdx}`}
+                                              onClick={() => {
+                                                setSelectedAttemptForView(routineAttempt);
+                                                setActiveTab('results');
+                                              }}
+                                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                              title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
+                                            >
+                                              <Award className="w-3.5 h-3.5 text-amber-300" />
+                                              <span>Result</span>
+                                            </button>
+                                          ) : (
+                                            hasExam && (
+                                              isExamLive ? (
+                                                <button
+                                                  onClick={() => handleStartLiveExamForRoutine(r)}
+                                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs animate-pulse cursor-pointer"
+                                                >
+                                                  {isCourseLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                                                  <span>লাইভ পরীক্ষা চলমান (পরীক্ষা দিন)</span>
+                                                </button>
+                                              ) : (
+                                                <span className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-2 rounded-xl text-xs font-extrabold">
+                                                  পরিক্ষা শুরু হয়নি
+                                                </span>
+                                              )
                                             )
                                           )}
                                         </>
@@ -6536,18 +6598,42 @@ export default function UserPortal({
                                   <span>Demo exam</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  id={`btn-live-exam-${routine.id || rIdx}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleStartLiveExamForRoutine(routine);
-                                  }}
-                                  className={`${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
-                                >
-                                  {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
-                                  <span>Live exam</span>
-                                </button>
+                                {(() => {
+                                  const routineAttempt = findRoutineAttempt(routine);
+                                  if (routineAttempt) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        id={`btn-routine-result-${routine.id || rIdx}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedAttemptForView(routineAttempt);
+                                          setActiveTab('results');
+                                        }}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                        title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
+                                      >
+                                        <Award className="w-3 h-3 text-amber-300" />
+                                        <span>Result</span>
+                                      </button>
+                                    );
+                                  }
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      id={`btn-live-exam-${routine.id || rIdx}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStartLiveExamForRoutine(routine);
+                                      }}
+                                      className={`${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
+                                    >
+                                      {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
+                                      <span>Live exam</span>
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               <button
@@ -6764,17 +6850,42 @@ export default function UserPortal({
                           <span>Demo exam (অনুশীলন পরীক্ষা)</span>
                         </button>
 
-                        {hasExam && isExamLive && (
-                          <button
-                            type="button"
-                            id="btn-syllabus-live-exam"
-                            onClick={() => handleStartLiveExamForRoutine(item)}
-                            className={`${isItemLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-pulse cursor-pointer`}
-                          >
-                            {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                            <span>লাইভ পরীক্ষায় অংশগ্রহণ করুন</span>
-                          </button>
-                        )}
+                        {(() => {
+                          const itemAttempt = findRoutineAttempt(item);
+                          if (itemAttempt) {
+                            return (
+                              <button
+                                type="button"
+                                id="btn-syllabus-result"
+                                onClick={() => {
+                                  setSelectedAttemptForView(itemAttempt);
+                                  setActiveTab('results');
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                                title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
+                              >
+                                <Award className="w-3.5 h-3.5 text-amber-300" />
+                                <span>ফলাফল দেখুন (Result)</span>
+                              </button>
+                            );
+                          }
+
+                          if (hasExam && isExamLive) {
+                            return (
+                              <button
+                                type="button"
+                                id="btn-syllabus-live-exam"
+                                onClick={() => handleStartLiveExamForRoutine(item)}
+                                className={`${isItemLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs animate-pulse cursor-pointer`}
+                              >
+                                {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
+                                <span>লাইভ পরীক্ষায় অংশগ্রহণ করুন</span>
+                              </button>
+                            );
+                          }
+
+                          return null;
+                        })()}
                       </div>
                     </div>
                   </div>
