@@ -5966,7 +5966,7 @@ export default function UserPortal({
                                   )}
 
                                   {/* Action Buttons: Practice & Live Exam */}
-                                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                                  <div className="flex flex-nowrap items-center gap-1 sm:gap-2 pt-1">
                                     {(() => {
                                       const isCourseLocked = !enrolledCourseIds.includes(selectedCourse.id);
                                       const hasExam = r.examConfig && r.examConfig.enabled;
@@ -5978,17 +5978,17 @@ export default function UserPortal({
                                           <button
                                             type="button"
                                             onClick={() => handleOpenRoutinePreparation(r)}
-                                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                            className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-1 sm:px-3 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-0.5 sm:gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
                                           >
-                                            {isCourseLocked && <Lock className="w-3 h-3 text-indigo-700" />}
-                                            <span>পরিক্ষার প্রস্তুতি</span>
+                                            {isCourseLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
+                                            <span className="truncate">পরিক্ষার প্রস্তুতি</span>
                                           </button>
                                           <button
                                             onClick={() => startDemoExam(r)}
-                                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2.5 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                            className="flex-1 min-w-0 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-extrabold py-2 px-1 sm:px-3 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-0.5 sm:gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
                                           >
-                                            {isCourseLocked && <Lock className="w-3 h-3 text-white/90" />}
-                                            <span>Demo exam</span>
+                                            {isCourseLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white/90 shrink-0" />}
+                                            <span className="truncate">Demo exam</span>
                                           </button>
 
                                           {routineAttempt ? (
@@ -5999,25 +5999,26 @@ export default function UserPortal({
                                                 setSelectedAttemptForView(routineAttempt);
                                                 setActiveTab('results');
                                               }}
-                                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                              className="flex-1 min-w-0 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-1 sm:px-3.5 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-0.5 sm:gap-1.5 shadow-2xs cursor-pointer whitespace-nowrap"
                                               title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
                                             >
-                                              <Award className="w-3.5 h-3.5 text-amber-300" />
-                                              <span>Result</span>
+                                              <Award className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-300 shrink-0" />
+                                              <span className="truncate">Result</span>
                                             </button>
                                           ) : (
                                             hasExam && (
                                               isExamLive ? (
                                                 <button
                                                   onClick={() => handleStartLiveExamForRoutine(r)}
-                                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs animate-pulse cursor-pointer"
+                                                  className="flex-1 min-w-0 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-1 sm:px-3.5 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-0.5 sm:gap-1.5 shadow-2xs animate-pulse cursor-pointer whitespace-nowrap"
                                                 >
-                                                  {isCourseLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                                                  <span>লাইভ পরীক্ষা চলমান (পরীক্ষা দিন)</span>
+                                                  {isCourseLocked && <Lock className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-white/90 shrink-0" />}
+                                                  <span className="sm:hidden truncate">লাইভ পরীক্ষা</span>
+                                                  <span className="hidden sm:inline truncate">লাইভ পরীক্ষা দিন</span>
                                                 </button>
                                               ) : (
-                                                <span className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-2 rounded-xl text-xs font-extrabold">
-                                                  পরিক্ষা শুরু হয়নি
+                                                <span className="flex-1 min-w-0 bg-amber-100 text-amber-900 border border-amber-200 px-1 sm:px-3 py-2 rounded-xl text-[10px] sm:text-xs font-extrabold whitespace-nowrap text-center flex items-center justify-center">
+                                                  <span className="truncate">পরিক্ষা শুরু হয়নি</span>
                                                 </span>
                                               )
                                             )
@@ -6570,71 +6571,69 @@ export default function UserPortal({
                               </div>
                             </div>
 
-                            {/* Bottom Row: Syllabus Button, Demo Exam Button, Live Exam Button & Open Preparation Button */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  id={`btn-syllabus-${routine.id || rIdx}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSyllabusModalRoutine(routine);
-                                  }}
-                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer"
-                                >
-                                  <span>Syllabus</span>
-                                </button>
+                            {/* Bottom Row: Syllabus Button, Demo Exam Button, Live Exam / Result Button & Open Preparation Button */}
+                            <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                id={`btn-syllabus-${routine.id || rIdx}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSyllabusModalRoutine(routine);
+                                }}
+                                className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap"
+                              >
+                                <span className="truncate">Syllabus</span>
+                              </button>
 
-                                <button
-                                  type="button"
-                                  id={`btn-demo-exam-${routine.id || rIdx}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startDemoExam(routine);
-                                  }}
-                                  className={`bg-gradient-to-r ${isCardLocked ? 'from-purple-700/90 to-indigo-700/90' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
-                                >
-                                  {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
-                                  <span>Demo exam</span>
-                                </button>
+                              <button
+                                type="button"
+                                id={`btn-demo-exam-${routine.id || rIdx}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startDemoExam(routine);
+                                }}
+                                className={`flex-1 min-w-0 bg-gradient-to-r ${isCardLocked ? 'from-purple-700/90 to-indigo-700/90' : 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap`}
+                              >
+                                {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white/90 shrink-0" />}
+                                <span className="truncate">Demo exam</span>
+                              </button>
 
-                                {(() => {
-                                  const routineAttempt = findRoutineAttempt(routine);
-                                  if (routineAttempt) {
-                                    return (
-                                      <button
-                                        type="button"
-                                        id={`btn-routine-result-${routine.id || rIdx}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedAttemptForView(routineAttempt);
-                                          setActiveTab('results');
-                                        }}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1"
-                                        title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
-                                      >
-                                        <Award className="w-3 h-3 text-amber-300" />
-                                        <span>Result</span>
-                                      </button>
-                                    );
-                                  }
-
+                              {(() => {
+                                const routineAttempt = findRoutineAttempt(routine);
+                                if (routineAttempt) {
                                   return (
                                     <button
                                       type="button"
-                                      id={`btn-live-exam-${routine.id || rIdx}`}
+                                      id={`btn-routine-result-${routine.id || rIdx}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleStartLiveExamForRoutine(routine);
+                                        setSelectedAttemptForView(routineAttempt);
+                                        setActiveTab('results');
                                       }}
-                                      className={`${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-3 rounded-xl text-[11px] shadow-2xs transition cursor-pointer flex items-center gap-1`}
+                                      className="flex-1 min-w-0 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap"
+                                      title="ফলাফল ও বিস্তারিত সমাধান দেখুন"
                                     >
-                                      {isCardLocked && <Lock className="w-3 h-3 text-white/90" />}
-                                      <span>Live exam</span>
+                                      <Award className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-300 shrink-0" />
+                                      <span className="truncate">Result</span>
                                     </button>
                                   );
-                                })()}
-                              </div>
+                                }
+
+                                return (
+                                  <button
+                                    type="button"
+                                    id={`btn-live-exam-${routine.id || rIdx}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartLiveExamForRoutine(routine);
+                                    }}
+                                    className={`flex-1 min-w-0 ${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap`}
+                                  >
+                                    {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white/90 shrink-0" />}
+                                    <span className="truncate">Live exam</span>
+                                  </button>
+                                );
+                              })()}
 
                               <button
                                 type="button"
@@ -6643,11 +6642,10 @@ export default function UserPortal({
                                   e.stopPropagation();
                                   handleOpenRoutinePreparation(routine);
                                 }}
-                                className="flex items-center gap-1 text-indigo-600 font-extrabold text-[11px] group-hover:translate-x-0.5 transition-transform cursor-pointer bg-transparent border-none p-0"
+                                className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap"
                               >
-                                {isCardLocked && <Lock className="w-3 h-3 text-indigo-700" />}
-                                <span>পরিক্ষার  প্রস্তুতি</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
+                                {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
+                                <span className="truncate">পরিক্ষার প্রস্তুতি</span>
                               </button>
                             </div>
                           </div>
