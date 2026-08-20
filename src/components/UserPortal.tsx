@@ -5290,7 +5290,7 @@ export default function UserPortal({
               const attemptDateStr = formatBengaliDate(selectedAttemptForView.submittedAt) || new Date(selectedAttemptForView.submittedAt).toLocaleString('bn-BD');
 
               return (
-                <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4">
+                <div className="bg-white border border-gray-100 py-3 px-1.5 sm:px-5 sm:py-5 rounded-3xl shadow-sm flex flex-col gap-4 animate-fade-in">
                   {/* Top Bar with Title, PDF Export & Back */}
                   <div className="flex flex-wrap justify-between items-center border-b pb-3 gap-2">
                     <div>
@@ -5659,13 +5659,13 @@ export default function UserPortal({
               );
             } else {
               return (
-                <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm flex flex-col gap-4 text-xs">
-                  <div className="flex flex-col gap-4">
+                <div className="bg-white border border-gray-100 py-3 px-1 sm:px-4 sm:py-4 rounded-3xl shadow-sm flex flex-col gap-3 sm:gap-4 text-xs animate-fade-in">
+                  <div className="flex flex-col gap-3 sm:gap-4">
                     {/* Toggle Buttons */}
-                    <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1.5 border border-slate-200/40">
+                    <div className="flex bg-slate-100 p-1 sm:p-1.5 rounded-2xl gap-1 sm:gap-1.5 border border-slate-200/40">
                       <button
                         onClick={() => setResultFilterMode('user')}
-                        className={`flex-1 py-2.5 px-3 rounded-xl font-extrabold text-center transition flex items-center justify-center gap-2 text-[10px] sm:text-xs ${
+                        className={`flex-1 py-2 px-2 sm:py-2.5 sm:px-3 rounded-xl font-extrabold text-center transition flex items-center justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs ${
                           resultFilterMode === 'user'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-gray-500 hover:text-indigo-600 hover:bg-white/40'
@@ -5675,7 +5675,7 @@ export default function UserPortal({
                       </button>
                       <button
                         onClick={() => setResultFilterMode('admin')}
-                        className={`flex-1 py-2.5 px-3 rounded-xl font-extrabold text-center transition flex items-center justify-center gap-2 text-[10px] sm:text-xs ${
+                        className={`flex-1 py-2 px-2 sm:py-2.5 sm:px-3 rounded-xl font-extrabold text-center transition flex items-center justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs ${
                           resultFilterMode === 'admin'
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-gray-500 hover:text-indigo-600 hover:bg-white/40'
@@ -5692,7 +5692,7 @@ export default function UserPortal({
                           : 'বর্তমানে কোনো অফিশিয়াল লাইভ পরীক্ষার রেকর্ড পাওয়া যায়নি।'}
                       </p>
                     ) : (
-                      <div className="divide-y divide-gray-100">
+                      <div className="space-y-1.5 sm:space-y-2">
                         {activeFilteredAttempts.map((a, aIdx) => {
                           const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
                           let hoursLeft = 0;
@@ -5709,50 +5709,69 @@ export default function UserPortal({
                           const formattedDate = formatBengaliDate(a.submittedAt) || new Date(a.submittedAt).toLocaleDateString('bn-BD');
 
                           return (
-                            <div key={a.id ? `att-${a.id}-${aIdx}` : `att-${aIdx}`} className="py-3 flex justify-between items-center hover:bg-gray-50/50 px-2 transition rounded-xl">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className="font-bold text-indigo-950 text-xs sm:text-sm">{a.examTitle}</h4>
+                            <div
+                              key={a.id ? `att-${a.id}-${aIdx}` : `att-${aIdx}`}
+                              className="bg-white border border-slate-200/85 hover:border-indigo-300 py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-sm flex items-stretch justify-between gap-1.5 sm:gap-2 group"
+                            >
+                              {/* Left Content Area */}
+                              <div className="flex-1 min-w-0 flex flex-col justify-between gap-1 py-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-bold text-indigo-950 text-xs sm:text-sm leading-snug group-hover:text-indigo-600 transition truncate max-w-full">
+                                    {a.examTitle}
+                                  </h4>
                                   {courseName && (
-                                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1">
-                                      <GraduationCap className="w-3 h-3 text-indigo-500" />
-                                      <span>{courseName}</span>
+                                    <span className="text-[9.5px] sm:text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 sm:px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1 shrink-0">
+                                      <GraduationCap className="w-3 h-3 text-indigo-500 shrink-0" />
+                                      <span className="truncate max-w-[120px] sm:max-w-[180px]">{courseName}</span>
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-gray-500 font-medium">
+
+                                <p className="text-[10px] sm:text-[10.5px] text-gray-500 font-medium">
                                   মোট প্রশ্ন: {toBengaliDigits(a.totalQuestions)}টি | সঠিক: {toBengaliDigits(a.correctCount)}টি | ভুল: {toBengaliDigits(a.wrongCount)}টি 
                                 </p>
-                                <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                                  <span className="text-[9.5px] text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 border border-slate-200/60">
-                                    <Calendar className="w-3 h-3 text-slate-500" />
+
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  <span className="text-[9px] sm:text-[9.5px] text-slate-600 font-semibold bg-slate-100 px-1.5 sm:px-2 py-0.5 rounded-md flex items-center gap-1 border border-slate-200/60 shrink-0">
+                                    <Calendar className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-500 shrink-0" />
                                     <span>তারিখ: {formattedDate}</span>
                                   </span>
                                   {isUserCreated && (
-                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-100">
+                                    <span className="text-[8.5px] sm:text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-100 shrink-0">
                                       ⏱️ আর {Math.ceil(hoursLeft).toLocaleString('bn-BD')} ঘণ্টা সংরক্ষিত
                                     </span>
                                   )}
                                   {!isUserCreated && (
-                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/80">
+                                    <span className="text-[8.5px] sm:text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/80 shrink-0">
                                       🛡️ অফিশিয়াল লাইভ পরীক্ষা
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2.5 shrink-0">
-                                <span className="text-indigo-700 font-extrabold text-xs bg-indigo-50 px-2.5 py-1.5 rounded-xl border border-indigo-200/80">
-                                  {toBengaliDigits(typeof a.score === 'number' ? a.score.toFixed(2) : a.score)} মার্কস
-                                </span>
-                                
-                                <button 
-                                  onClick={() => setSelectedAttemptForView(a)}
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1"
-                                >
-                                  <span>বিশ্লেষণ</span>
-                                  <span>➔</span>
-                                </button>
+                              {/* Right Side: Mark in Middle, "বিশ্লেষণ" Button in Lower Right Corner */}
+                              <div className="flex flex-col items-end justify-between shrink-0 pl-1 py-0.5 self-stretch min-w-[75px] sm:min-w-[95px]">
+                                <div className="h-0" />
+
+                                {/* Middle Right: Mark */}
+                                <div className="my-auto py-0.5 flex items-center justify-end">
+                                  <span className="text-indigo-700 font-black text-[10.5px] sm:text-xs bg-indigo-50 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-xl border border-indigo-200/80 whitespace-nowrap shadow-2xs">
+                                    {toBengaliDigits(typeof a.score === 'number' ? a.score.toFixed(2) : a.score)} মার্কস
+                                  </span>
+                                </div>
+
+                                {/* Lower Right Corner: "বিশ্লেষণ" Button */}
+                                <div className="mt-auto flex justify-end">
+                                  <button 
+                                    type="button"
+                                    id={`btn-analyze-attempt-${a.id || aIdx}`}
+                                    onClick={() => setSelectedAttemptForView(a)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[10px] sm:text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl shadow-2xs transition cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                                  >
+                                    <span>বিশ্লেষণ</span>
+                                    <span>➔</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -5832,19 +5851,19 @@ export default function UserPortal({
                         </div>
 
                         {/* Dates & Metrics */}
-                        <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-gray-600 pt-1">
+                        <div className="flex flex-nowrap items-center gap-1 sm:gap-2.5 text-[9.5px] sm:text-xs font-semibold text-gray-600 pt-1">
                           {selectedCourse.startDate && (
-                            <span className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-slate-800 font-bold">
-                              শুরু: {selectedCourse.startDate}
+                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 text-slate-800 font-bold whitespace-nowrap text-[9.5px] sm:text-xs">
+                              <span className="truncate">শুরু: {selectedCourse.startDate}</span>
                             </span>
                           )}
                           {selectedCourse.endDate && (
-                            <span className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-slate-800 font-bold">
-                              শেষ: {selectedCourse.endDate}
+                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 text-slate-800 font-bold whitespace-nowrap text-[9.5px] sm:text-xs">
+                              <span className="truncate">শেষ: {selectedCourse.endDate}</span>
                             </span>
                           )}
-                          <span className="bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl text-indigo-800 font-bold flex items-center gap-1.5">
-                            মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)}টি
+                          <span className="flex-1 sm:flex-initial min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-indigo-800 font-bold flex items-center justify-center gap-1 whitespace-nowrap text-[9.5px] sm:text-xs">
+                            <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)}টি</span>
                           </span>
                         </div>
                       </div>
@@ -6173,19 +6192,19 @@ export default function UserPortal({
                                 </div>
 
                                 {/* Key Metadata */}
-                                <div className="flex flex-wrap gap-2 text-[10px] font-semibold text-gray-500 pt-1">
+                                <div className="flex flex-nowrap items-center gap-1 sm:gap-2 text-[9px] sm:text-[10px] font-semibold text-gray-500 pt-1">
                                   {course.startDate && (
-                                    <span className="bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-xl flex items-center gap-1 text-gray-700 font-bold">
-                                      📅 শুরু: {course.startDate}
+                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center gap-0.5 sm:gap-1 text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
+                                      <span className="shrink-0">📅</span> <span className="truncate">শুরু: {course.startDate}</span>
                                     </span>
                                   )}
                                   {course.endDate && (
-                                    <span className="bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-xl flex items-center gap-1 text-gray-700 font-bold">
-                                      🏁 শেষ: {course.endDate}
+                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center gap-0.5 sm:gap-1 text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
+                                      <span className="shrink-0">🏁</span> <span className="truncate">শেষ: {course.endDate}</span>
                                     </span>
                                   )}
-                                  <span className="bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center gap-1">
-                                    📋 মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)} টি
+                                  <span className="flex-1 min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap text-[9px] sm:text-[10px]">
+                                    <span className="shrink-0">📋</span> <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)} টি</span>
                                   </span>
                                 </div>
 
@@ -6248,12 +6267,12 @@ export default function UserPortal({
                 'গেস্ট (Guest) হিসেবে শুধুমাত্র "লাইভ পরীক্ষা" দেওয়া যায়। একাডেমিক পরীক্ষার সময়সূচী ও রুটিন দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন করুন।'
               )
             ) : (
-            <div className="bg-white border border-gray-100 p-3 sm:p-4 rounded-3xl shadow-sm flex flex-col gap-3 text-xs animate-fade-in">
+            <div className="bg-white border border-gray-100 py-3 px-1 sm:px-4 sm:py-4 rounded-3xl shadow-sm flex flex-col gap-3 text-xs animate-fade-in">
               {/* PAGE 1 (Level 1): COURSE MAIN CARDS LIST */}
               {!selectedRoutineCourseId && (
                 <div className="flex flex-col gap-3">
                   {/* Header & Filter Controls */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b pb-3 px-1 sm:px-0">
                     <div>
                       <h3 className="font-black text-sm sm:text-base text-indigo-950">
                         একাডেমিক ও কোর্স রুটিন সেন্টার
@@ -6390,7 +6409,7 @@ export default function UserPortal({
                                 setSelectedRoutineCourseId(group.courseId);
                                 setSelectedRoutineItem(null);
                               }}
-                              className="bg-white border border-slate-200/90 hover:border-indigo-400 p-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col justify-between gap-2.5 group"
+                              className="bg-white border border-slate-200/90 hover:border-indigo-400 py-2.5 px-2 sm:p-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col justify-between gap-2.5 group"
                             >
                               {/* Top Row: Course Name & Batch Badge */}
                               <div className="flex items-start justify-between gap-2">
@@ -6535,10 +6554,10 @@ export default function UserPortal({
                             key={routine.id || `course-rt-${rIdx}`}
                             id={`routine-card-${routine.id || rIdx}`}
                             onClick={() => handleOpenRoutinePreparation(routine)}
-                            className="bg-white border border-slate-200/90 hover:border-indigo-400 p-2.5 sm:p-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col gap-2 group"
+                            className="bg-white border border-slate-200/90 hover:border-indigo-400 py-2 px-1.5 sm:px-3 sm:py-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col gap-2 group"
                           >
                             {/* 2. Date Wise Routine Header (e.g. "বাংলা, ইংরেজি") */}
-                            <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start justify-between gap-1 sm:gap-2">
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center text-xs font-black shrink-0">
                                   {(rIdx + 1).toLocaleString('bn-BD')}
@@ -6556,17 +6575,17 @@ export default function UserPortal({
                             </div>
 
                             {/* Metadata Row: Exam Date, Total Mark, Pass Mark, Duration */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
-                              <div className="bg-indigo-50/80 border border-indigo-100/80 px-2 py-1 rounded-xl flex items-center justify-center text-indigo-950 font-bold">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px]">
+                              <div className="bg-indigo-50/80 border border-indigo-100/80 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-indigo-950 font-bold">
                                 <span className="truncate">{examDateStr}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
+                              <div className="bg-slate-50 border border-slate-200/80 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>পূর্ণমান: {totalMark.toLocaleString('bn-BD')}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
+                              <div className="bg-slate-50 border border-slate-200/80 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>পাস: {passMark.toLocaleString('bn-BD')}</span>
                               </div>
-                              <div className="bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
+                              <div className="bg-slate-50 border border-slate-200/80 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-slate-700 font-bold">
                                 <span>সময়: {timeLimit.toLocaleString('bn-BD')} মি.</span>
                               </div>
                             </div>
@@ -6747,7 +6766,7 @@ export default function UserPortal({
                     )}
 
                     {/* Routine Header Summary Card (Minimal padding) */}
-                    <div className="bg-slate-50 border border-slate-200/90 p-2.5 sm:p-3 rounded-2xl flex flex-col gap-2">
+                    <div className="bg-slate-50 border border-slate-200/90 py-2 px-1.5 sm:px-3 sm:py-3 rounded-2xl flex flex-col gap-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -6764,24 +6783,24 @@ export default function UserPortal({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] pt-1 border-t border-slate-200/70">
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-indigo-950 font-bold">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px] pt-1 border-t border-slate-200/70">
+                        <div className="bg-white px-1.5 sm:px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-indigo-950 font-bold">
                           <span className="truncate">{examDateStr}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+                        <div className="bg-white px-1.5 sm:px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
                           <span>পূর্ণমান: {totalMark.toLocaleString('bn-BD')}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+                        <div className="bg-white px-1.5 sm:px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
                           <span>পাস: {passMark.toLocaleString('bn-BD')}</span>
                         </div>
-                        <div className="bg-white px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+                        <div className="bg-white px-1.5 sm:px-2 py-1 rounded-xl border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
                           <span>সময়: {timeLimit.toLocaleString('bn-BD')} মি.</span>
                         </div>
                       </div>
                     </div>
 
                     {/* 3. Syllabus Section with "অধ্যায়ভিক্তিক MCQ পড়ুন" Button */}
-                    <div className="bg-white border border-indigo-100 p-3 sm:p-4 rounded-2xl shadow-2xs space-y-3">
+                    <div className="bg-white border border-indigo-100 py-2.5 px-1.5 sm:px-4 sm:py-4 rounded-2xl shadow-2xs space-y-2.5 sm:space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <span className="text-xs font-black text-indigo-950">
                           সিলেবাস ও অধ্যায়সমূহ (Syllabus Hierarchy):
