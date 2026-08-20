@@ -2523,29 +2523,75 @@ export default function UserPortal({
                     সিলেবাস ও বিষয়সমূহ (Syllabus):
                   </span>
 
-                  {syllabusPaths.length > 0 ? (
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                      {syllabusPaths.map((path, pIdx) => (
-                        <div
-                          key={pIdx}
-                          className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 flex-wrap"
-                        >
-                          {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                            <React.Fragment key={sIdx}>
-                              <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700 font-semibold"}>
-                                {seg}
-                              </span>
-                              {sIdx < arr.length - 1 && <span className="text-indigo-300 font-black">›</span>}
-                            </React.Fragment>
-                          ))}
+                  {(() => {
+                    if (syllabusPaths.length === 0) {
+                      return (
+                        <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 font-medium">
+                          {routine.title}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-slate-600 font-medium">
-                      {routine.title}
-                    </div>
-                  )}
+                      );
+                    }
+
+                    // Group paths by root category name (shown once as heading)
+                    const rootMap = new Map<string, string[]>();
+                    syllabusPaths.forEach(path => {
+                      const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
+                      if (parts.length === 0) return;
+                      const root = parts[0];
+                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
+                      if (!rootMap.has(root)) {
+                        rootMap.set(root, []);
+                      }
+                      if (subHierarchy && !rootMap.get(root)!.includes(subHierarchy)) {
+                        rootMap.get(root)!.push(subHierarchy);
+                      }
+                    });
+
+                    return (
+                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                        {Array.from(rootMap.entries()).map(([root, subList], rIdx) => (
+                          <div 
+                            key={`syllabus-modal-root-${rIdx}-${root}`}
+                            className="bg-indigo-50/80 border border-indigo-200/80 rounded-2xl p-3 space-y-2 text-xs"
+                          >
+                            {/* Root category name as heading */}
+                            <div className="font-extrabold text-indigo-950 text-xs sm:text-[13px] flex items-center gap-2 border-b border-indigo-200/60 pb-1.5">
+                              <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 inline-block" />
+                              <span>{root}</span>
+                            </div>
+
+                            {/* Hierarchy under respective root category starting on new lines */}
+                            {subList.length > 0 ? (
+                              <div className="space-y-1.5 pl-1.5">
+                                {subList.map((sub, sIdx) => {
+                                  const subParts = sub.split(/\s*›\s*/);
+                                  return (
+                                    <div 
+                                      key={`sub-${sIdx}`}
+                                      className="bg-white/95 border border-indigo-100/90 rounded-xl px-2.5 py-1.5 text-xs text-indigo-950 flex items-center gap-1.5 flex-wrap shadow-2xs"
+                                    >
+                                      {subParts.map((seg, segIdx, arr) => (
+                                        <React.Fragment key={segIdx}>
+                                          <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
+                                            {seg}
+                                          </span>
+                                          {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                        </React.Fragment>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-slate-500 text-[11px] font-medium pl-1.5">
+                                সম্পূর্ণ বিষয়
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Details / Instructions */}
@@ -6819,29 +6865,75 @@ export default function UserPortal({
                       </div>
 
                       {/* Syllabus Paths */}
-                      {syllabusPaths.length > 0 ? (
-                        <div className="flex flex-col gap-1.5">
-                          {syllabusPaths.map((path, pIdx) => (
-                            <div
-                              key={pIdx}
-                              className="bg-indigo-50/80 border border-indigo-200/80 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 flex-wrap"
-                            >
-                              {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                                <React.Fragment key={sIdx}>
-                                  <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>
-                                    {seg}
-                                  </span>
-                                  {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
-                                </React.Fragment>
-                              ))}
+                      {(() => {
+                        if (!syllabusPaths || syllabusPaths.length === 0) {
+                          return (
+                            <div className="p-3 bg-slate-50 rounded-xl text-slate-500 font-medium text-xs">
+                              এই রুটিনের জন্য নির্দিষ্ট কোনো ক্যাটাগরি নির্ধারিত নেই (সার্বিক সিলেবাস)।
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-3 bg-slate-50 rounded-xl text-slate-500 font-medium text-xs">
-                          এই রুটিনের জন্য নির্দিষ্ট কোনো ক্যাটাগরি নির্ধারিত নেই (সার্বিক সিলেবাস)।
-                        </div>
-                      )}
+                          );
+                        }
+
+                        // Group paths by root category name (shown once as heading)
+                        const rootMap = new Map<string, string[]>();
+                        syllabusPaths.forEach(path => {
+                          const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
+                          if (parts.length === 0) return;
+                          const root = parts[0];
+                          const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
+                          if (!rootMap.has(root)) {
+                            rootMap.set(root, []);
+                          }
+                          if (subHierarchy && !rootMap.get(root)!.includes(subHierarchy)) {
+                            rootMap.get(root)!.push(subHierarchy);
+                          }
+                        });
+
+                        return (
+                          <div className="space-y-2">
+                            {Array.from(rootMap.entries()).map(([root, subList], rIdx) => (
+                              <div
+                                key={`course-syllabus-root-${rIdx}-${root}`}
+                                className="bg-indigo-50/80 border border-indigo-200/80 rounded-2xl p-2.5 sm:p-3 space-y-1.5 text-xs"
+                              >
+                                {/* Root category name as heading */}
+                                <div className="font-extrabold text-indigo-950 text-xs sm:text-[13px] flex items-center gap-2 border-b border-indigo-200/60 pb-1">
+                                  <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 inline-block" />
+                                  <span>{root}</span>
+                                </div>
+
+                                {/* Hierarchy under respective root category starting on new lines */}
+                                {subList.length > 0 ? (
+                                  <div className="space-y-1 pl-1">
+                                    {subList.map((sub, sIdx) => {
+                                      const subParts = sub.split(/\s*›\s*/);
+                                      return (
+                                        <div
+                                          key={`sub-${sIdx}`}
+                                          className="bg-white/95 border border-indigo-100/90 rounded-xl px-2.5 py-1.5 text-xs text-indigo-950 flex items-center gap-1.5 flex-wrap shadow-2xs"
+                                        >
+                                          {subParts.map((seg, segIdx, arr) => (
+                                            <React.Fragment key={segIdx}>
+                                              <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
+                                                {seg}
+                                              </span>
+                                              {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">›</span>}
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-slate-500 text-[11px] font-medium pl-1">
+                                    সম্পূর্ণ বিষয়
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
 
                       {/* Routine Details Text Description */}
                       {item.details && (

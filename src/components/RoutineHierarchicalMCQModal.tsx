@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../types';
 import { 
-  FolderTree, ChevronDown, ChevronRight, Search, 
+  ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
-  Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight, Layers,
+  Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight,
   BookMarked
 } from 'lucide-react';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
@@ -50,6 +50,27 @@ const PAGE_SIZE = 20;
 const toBengaliDigits = (num: number | string): string => {
   const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
   return String(num).replace(/[0-9]/g, (d) => bengaliDigits[parseInt(d, 10)]);
+};
+
+const normalizeTopicName = (name: string): string => {
+  if (!name) return '';
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/^(পরিচ্ছেদ|অধ্যায়|টপিক|বিষয়|অধ্যায়|চ্যাপ্টার)\s*[:ঃ-]?\s*/iu, '')
+    .replace(/[\s\-_:]+/g, ' ')
+    .trim();
+};
+
+const isSameFolderAndSubfolder = (folderName: string, subfolderName: string): boolean => {
+  const normFolder = normalizeTopicName(folderName);
+  const normSub = normalizeTopicName(subfolderName);
+  
+  if (!normFolder || !normSub) return true;
+  if (normFolder === normSub) return true;
+  if (normSub === 'সকল mcq' || normSub === 'অন্যান্য প্রশ্নসমূহ' || normSub === 'mcq' || normSub === 'সকল প্রশ্ন') return true;
+  if (normFolder.includes(normSub) || normSub.includes(normFolder)) return true;
+  return false;
 };
 
 export default function RoutineHierarchicalMCQModal({
@@ -390,6 +411,17 @@ export default function RoutineHierarchicalMCQModal({
         };
       });
   }, [filteredQuestions, routine, subcategories, categories, questions]);
+
+  // Auto-expand root category if there's only 1 category in the tree
+  React.useEffect(() => {
+    if (hierarchicalTree.length === 1) {
+      const singleCatKey = `cat-${hierarchicalTree[0].name}`;
+      setExpandedNodes(prev => {
+        if (prev[singleCatKey]) return prev;
+        return { ...prev, [singleCatKey]: true };
+      });
+    }
+  }, [hierarchicalTree]);
 
   // Auto-collapse behavior: nodes start collapsed.
   // Expanding an element shows its content. When the user collapses/leaves that level, child expansions are cleaned up.
@@ -780,14 +812,22 @@ export default function RoutineHierarchicalMCQModal({
             <span className="text-white/80 font-bold">📁 {selectedLeafTopic.catName}</span>
             <span className="text-emerald-300">›</span>
             <span className="text-white/90 font-bold">📂 {selectedLeafTopic.subName}</span>
-            <span className="text-emerald-300">›</span>
-            <span className="text-amber-300 font-black">🌿 {selectedLeafTopic.leafName}</span>
+            {!isSameFolderAndSubfolder(selectedLeafTopic.subName, selectedLeafTopic.leafName) && (
+              <>
+                <span className="text-emerald-300">›</span>
+                <span className="text-amber-300 font-black">🌿 {selectedLeafTopic.leafName}</span>
+              </>
+            )}
           </div>
 
           {/* Title & Stats */}
           <div className="space-y-1.5">
             <h1 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2.5 flex-wrap">
-              <span>{selectedLeafTopic.leafName}</span>
+              <span>
+                {isSameFolderAndSubfolder(selectedLeafTopic.subName, selectedLeafTopic.leafName)
+                  ? selectedLeafTopic.subName
+                  : selectedLeafTopic.leafName}
+              </span>
               <span className="bg-white/20 text-white text-xs font-black px-3 py-1 rounded-full border border-white/25">
                 {toBengaliDigits(selectedLeafTopic.questions.length)} টি MCQ
               </span>
@@ -898,58 +938,20 @@ export default function RoutineHierarchicalMCQModal({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="bg-indigo-500/30 text-indigo-100 border border-indigo-400/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-              <FolderTree className="w-3.5 h-3.5 text-indigo-300" />
-              অধ্যায়ভিত্তিক MCQ পৃষ্ঠা
-            </span>
-            {routine.courseName && (
+          {routine.courseName && (
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="bg-purple-500/30 text-purple-100 border border-purple-400/30 text-[11px] font-bold px-3 py-1 rounded-full">
                 🎓 {routine.courseName}
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Title and Syllabus info */}
-        <div className="space-y-1.5">
+        {/* Title */}
+        <div className="space-y-1">
           <h1 className="text-base sm:text-xl font-black text-white leading-snug">
             {routine.title}
           </h1>
-
-          {/* Syllabus Badges & Hierarchical Paths */}
-          {(() => {
-            const paths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
-            if (paths.length > 0) {
-              return (
-                <div className="space-y-1.5 pt-1">
-                  <span className="text-[11px] text-indigo-200 font-bold">
-                    সিলেবাস শাখা (Syllabus Hierarchy):
-                  </span>
-                  <div className="flex flex-col gap-1.5">
-                    {paths.map((p, pIdx) => (
-                      <div key={pIdx} className="bg-white/15 backdrop-blur-xs border border-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
-                        {p.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                          <React.Fragment key={sIdx}>
-                            <span className={sIdx === arr.length - 1 ? "text-amber-200 font-black" : "text-white"}>{seg}</span>
-                            {sIdx < arr.length - 1 && <span className="text-indigo-300 font-bold">›</span>}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[11px] text-indigo-200 font-bold">সিলেবাস ফিল্টার:</span>
-                <span className="bg-white/10 text-indigo-100 text-[10.5px] font-medium px-2.5 py-0.5 rounded-lg">
-                  সম্পূর্ণ প্রশ্নব্যাংক (All Topics)
-                </span>
-              </div>
-            );
-          })()}
         </div>
       </div>
 
@@ -1072,44 +1074,83 @@ export default function RoutineHierarchicalMCQModal({
 
                 {/* Subcategories (Level 2) - Collapsed by default */}
                 {isCatExpanded && (
-                  <div className="p-3 sm:p-5 space-y-3.5 bg-slate-50/50">
+                  <div className="p-3 sm:p-5 space-y-3 bg-slate-50/50">
                     {catNode.subNodes.map((subNode, subIdx) => {
                       const subKey = `sub-${catNode.name}-${subNode.name}`;
                       const isSubExpanded = !!expandedNodes[subKey];
 
+                      // Check if this subfolder has a single leaf that is the same topic, or if folder and subfolder names match
+                      const hasSingleLeaf = subNode.leafNodes.length === 1;
+                      const singleLeaf = hasSingleLeaf ? subNode.leafNodes[0] : null;
+                      const isSameName = singleLeaf ? isSameFolderAndSubfolder(subNode.name, singleLeaf.name) : false;
+                      const canDirectOpen = (hasSingleLeaf && isSameName) || subNode.leafNodes.length === 0;
+
+                      // The target questions and leaf topic name to open directly
+                      const directTargetLeafName = singleLeaf?.name || subNode.name;
+                      const directTargetQuestions = singleLeaf?.questions && singleLeaf.questions.length > 0 
+                        ? singleLeaf.questions 
+                        : (subNode.directQuestions && subNode.directQuestions.length > 0 ? subNode.directQuestions : []);
+
                       return (
                         <div 
                           key={`sub-${subIdx}-${subNode.name}`}
-                          className="bg-white rounded-xl border border-purple-100 shadow-2xs overflow-hidden"
+                          className="bg-white rounded-xl border border-purple-100 shadow-2xs overflow-hidden transition"
                         >
                           {/* 2. Subcategory Header (Level 2) */}
                           <div 
-                            onClick={() => toggleSubcategoryNode(subKey, catNode.name, subNode.name)}
-                            className="p-3.5 bg-purple-50/60 hover:bg-purple-100/60 flex items-center justify-between gap-3 cursor-pointer border-b border-purple-100 select-none transition"
+                            onClick={() => {
+                              if (canDirectOpen) {
+                                openLeafTopic(catNode.name, subNode.name, directTargetLeafName, directTargetQuestions);
+                              } else {
+                                toggleSubcategoryNode(subKey, catNode.name, subNode.name);
+                              }
+                            }}
+                            className="p-3.5 bg-purple-50/60 hover:bg-purple-100/70 active:scale-[0.99] flex items-center justify-between gap-3 cursor-pointer border-b border-purple-100 select-none transition group"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="w-5.5 h-5.5 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-[10.5px] shrink-0 shadow-2xs">
+                              <span className="w-5.5 h-5.5 rounded-lg bg-purple-600 group-hover:bg-purple-700 text-white flex items-center justify-center font-bold text-[10.5px] shrink-0 shadow-2xs transition">
                                 {toBengaliDigits(subIdx + 1)}
                               </span>
-                              <h4 className="text-xs sm:text-[13px] font-extrabold text-purple-950 flex items-center gap-2 flex-wrap">
-                                <span>{subNode.name}</span>
-                                <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200">
-                                  {toBengaliDigits(subNode.totalCount)} টি প্রশ্ন
-                                </span>
-                              </h4>
+                              <div>
+                                <h4 className="text-xs sm:text-[13px] font-extrabold text-purple-950 flex items-center gap-2 flex-wrap">
+                                  <span>{subNode.name}</span>
+                                  <span className="bg-purple-100 group-hover:bg-purple-200 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200 transition">
+                                    {toBengaliDigits(subNode.totalCount)} টি প্রশ্ন
+                                  </span>
+                                </h4>
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <div className={`w-6 h-6 rounded-md flex items-center justify-center transition ${
-                                isSubExpanded ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
-                              }`}>
-                                {isSubExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                              </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {canDirectOpen ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openLeafTopic(catNode.name, subNode.name, directTargetLeafName, directTargetQuestions);
+                                  }}
+                                  className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                                >
+                                  <span>MCQ পড়ুন</span>
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-purple-700 font-bold hidden sm:inline">
+                                    {isSubExpanded ? 'সংকুচিত করুন' : 'উপ-অধ্যায় দেখুন'}
+                                  </span>
+                                  <div className={`w-6 h-6 rounded-md flex items-center justify-center transition ${
+                                    isSubExpanded ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
+                                  }`}>
+                                    {isSubExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* Leaf Topics (Level 3) - Click directly opens clean page */}
-                          {isSubExpanded && (
+                          {/* Leaf Topics (Level 3) - Only shown if multiple distinct subfolders exist */}
+                          {!canDirectOpen && isSubExpanded && (
                             <div className="p-3 sm:p-4 space-y-2.5 bg-slate-50/30">
                               {subNode.leafNodes.map((leafNode, leafIdx) => {
                                 return (
@@ -1129,9 +1170,6 @@ export default function RoutineHierarchicalMCQModal({
                                             {toBengaliDigits(leafNode.questions.length)} টি MCQ
                                           </span>
                                         </h5>
-                                        <span className="text-[10px] text-slate-400 group-hover:text-emerald-700 font-medium transition">
-                                          ক্লিক করে নতুন পরিচ্ছন্ন পাতায় MCQ পড়ুন
-                                        </span>
                                       </div>
                                     </div>
 
@@ -1164,23 +1202,6 @@ export default function RoutineHierarchicalMCQModal({
         </div>
       )}
 
-      {/* 4. Page Footer Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 mt-4">
-        <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
-          <Layers className="w-4 h-4 text-indigo-600" />
-          <span>যেকোনো পরিচ্ছেদ (Leaf Category)-এ ক্লিক করে সরাসরি সম্পূর্ণ MCQ পড়া যাবে।</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer"
-          >
-            ← রুটিন তালিকায় ফিরুন
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
