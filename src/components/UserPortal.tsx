@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, formatBengaliDate } from '../types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, formatBengaliDate } from '../types';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -10,13 +10,14 @@ import {
   Landmark, Flag, Globe2, BrainCircuit, Scale, ShieldCheck, Lightbulb, GraduationCap,
   Building2, Coins, School, Globe, History, BookMarked,
   Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree,
-  ChevronDown, ChevronLeft, Lock, Unlock, Search
+  ChevronDown, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
 import CircularProgressBar from './CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
+import CourseEnrollmentModal from './CourseEnrollmentModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
 import { calculateRoutineReadingProgress } from '../lib/readingProgress';
 
@@ -234,6 +235,9 @@ interface UserPortalProps {
   notices: Notice[];
   routines: Routine[];
   courses?: Course[];
+  coupons?: Coupon[];
+  courseEnrollments?: CourseEnrollment[];
+  onEnrollCourse?: (enrollment: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => void;
   attempts: Attempt[];
   allAttempts?: Attempt[];
   bookmarks: Bookmark[];
@@ -397,6 +401,9 @@ export default function UserPortal({
   notices = [],
   routines = [],
   courses = [],
+  coupons = [],
+  courseEnrollments = [],
+  onEnrollCourse,
   attempts = [],
   allAttempts = [],
   bookmarks = [],
@@ -484,7 +491,8 @@ export default function UserPortal({
     setCustomConfirm({ open: true, title, message, onConfirm, onCancel });
   };
 
-  // Course States
+  // Course & Enrollment States
+  const [selectedCourseForEnrollment, setSelectedCourseForEnrollment] = useState<Course | null>(null);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
     const userKey = user?.userId || user?.phone || 'guest';
     const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
@@ -501,15 +509,48 @@ export default function UserPortal({
     const userKey = user?.userId || user?.phone || 'guest';
     let updated: string[];
     if (enrolledCourseIds.includes(courseId)) {
-      updated = enrolledCourseIds.filter(id => id !== courseId);
-      showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
+      showCustomConfirm(
+        `"${courseTitle}" কোর্সটি থেকে কি আন-এনরোল করতে চান?`,
+        () => {
+          updated = enrolledCourseIds.filter(id => id !== courseId);
+          setEnrolledCourseIds(updated);
+          localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+          showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
+        },
+        undefined,
+        'আন-এনরোল নিশ্চিতকরণ'
+      );
     } else {
-      updated = [...enrolledCourseIds, courseId];
-      showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
-      setSelectedCourseFilter('enrolled');
+      const courseObj = (courses || []).find(c => c.id === courseId);
+      if (courseObj) {
+        setSelectedCourseForEnrollment(courseObj);
+      } else {
+        updated = [...enrolledCourseIds, courseId];
+        setEnrolledCourseIds(updated);
+        localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+        showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
+        setSelectedCourseFilter('enrolled');
+      }
     }
+  };
+
+  const handleEnrollSuccess = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
+    const userKey = user?.userId || user?.phone || 'guest';
+    const courseId = enrollmentData.courseId;
+    const updated = enrolledCourseIds.includes(courseId) ? enrolledCourseIds : [...enrolledCourseIds, courseId];
+    
     setEnrolledCourseIds(updated);
     localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+    
+    if (onEnrollCourse) {
+      onEnrollCourse(enrollmentData);
+    }
+
+    const discountNotice = enrollmentData.discountAmount > 0 
+      ? ` (${enrollmentData.discountPercent}% কুপন ছাড় সহ ৳${enrollmentData.finalPrice} পরিশোধিত)` 
+      : '';
+    showCustomAlert('অভিনন্দন! 🎉', `"${enrollmentData.courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন!${discountNotice} এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
+    setSelectedCourseFilter('enrolled');
   };
 
   // Helper to determine routine batch status: open, enrolled, or unrolled
@@ -1554,16 +1595,16 @@ export default function UserPortal({
 
         ${includeMarkCalcTable ? `
           <div class="mark-calc-box">
-            <div class="mark-calc-title">📚 বিষয়ভিত্তিক নম্বর ও সঠিক-ভুল বিবরণী (Subject-wise Marking & Result Breakdown)</div>
+            <div class="mark-calc-title">📚 বিষয়ভিত্তিক নম্বর ও সঠিক-ভুল বিবরণী</div>
             <table class="mark-calc-table">
               <thead>
                 <tr>
-                  <th style="text-align: left;">বিষয় (Subject)</th>
-                  <th>মোট প্রশ্ন (Total)</th>
-                  <th style="color: #166534;">সঠিক (Right)</th>
-                  <th style="color: #9f1239;">ভুল (Wrong)</th>
-                  <th style="color: #92400e;">স্কিপড (Skipped)</th>
-                  <th style="text-align: right;">মোট নম্বর (Total Marks)</th>
+                  <th style="text-align: left;">বিষয়</th>
+                  <th>মোট প্রশ্ন</th>
+                  <th style="color: #166534;">সঠিক</th>
+                  <th style="color: #9f1239;">ভুল</th>
+                  <th style="color: #92400e;">স্কিপড</th>
+                  <th style="text-align: right;">মোট নম্বর</th>
                 </tr>
               </thead>
               <tbody>
@@ -1580,7 +1621,7 @@ export default function UserPortal({
                   </tr>
                 `).join('')}
                 <tr class="total-row">
-                  <td style="text-align: left; font-weight: 800; color: #1e1b4b;">🏆 সর্বমোট (Total)</td>
+                  <td style="text-align: left; font-weight: 800; color: #1e1b4b;">🏆 সর্বমোট</td>
                   <td style="font-weight: 800; color: #1e1b4b;">${totalQ}টি</td>
                   <td style="color: #16a34a; font-weight: 800;">${correctC}টি</td>
                   <td style="color: #dc2626; font-weight: 800;">${wrongC}টি</td>
@@ -3137,6 +3178,18 @@ export default function UserPortal({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Course Enrollment & Discount Coupon Modal */}
+        {selectedCourseForEnrollment && (
+          <CourseEnrollmentModal
+            isOpen={!!selectedCourseForEnrollment}
+            onClose={() => setSelectedCourseForEnrollment(null)}
+            course={selectedCourseForEnrollment}
+            user={user}
+            coupons={coupons}
+            onEnrollSuccess={handleEnrollSuccess}
+          />
         )}
       </>
     );
@@ -5707,7 +5760,7 @@ export default function UserPortal({
                       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
                           <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
-                            <span>📚 বিষয়ভিত্তিক সঠিক-ভুল ও নম্বর বিবরণী (Subject-wise Marking System)</span>
+                            <span>📚 বিষয়ভিত্তিক নম্বর ও সঠিক-ভুল বিবরণী</span>
                           </h4>
                           <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2.5 py-0.5 rounded-full font-bold">
                             মোট বিষয়: {toBengaliDigits(subjectBreakdown.length)}টি
@@ -5717,12 +5770,12 @@ export default function UserPortal({
                           <table className="w-full text-left text-xs border-collapse">
                             <thead>
                               <tr className="bg-slate-50 text-slate-700 border-b border-slate-200 font-bold">
-                                <th className="p-2.5 rounded-l-xl">বিষয় (Subject)</th>
-                                <th className="p-2.5 text-center">মোট প্রশ্ন (Total Questions)</th>
-                                <th className="p-2.5 text-center text-emerald-700">সঠিক (Right)</th>
-                                <th className="p-2.5 text-center text-rose-700">ভুল (Wrong)</th>
-                                <th className="p-2.5 text-center text-amber-700">স্কিপড (Skipped)</th>
-                                <th className="p-2.5 text-right rounded-r-xl">মোট নম্বর (Total Marks)</th>
+                                <th className="p-2.5 rounded-l-xl">বিষয়</th>
+                                <th className="p-2.5 text-center">মোট প্রশ্ন</th>
+                                <th className="p-2.5 text-center text-emerald-700">সঠিক</th>
+                                <th className="p-2.5 text-center text-rose-700">ভুল</th>
+                                <th className="p-2.5 text-center text-amber-700">স্কিপড</th>
+                                <th className="p-2.5 text-right rounded-r-xl">মোট নম্বর</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
@@ -5762,7 +5815,7 @@ export default function UserPortal({
                               ))}
                               <tr className="bg-indigo-50/80 font-bold text-indigo-950 border-t-2 border-indigo-200">
                                 <td className="p-2.5 font-extrabold text-indigo-900 rounded-l-xl">
-                                  🏆 সর্বমোট (Total)
+                                  🏆 সর্বমোট
                                 </td>
                                 <td className="p-2.5 text-center font-black text-indigo-950">
                                   {toBengaliDigits(totalQ)}টি
@@ -6062,32 +6115,27 @@ export default function UserPortal({
                       </div>
 
                       {/* Main Course Info Card */}
-                      <div className={`bg-white border ${isEnrolled ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100/90'} p-6 rounded-3xl shadow-sm space-y-4 relative overflow-hidden`}>
+                      <div className={`bg-white border ${isEnrolled ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100/90'} p-3.5 sm:p-5 rounded-2xl shadow-sm space-y-3.5 relative overflow-hidden`}>
                         {isEnrolled && (
-                          <div className="absolute -right-12 top-5 bg-emerald-600 text-white font-extrabold text-[9px] uppercase px-10 py-1 rotate-45 shadow-xs pointer-events-none">
-                            ENROLLED
+                          <div className="absolute top-3 right-3 z-10 bg-emerald-600 text-white font-black text-[10px] sm:text-[11px] uppercase tracking-wider px-2.5 py-0.5 rounded-lg shadow-xs flex items-center gap-1 border border-emerald-500/90 pointer-events-none">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                            <span>Enrolled</span>
                           </div>
                         )}
 
                         {/* Status Badges */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 pr-6">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                        <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5 ${isEnrolled ? 'pr-24' : ''}`}>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
                               selectedCourse.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                               selectedCourse.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
                             }`}>
                               {selectedCourse.status === 'active' ? 'চলমান কোর্স' : selectedCourse.status === 'upcoming' ? 'আসন্ন কোর্স' : 'সম্পন্ন কোর্স'}
                             </span>
-
-                            {isEnrolled && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-[10px] font-extrabold bg-emerald-600 text-white shadow-xs">
-                                এনরোলড
-                              </span>
-                            )}
                           </div>
 
                           {selectedCourse.category && (
-                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1 rounded-xl text-[10px] font-bold">
+                            <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
                               {selectedCourse.category}
                             </span>
                           )}
@@ -6095,34 +6143,80 @@ export default function UserPortal({
 
                         {/* Title & Description */}
                         <div>
-                          <h2 className="font-extrabold text-indigo-950 text-lg sm:text-xl leading-snug">
+                          <h2 className="font-extrabold text-indigo-950 text-base sm:text-lg leading-snug">
                             {selectedCourse.title}
                           </h2>
-                          <p className="text-gray-600 font-medium text-xs sm:text-sm mt-2 leading-relaxed whitespace-pre-line">
+                          <p className="text-gray-600 font-medium text-xs mt-1.5 leading-relaxed whitespace-pre-line">
                             {selectedCourse.description}
                           </p>
                         </div>
 
-                        {/* Dates & Metrics */}
-                        <div className="flex flex-nowrap items-center gap-1 sm:gap-2.5 text-[9.5px] sm:text-xs font-semibold text-gray-600 pt-1">
+                        {/* Dates, Price & Metrics */}
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10.5px] font-semibold text-gray-600 pt-0.5">
+                          {/* Price Tag (hidden after enrolling) */}
+                          {!isEnrolled && (
+                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                              <span className="text-amber-800 font-extrabold">ফি:</span>
+                              {selectedCourse.price && selectedCourse.price > 0 ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="font-black text-amber-900 text-xs">৳{selectedCourse.price}</span>
+                                  {selectedCourse.originalPrice && selectedCourse.originalPrice > selectedCourse.price && (
+                                    <span className="line-through text-slate-400 text-[10px]">৳{selectedCourse.originalPrice}</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="font-black text-emerald-700">বিনামূল্যে (Free)</span>
+                              )}
+                            </div>
+                          )}
+
                           {selectedCourse.startDate && (
-                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 text-slate-800 font-bold whitespace-nowrap text-[9.5px] sm:text-xs">
+                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center text-slate-800 font-bold whitespace-nowrap text-[9px] sm:text-[10.5px]">
                               <span className="truncate">শুরু: {selectedCourse.startDate}</span>
                             </span>
                           )}
                           {selectedCourse.endDate && (
-                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 text-slate-800 font-bold whitespace-nowrap text-[9.5px] sm:text-xs">
+                            <span className="flex-1 sm:flex-initial min-w-0 bg-slate-50 border border-slate-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center text-slate-800 font-bold whitespace-nowrap text-[9px] sm:text-[10.5px]">
                               <span className="truncate">শেষ: {selectedCourse.endDate}</span>
                             </span>
                           )}
-                          <span className="flex-1 sm:flex-initial min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-indigo-800 font-bold flex items-center justify-center gap-1 whitespace-nowrap text-[9.5px] sm:text-xs">
+                          <span className="flex-1 sm:flex-initial min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center whitespace-nowrap text-[9px] sm:text-[10.5px]">
                             <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)}টি</span>
                           </span>
+                        </div>
+
+                        {/* Enrollment CTA inside Single Course View */}
+                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {coupons && coupons.some(c => c.isActive) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl">
+                                <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                                ডিসকাউন্ট কুপন কোড ব্যবহার করে ছাড় পান!
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isEnrolled ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                আপনি এই কোর্সে এনরোলড
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedCourseForEnrollment(selectedCourse)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl transition shadow flex items-center gap-2 text-xs"
+                              >
+                                <GraduationCap className="w-4 h-4 text-indigo-200" />
+                                কোর্সে এনরোল করুন {selectedCourse.price ? `(৳${selectedCourse.price})` : '(ফ্রি)'}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       {/* Course Routines List */}
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                           <h3 className="font-extrabold text-sm text-indigo-950">
                             কোর্স রুটিন ও স্টাডি প্ল্যান ({courseRoutines.length})
@@ -6138,11 +6232,11 @@ export default function UserPortal({
                         </div>
 
                         {courseRoutines.length === 0 ? (
-                          <div className="p-8 bg-white rounded-2xl border border-gray-100 text-center space-y-2">
+                          <div className="p-6 bg-white rounded-2xl border border-gray-100 text-center space-y-2">
                             <p className="text-gray-400 text-xs font-medium">এই কোর্সের জন্য এখনও কোনো রুটিন পোস্ট করা হয়নি।</p>
                           </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-2.5">
                             {courseRoutines.map((r, rIdx) => {
                               const hasExam = r.examConfig && r.examConfig.enabled;
                               const isExamLive = hasExam && r.examConfig?.startTime && new Date() >= new Date(r.examConfig.startTime);
@@ -6155,7 +6249,7 @@ export default function UserPortal({
                               );
 
                               return (
-                                <div key={r.id || rIdx} className="p-4 bg-white border border-gray-200/80 rounded-2xl text-xs space-y-3 shadow-2xs">
+                                <div key={r.id || rIdx} className="p-3 sm:p-3.5 bg-white border border-gray-200/80 rounded-xl text-xs space-y-2.5 shadow-2xs">
                                   <div className="flex justify-between items-center gap-3 font-bold text-indigo-950">
                                     <div className="flex-1 min-w-0">
                                       <span className="font-extrabold text-sm block">{r.title}</span>
@@ -6349,22 +6443,22 @@ export default function UserPortal({
                 return (
                   <div className="space-y-5">
                     {/* Header Banner */}
-                    <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-900 text-white p-5 rounded-3xl shadow-md border border-indigo-700/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-900 text-white px-3.5 sm:px-4.5 py-3.5 rounded-2xl shadow-md border border-indigo-700/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5">
                       <div>
-                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 mb-1.5">
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 mb-1">
                           🎓 একাডেমি ও জব সলিউশন
                         </span>
                         <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
                           <GraduationCap className="w-5 h-5 text-indigo-300" />
                           আমার কোর্স ও স্টাডি প্রোগ্রাম
                         </h2>
-                        <p className="text-xs text-indigo-100/80 font-medium mt-1">
+                        <p className="text-xs text-indigo-100/80 font-medium mt-0.5">
                           আপনার পছন্দের কোর্সে এনরোল করুন, রুটিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
                         </p>
                       </div>
 
                       {/* Filter Controls */}
-                      <div className="flex flex-wrap gap-1.5 bg-white/10 p-1.5 rounded-2xl border border-white/15 backdrop-blur-sm self-stretch sm:self-auto">
+                      <div className="flex flex-wrap gap-1 bg-white/10 p-1 rounded-xl border border-white/15 backdrop-blur-sm self-stretch sm:self-auto">
                         {(['enrolled', 'all', 'active', 'upcoming', 'completed'] as const).map(statusKey => {
                           const count = statusKey === 'enrolled' 
                             ? enrolledCourseIds.length 
@@ -6384,7 +6478,7 @@ export default function UserPortal({
                             <button
                               key={statusKey}
                               onClick={() => setSelectedCourseFilter(statusKey)}
-                              className={`px-3 py-1.5 rounded-xl font-bold transition text-[11px] ${
+                              className={`px-2.5 py-1 rounded-lg font-bold transition text-[11px] ${
                                 isActive 
                                   ? 'bg-white text-indigo-950 shadow-sm' 
                                   : 'text-indigo-100 hover:bg-white/10 hover:text-white'
@@ -6398,11 +6492,11 @@ export default function UserPortal({
                     </div>
 
                     {filteredCourses.length === 0 ? (
-                      <div className="bg-white border border-gray-100 p-8 sm:p-12 rounded-3xl text-center space-y-3.5 shadow-sm">
-                        <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center text-3xl mx-auto font-bold shadow-inner">
+                      <div className="bg-white border border-gray-100 px-4 py-8 sm:py-10 rounded-2xl text-center space-y-3 shadow-sm">
+                        <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mx-auto font-bold shadow-inner">
                           🎓
                         </div>
-                        <h4 className="font-black text-indigo-950 text-base">
+                        <h4 className="font-black text-indigo-950 text-sm sm:text-base">
                           {selectedCourseFilter === 'enrolled' ? 'আপনি এখনও কোনো কোর্সে এনরোল করেননি' : 'কোনো কোর্স পাওয়া যায়নি'}
                         </h4>
                         <p className="text-gray-500 max-w-md mx-auto text-xs leading-relaxed font-medium">
@@ -6413,14 +6507,14 @@ export default function UserPortal({
                         {selectedCourseFilter === 'enrolled' && (
                           <button
                             onClick={() => setSelectedCourseFilter('all')}
-                            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-5 py-2.5 rounded-xl transition shadow text-xs inline-flex items-center gap-2"
+                            className="mt-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl transition shadow text-xs inline-flex items-center gap-2"
                           >
                             🌐 উপলব্ধ সকল কোর্স দেখুন ➔
                           </button>
                         )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-3.5">
                         {filteredCourses.map((course, idx) => {
                           const courseRoutines = routines.filter(r => r.courseId === course.id || r.courseName === course.title);
                           const isEnrolled = enrolledCourseIds.includes(course.id);
@@ -6429,37 +6523,34 @@ export default function UserPortal({
                             <div 
                               key={course.id || idx} 
                               onClick={() => setExpandedCourseId(course.id)}
-                              className={`bg-white border ${isEnrolled ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100/90 hover:border-indigo-300'} p-5 rounded-3xl shadow-sm hover:shadow-md transition flex flex-col justify-between gap-4 relative overflow-hidden cursor-pointer group`}
+                              className={`bg-white border ${isEnrolled ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-gray-100/90 hover:border-indigo-300'} p-3.5 sm:p-4 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col justify-between gap-3.5 relative overflow-hidden cursor-pointer group`}
                             >
                               {isEnrolled && (
-                                <div className="absolute -right-12 top-5 bg-emerald-600 text-white font-extrabold text-[9px] uppercase px-10 py-1 rotate-45 shadow-xs pointer-events-none">
-                                  ENROLLED
+                                <div className="absolute top-2.5 right-2.5 z-10 bg-emerald-600 text-white font-black text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-lg shadow-xs flex items-center gap-1 border border-emerald-500/90 pointer-events-none">
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                  <span>Enrolled</span>
                                 </div>
                               )}
 
-                              <div className="space-y-3">
+                              <div className="space-y-2.5">
                                 {/* Course Badges */}
-                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5 pr-6">
+                                <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2 ${isEnrolled ? 'pr-24' : ''}`}>
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider ${
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${
                                       course.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                                       course.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
                                     }`}>
                                       {course.status === 'active' ? '● চলমান কোর্স' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স' : '✓ সম্পন্ন কোর্স'}
                                     </span>
+                                  </div>
 
-                                    {isEnrolled && (
-                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-emerald-600 text-white shadow-xs">
-                                        ✓ এনরোলড
+                                  <div className="flex items-center gap-1.5">
+                                    {course.category && (
+                                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                                        {course.category}
                                       </span>
                                     )}
                                   </div>
-
-                                  {course.category && (
-                                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-0.5 rounded-lg text-[10px] font-bold">
-                                      🏷️ {course.category}
-                                    </span>
-                                  )}
                                 </div>
 
                                 {/* Course Title & Description */}
@@ -6467,30 +6558,61 @@ export default function UserPortal({
                                   <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base leading-snug group-hover:text-indigo-600 transition">
                                     {course.title}
                                   </h3>
-                                  <p className="text-gray-600 font-medium text-xs mt-1.5 leading-relaxed line-clamp-2">
+                                  <p className="text-gray-600 font-medium text-xs mt-1 leading-relaxed line-clamp-2">
                                     {course.description}
                                   </p>
                                 </div>
 
-                                {/* Key Metadata */}
-                                <div className="flex flex-nowrap items-center gap-1 sm:gap-2 text-[9px] sm:text-[10px] font-semibold text-gray-500 pt-1">
+                                {/* Price & Coupon Badge (hidden after enrolling) */}
+                                {!isEnrolled && (
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5 bg-slate-50 border border-slate-200/70 p-2 rounded-xl text-xs">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-slate-500 font-bold text-[11px]">ফি:</span>
+                                      {course.price && course.price > 0 ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-black text-indigo-950 text-xs sm:text-sm">৳{course.price}</span>
+                                          {course.originalPrice && course.originalPrice > course.price && (
+                                            <>
+                                              <span className="line-through text-slate-400 text-[10.5px]">৳{course.originalPrice}</span>
+                                              <span className="text-[9.5px] bg-rose-100 text-rose-800 font-black px-1.5 py-0.2 rounded border border-rose-200">
+                                                {Math.round(((course.originalPrice - course.price) / course.originalPrice) * 100)}% ছাড়
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="font-black text-emerald-700 text-xs">বিনামূল্যে (Free)</span>
+                                      )}
+                                    </div>
+
+                                    {coupons && coupons.some(c => c.isActive) && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-lg border border-emerald-200/80">
+                                        <Tag className="w-3 h-3 text-emerald-600" />
+                                        কুপন ছাড়
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Key Metadata without icons */}
+                                <div className="flex flex-nowrap items-center gap-1 sm:gap-1.5 text-[9px] sm:text-[10px] font-semibold text-gray-500 pt-0.5">
                                   {course.startDate && (
-                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center gap-0.5 sm:gap-1 text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
-                                      <span className="shrink-0">📅</span> <span className="truncate">শুরু: {course.startDate}</span>
+                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
+                                      <span className="truncate">শুরু: {course.startDate}</span>
                                     </span>
                                   )}
                                   {course.endDate && (
-                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1.5 sm:px-2.5 py-1 rounded-xl flex items-center justify-center gap-0.5 sm:gap-1 text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
-                                      <span className="shrink-0">🏁</span> <span className="truncate">শেষ: {course.endDate}</span>
+                                    <span className="flex-1 min-w-0 bg-gray-50 border border-gray-100 px-1 sm:px-2 py-1 rounded-xl flex items-center justify-center text-gray-700 font-bold whitespace-nowrap text-[9px] sm:text-[10px]">
+                                      <span className="truncate">শেষ: {course.endDate}</span>
                                     </span>
                                   )}
-                                  <span className="flex-1 min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap text-[9px] sm:text-[10px]">
-                                    <span className="shrink-0">📋</span> <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)} টি</span>
+                                  <span className="flex-1 min-w-0 bg-indigo-50 border border-indigo-100 px-1 sm:px-2 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center whitespace-nowrap text-[9px] sm:text-[10px]">
+                                    <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)} টি</span>
                                   </span>
                                 </div>
 
                                 {/* Click Prompt Bar */}
-                                <div className="bg-slate-50 group-hover:bg-indigo-50/80 border border-slate-200/80 p-2.5 rounded-2xl flex justify-between items-center transition">
+                                <div className="bg-slate-50 group-hover:bg-indigo-50/80 border border-slate-200/80 px-2.5 py-2 rounded-xl flex justify-between items-center transition">
                                   <span className="text-[11px] font-bold text-slate-700 group-hover:text-indigo-900 flex items-center gap-1.5">
                                     <Calendar className="w-3.5 h-3.5 text-indigo-600" />
                                     কোর্স রুটিন ও বিস্তারিত দেখুন
@@ -6502,30 +6624,30 @@ export default function UserPortal({
                               </div>
 
                               {/* Action Buttons */}
-                              <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   onClick={() => downloadCourseRoutinePDF(course.title, course.category, courseRoutines, subcategories, categories, questions)}
-                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2.5 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 border border-indigo-200/80 shadow-2xs"
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 border border-indigo-200/80 shadow-2xs"
                                   title="কোর্সের সম্পূর্ণ রুটিন PDF হিসেবে ডাউনলোড করুন"
                                 >
-                                  <Download className="w-4 h-4 text-indigo-600" />
+                                  <Download className="w-3.5 h-3.5 text-indigo-600" />
                                   Routine (PDF)
                                 </button>
 
                                 {isEnrolled ? (
                                   <div className="flex items-center gap-2 flex-1 justify-end">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                      ✓ এনরোলড
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      এনরোলড
                                     </span>
                                   </div>
                                 ) : (
                                   <button
                                     onClick={() => handleToggleEnrollCourse(course.id, course.title)}
-                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2.5 px-4 rounded-xl transition text-center shadow flex items-center justify-center gap-2 text-xs"
+                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-3.5 rounded-xl transition text-center shadow flex items-center justify-center gap-1.5 text-xs"
                                   >
-                                    <GraduationCap className="w-4 h-4 text-indigo-200" />
-                                    Enroll Now
+                                    <GraduationCap className="w-3.5 h-3.5 text-indigo-200" />
+                                    <span>এনরোল করুন {course.price ? `(৳${course.price})` : '(ফ্রি)'}</span>
                                   </button>
                                 )}
                               </div>

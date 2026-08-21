@@ -88,6 +88,38 @@ export interface Notice {
   createdAt: string;
 }
 
+export interface Coupon {
+  id: string;
+  code: string;           // e.g. "WELCOME50", "ORJON100" (uppercased)
+  discountPercent: number; // 1 to 100
+  courseId?: string;       // Specific course ID or empty for all courses
+  courseTitle?: string;    // Display title of course
+  description?: string;    // e.g. "৫০% স্পেশাল ছাড় কুপন"
+  expiryDate?: string;     // YYYY-MM-DD
+  isActive: boolean;
+  createdAt: string;
+  usageCount?: number;
+}
+
+export interface CourseEnrollment {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  userPhone: string;
+  userName?: string;
+  userEmail?: string;
+  userId?: string;
+  enrolledAt: string;
+  originalPrice: number;
+  discountPercent: number;
+  discountAmount: number;
+  finalPrice: number;
+  couponCode?: string;
+  paymentMethod?: string;
+  trxId?: string;
+  paymentStatus: 'paid' | 'free' | 'pending';
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -97,6 +129,9 @@ export interface Course {
   startDate?: string;
   endDate?: string;
   createdAt: string;
+  price?: number;          // Course price in BDT (0 or undefined = Free)
+  originalPrice?: number;  // Optional regular/original price (for strikethrough comparison)
+  coupons?: Coupon[];      // Optional course-specific coupons
 }
 
 export interface ScheduledExamConfig {

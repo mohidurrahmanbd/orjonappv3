@@ -1,4 +1,4 @@
-import { Question, LiveExam, Notice, Routine, User, Course } from './types';
+import { Question, LiveExam, Notice, Routine, User, Course, Coupon } from './types';
 
 export const INITIAL_QUESTIONS: Question[] = [
   {
@@ -208,6 +208,8 @@ export const INITIAL_COURSES: Course[] = [
     category: 'বিসিএস প্রস্তুতি',
     startDate: '২০২৪-০১-১০',
     endDate: '২০২৪-০৬-৩০',
+    price: 500,
+    originalPrice: 1000,
     createdAt: '2026-07-17T12:00:00Z'
   },
   {
@@ -218,7 +220,41 @@ export const INITIAL_COURSES: Course[] = [
     category: 'জব সলিউশন পরীক্ষা',
     startDate: '২০২৪-০২-০১',
     endDate: '২০২৪-০৭-১৫',
+    price: 350,
+    originalPrice: 700,
     createdAt: '2026-07-17T14:00:00Z'
+  }
+];
+
+export const INITIAL_COUPONS: Coupon[] = [
+  {
+    id: 'coupon_welcome50',
+    code: 'WELCOME50',
+    discountPercent: 50,
+    description: 'সকল কোর্সে ৫০% স্পেশাল ছাড় কুপন',
+    isActive: true,
+    createdAt: '2026-07-17T12:00:00Z',
+    usageCount: 15
+  },
+  {
+    id: 'coupon_free100',
+    code: 'FREE100',
+    discountPercent: 100,
+    description: '১০০% স্কলারশিপ ফ্রি কুপন (১০০% ছাড়)',
+    isActive: true,
+    createdAt: '2026-07-17T12:00:00Z',
+    usageCount: 7
+  },
+  {
+    id: 'coupon_bcs30',
+    code: 'BCS30',
+    discountPercent: 30,
+    courseId: 'course_bcs_46',
+    courseTitle: '৪৬তম বিসিএস প্রিলিমিনারি স্পেশাল ক্র্যাশ কোর্স',
+    description: 'বিসিএস কোর্সে ৩০% স্পেশাল ছাড়',
+    isActive: true,
+    createdAt: '2026-07-17T12:00:00Z',
+    usageCount: 10
   }
 ];
 

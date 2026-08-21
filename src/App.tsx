@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, generateAutoUserId } from './types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, generateAutoUserId } from './types';
 import { 
   INITIAL_QUESTIONS, 
   INITIAL_NOTICES, 
   INITIAL_ROUTINES, 
   INITIAL_LIVE_EXAMS, 
   INITIAL_USERS,
-  INITIAL_COURSES
+  INITIAL_COURSES,
+  INITIAL_COUPONS
 } from './data';
 import AdminPanel from './components/AdminPanel';
 import UserPortal from './components/UserPortal';
@@ -97,6 +98,20 @@ export default function App() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    const saved = localStorage.getItem('orjon_coupons');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_COUPONS;
+  });
+  const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>(() => {
+    const saved = localStorage.getItem('orjon_course_enrollments');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -2076,10 +2091,78 @@ export default function App() {
     addAuditLog('কোর্স তৈরি (Course)', `নতুন কোর্স তৈরি করা হয়েছে: "${cData.title}"`, 'other');
   };
 
+  const handleUpdateCourse = (id: string, updatedCourse: Partial<Course>) => {
+    const updated = courses.map(c => c.id === id ? { ...c, ...updatedCourse } : c);
+    updateCoursesDB(updated);
+    addAuditLog('কোর্স আপডেট (Update Course)', `কোর্স আপডেট করা হয়েছে (ID: ${id})`, 'other');
+  };
+
   const handleDeleteCourse = (id: string) => {
     const target = courses.find(c => c.id === id);
     updateCoursesDB(courses.filter(item => item.id !== id));
     addAuditLog('কোর্স মুছে ফেলা (Delete Course)', `কোর্স মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'other');
+  };
+
+  const handleSaveCoupon = (couponData: Omit<Coupon, 'id' | 'createdAt'>) => {
+    const newCoupon: Coupon = {
+      ...couponData,
+      id: `cpn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString()
+    };
+    setCoupons(prev => {
+      const updated = [newCoupon, ...prev];
+      localStorage.setItem('orjon_coupons', JSON.stringify(updated));
+      syncCollectionToFirestore('coupons', updated, 'item');
+      return updated;
+    });
+    addAuditLog('নতুন কুপন তৈরি (Coupon)', `কুপন: ${newCoupon.code}, ছাড়: ${newCoupon.discountPercent}%`, 'create');
+  };
+
+  const handleUpdateCoupon = (id: string, updatedCoupon: Partial<Coupon>) => {
+    setCoupons(prev => {
+      const updated = prev.map(c => c.id === id ? { ...c, ...updatedCoupon } : c);
+      localStorage.setItem('orjon_coupons', JSON.stringify(updated));
+      syncCollectionToFirestore('coupons', updated, 'item');
+      return updated;
+    });
+    addAuditLog('কুপন আপডেট (Update Coupon)', `ID: ${id}`, 'update');
+  };
+
+  const handleDeleteCoupon = (id: string) => {
+    setCoupons(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      localStorage.setItem('orjon_coupons', JSON.stringify(updated));
+      syncCollectionToFirestore('coupons', updated, 'item');
+      return updated;
+    });
+    addAuditLog('কুপন মুছে ফেলা (Delete Coupon)', `ID: ${id}`, 'delete');
+  };
+
+  const handleEnrollCourse = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
+    const newEnrollment: CourseEnrollment = {
+      ...enrollmentData,
+      id: `enr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      enrolledAt: new Date().toISOString()
+    };
+    setCourseEnrollments(prev => {
+      const updated = [newEnrollment, ...prev];
+      localStorage.setItem('orjon_course_enrollments', JSON.stringify(updated));
+      syncCollectionToFirestore('course_enrollments', updated, 'item');
+      return updated;
+    });
+    if (enrollmentData.couponCode) {
+      setCoupons(prev => {
+        const updated = prev.map(c => {
+          if (c.code.toUpperCase() === enrollmentData.couponCode?.toUpperCase()) {
+            return { ...c, usageCount: (c.usageCount || 0) + 1 };
+          }
+          return c;
+        });
+        localStorage.setItem('orjon_coupons', JSON.stringify(updated));
+        return updated;
+      });
+    }
+    addAuditLog('কোর্স এনরোলমেন্ট', `শিক্ষার্থী: ${newEnrollment.userName} (${newEnrollment.userPhone}), কোর্স: ${newEnrollment.courseTitle}, পরিশোধিত: ৳${newEnrollment.finalPrice}`, 'other');
   };
 
   const handleSaveRoutine = (
@@ -2624,6 +2707,9 @@ export default function App() {
             notices={notices}
             routines={routines}
             courses={courses}
+            coupons={coupons}
+            courseEnrollments={courseEnrollments}
+            onEnrollCourse={handleEnrollCourse}
             attempts={attempts.filter(a => {
               if (currentUser.phone && a.userPhone === currentUser.phone) return true;
               if (currentUser.email && a.userEmail && a.userEmail.toLowerCase() === currentUser.email.toLowerCase()) return true;
@@ -2663,6 +2749,8 @@ export default function App() {
             notices={notices}
             routines={routines}
             courses={courses}
+            coupons={coupons}
+            courseEnrollments={courseEnrollments}
             users={users}
             attempts={attempts}
             categories={categories}
@@ -2687,7 +2775,11 @@ export default function App() {
             onSaveRoutine={handleSaveRoutine}
             onDeleteRoutine={handleDeleteRoutine}
             onSaveCourse={handleSaveCourse}
+            onUpdateCourse={handleUpdateCourse}
             onDeleteCourse={handleDeleteCourse}
+            onSaveCoupon={handleSaveCoupon}
+            onUpdateCoupon={handleUpdateCoupon}
+            onDeleteCoupon={handleDeleteCoupon}
             onLogout={requestLogoutConfirmation}
             allowUserExplanation={allowUserExplanation}
             onToggleUserExplanation={handleToggleUserExplanation}

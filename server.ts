@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { Resend } from "resend";
 import dotenv from "dotenv";
 
@@ -10,6 +9,15 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// API health check routes for container deployment readiness and health checks
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).send("OK");
+});
 
 // Lazy-get Resend instance
 function getResendClient() {
@@ -126,6 +134,7 @@ app.post("/api/send-otp", async (req, res) => {
 // Vite middleware setup for development
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
