@@ -1,12 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../types';
 import { 
   ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
   Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight,
-  BookMarked
+  BookMarked, CheckCircle, RotateCcw
 } from 'lucide-react';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
+import CircularProgressBar from './CircularProgressBar';
+import { 
+  getStoredReadQuestionIds, 
+  saveStoredReadQuestionIds, 
+  markRoutineQuestionsAsRead, 
+  toggleRoutineQuestionReadStatus 
+} from '../lib/readingProgress';
 
 interface RoutineHierarchicalMCQModalProps {
   routine: Routine;
@@ -14,6 +21,7 @@ interface RoutineHierarchicalMCQModalProps {
   categories?: CategoryItem[];
   subcategories?: SubcategoryItem[];
   bookmarks?: Bookmark[];
+  userPhone?: string;
   onClose: () => void;
   onStartPractice?: (routine: Routine) => void;
   onToggleBookmark?: (qId: string) => void;
@@ -79,6 +87,7 @@ export default function RoutineHierarchicalMCQModal({
   categories = [],
   subcategories = [],
   bookmarks = [],
+  userPhone,
   onClose,
   onStartPractice,
   onToggleBookmark
@@ -88,6 +97,12 @@ export default function RoutineHierarchicalMCQModal({
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
   const [selectedUserOptions, setSelectedUserOptions] = useState<Record<string, number>>({});
   
+  // Reading Progress State (Persistent in localStorage)
+  const routineId = routine.id || routine.title || 'routine';
+  const [readQuestionIds, setReadQuestionIds] = useState<string[]>(() => {
+    return getStoredReadQuestionIds(userPhone, routineId);
+  });
+
   // Dedicated Clean Page for Selected Leaf Topic
   const [selectedLeafTopic, setSelectedLeafTopic] = useState<SelectedLeafTopic | null>(null);
   const [leafSearchQuery, setLeafSearchQuery] = useState('');
@@ -161,6 +176,44 @@ export default function RoutineHierarchicalMCQModal({
   const matchedRoutineQuestions = useMemo(() => {
     return getRoutineMatchingQuestions(routine, questions, subcategories);
   }, [questions, routine, subcategories]);
+
+  // Overall Reading Progress Metrics
+  const totalMatchedCount = matchedRoutineQuestions.length;
+  const readCount = useMemo(() => {
+    const set = new Set(readQuestionIds);
+    return matchedRoutineQuestions.filter(q => set.has(q.id)).length;
+  }, [matchedRoutineQuestions, readQuestionIds]);
+
+  const readingPercentage = totalMatchedCount > 0 
+    ? Math.min(100, Math.round((readCount / totalMatchedCount) * 100))
+    : (readQuestionIds.length > 0 ? 100 : 0);
+
+  // Progress Action Handlers
+  const handleToggleQuestionRead = (qId: string) => {
+    const res = toggleRoutineQuestionReadStatus(userPhone, routineId, qId, totalMatchedCount);
+    setReadQuestionIds(res.readQuestionIds);
+  };
+
+  const handleMarkAllQuestionsAsRead = () => {
+    const allIds = matchedRoutineQuestions.map(q => q.id);
+    const res = markRoutineQuestionsAsRead(userPhone, routineId, allIds, totalMatchedCount);
+    setReadQuestionIds(res.readQuestionIds);
+  };
+
+  const handleResetReadingProgress = () => {
+    saveStoredReadQuestionIds(userPhone, routineId, [], 0);
+    setReadQuestionIds([]);
+  };
+
+  // Automatically mark visible questions as read when student views/interacts with them
+  const markQuestionsAsReadAuto = (targetQuestions: Question[]) => {
+    if (!targetQuestions || targetQuestions.length === 0) return;
+    const newUnreadIds = targetQuestions.map(q => q.id).filter(id => !readQuestionIds.includes(id));
+    if (newUnreadIds.length > 0) {
+      const res = markRoutineQuestionsAsRead(userPhone, routineId, newUnreadIds, totalMatchedCount);
+      setReadQuestionIds(res.readQuestionIds);
+    }
+  };
 
   // 2. Apply search filter if active
   const filteredQuestions = useMemo(() => {
@@ -482,6 +535,14 @@ export default function RoutineHierarchicalMCQModal({
     return bookmarks.some(b => b.questionId === qId);
   };
 
+  const getQuestionListReadingStats = (qList: Question[]) => {
+    if (!qList || qList.length === 0) return { read: 0, total: 0, percentage: 0 };
+    const read = qList.filter(q => readQuestionIds.includes(q.id)).length;
+    const total = qList.length;
+    const percentage = Math.min(100, Math.round((read / total) * 100));
+    return { read, total, percentage };
+  };
+
   const getOptionLetter = (idx: number) => {
     switch (idx) {
       case 0: return 'ক';
@@ -597,6 +658,7 @@ export default function RoutineHierarchicalMCQModal({
             const absoluteQIndex = startIdx + localIdx + startIndexOffset;
             const isRevealed = showAllAnswers || !!revealedAnswers[q.id];
             const bookmarked = isBookmarked(q.id);
+            const isRead = readQuestionIds.includes(q.id);
             const options = [q.optionA, q.optionB, q.optionC, q.optionD];
             const correctIdx = getCorrectIndex(q.correct);
             const userChoice = selectedUserOptions[q.id];
@@ -618,6 +680,21 @@ export default function RoutineHierarchicalMCQModal({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Read Status Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleQuestionRead(q.id)}
+                      className={`p-1.5 px-2.5 rounded-lg border text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                        isRead
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-2xs'
+                          : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800 hover:bg-slate-50'
+                      }`}
+                      title={isRead ? 'পড়া সম্পন্ন (ক্লিক করে আনমার্ক করুন)' : 'পড়া হয়েছে হিসেবে চিহ্নিত করুন'}
+                    >
+                      <CheckCircle className={`w-3.5 h-3.5 ${isRead ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span className="hidden sm:inline">{isRead ? 'পড়া হয়েছে' : 'পড়া বাকি'}</span>
+                    </button>
+
                     {onToggleBookmark && (
                       <button
                         type="button"
@@ -641,6 +718,9 @@ export default function RoutineHierarchicalMCQModal({
                             ...prev,
                             [q.id]: !prev[q.id]
                           }));
+                          if (!isRead) {
+                            handleToggleQuestionRead(q.id);
+                          }
                         }}
                         className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
                       >
@@ -682,6 +762,9 @@ export default function RoutineHierarchicalMCQModal({
                               ...prev,
                               [q.id]: true
                             }));
+                          }
+                          if (!isRead) {
+                            handleToggleQuestionRead(q.id);
                           }
                         }}
                         className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition select-none cursor-pointer ${optionStyle}`}
@@ -820,21 +903,62 @@ export default function RoutineHierarchicalMCQModal({
             )}
           </div>
 
-          {/* Title & Stats */}
-          <div className="space-y-1.5">
-            <h1 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2.5 flex-wrap">
-              <span>
-                {isSameFolderAndSubfolder(selectedLeafTopic.subName, selectedLeafTopic.leafName)
-                  ? selectedLeafTopic.subName
-                  : selectedLeafTopic.leafName}
-              </span>
-              <span className="bg-white/20 text-white text-xs font-black px-3 py-1 rounded-full border border-white/25">
-                {toBengaliDigits(selectedLeafTopic.questions.length)} টি MCQ
-              </span>
-            </h1>
-            <p className="text-xs text-emerald-200 font-medium">
-              রুটিন: {routine.title}
-            </p>
+          {/* Title & Stats with Circular Reading Progress */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+            <div className="space-y-1">
+              <h1 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2.5 flex-wrap">
+                <span>
+                  {isSameFolderAndSubfolder(selectedLeafTopic.subName, selectedLeafTopic.leafName)
+                    ? selectedLeafTopic.subName
+                    : selectedLeafTopic.leafName}
+                </span>
+                <span className="bg-white/20 text-white text-xs font-black px-3 py-1 rounded-full border border-white/25">
+                  {toBengaliDigits(selectedLeafTopic.questions.length)} টি MCQ
+                </span>
+              </h1>
+              <p className="text-xs text-emerald-200 font-medium">
+                রুটিন: {routine.title}
+              </p>
+            </div>
+
+            {/* Circular Reading Progress Banner */}
+            <div className="bg-white/10 backdrop-blur-xs border border-white/20 rounded-2xl p-2.5 sm:px-4 flex items-center gap-3 self-start sm:self-auto shadow-xs">
+              <CircularProgressBar
+                percentage={readingPercentage}
+                size={40}
+                strokeWidth={4}
+                className="bg-emerald-950/40 rounded-full"
+                textSizeClass="text-[9.5px] text-emerald-300 font-black"
+                title={`সামগ্রিক পড়ার অগ্রগতি: ${toBengaliDigits(readingPercentage)}%`}
+              />
+              <div className="space-y-0.5">
+                <span className="text-[10.5px] text-emerald-200 font-bold block">পড়ার অগ্রগতি</span>
+                <span className="text-xs font-black text-white block">
+                  {toBengaliDigits(readCount)}/{toBengaliDigits(totalMatchedCount)} সম্পন্ন ({toBengaliDigits(readingPercentage)}%)
+                </span>
+              </div>
+              <div className="ml-1 pl-2 border-l border-white/20 flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={handleMarkAllQuestionsAsRead}
+                  className="text-[9.5px] bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="এই রুটিনের সকল প্রশ্ন পড়া হয়েছে হিসেবে চিহ্নিত করুন"
+                >
+                  <CheckCircle className="w-3 h-3" />
+                  <span>সব পড়া শেষ</span>
+                </button>
+                {readCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetReadingProgress}
+                    className="text-[9px] text-rose-200 hover:text-white hover:bg-rose-500/50 px-1.5 py-0.5 rounded transition cursor-pointer text-center"
+                    title="পড়ার অগ্রগতি শূন্য করুন"
+                  >
+                    রিসেট
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -947,11 +1071,55 @@ export default function RoutineHierarchicalMCQModal({
           )}
         </div>
 
-        {/* Title */}
-        <div className="space-y-1">
-          <h1 className="text-base sm:text-xl font-black text-white leading-snug">
-            {routine.title}
-          </h1>
+        {/* Title & Reading Progress Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+          <div className="space-y-1">
+            <h1 className="text-base sm:text-xl font-black text-white leading-snug">
+              {routine.title}
+            </h1>
+            <p className="text-xs text-indigo-200 font-medium">
+              অধ্যায় ও পরিচ্ছেদ ভিত্তিক MCQ প্রস্তুতি
+            </p>
+          </div>
+
+          {/* Circular Reading Progress Banner */}
+          <div className="bg-white/10 backdrop-blur-xs border border-white/20 rounded-2xl p-2.5 sm:px-4 flex items-center gap-3 self-start sm:self-auto shadow-xs">
+            <CircularProgressBar
+              percentage={readingPercentage}
+              size={42}
+              strokeWidth={4}
+              className="bg-indigo-950/40 rounded-full"
+              textSizeClass="text-[10px] text-amber-300 font-black"
+              title={`সামগ্রিক পড়ার অগ্রগতি: ${toBengaliDigits(readingPercentage)}%`}
+            />
+            <div className="space-y-0.5">
+              <span className="text-[10.5px] text-indigo-200 font-bold block">পড়ার অগ্রগতি</span>
+              <span className="text-xs font-black text-white block">
+                {toBengaliDigits(readCount)}/{toBengaliDigits(totalMatchedCount)} সম্পন্ন ({toBengaliDigits(readingPercentage)}%)
+              </span>
+            </div>
+            <div className="ml-1 pl-2 border-l border-white/20 flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={handleMarkAllQuestionsAsRead}
+                className="text-[9.5px] bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="এই রুটিনের সকল প্রশ্ন পড়া হয়েছে হিসেবে চিহ্নিত করুন"
+              >
+                <CheckCircle className="w-3 h-3" />
+                <span>সব পড়া শেষ</span>
+              </button>
+              {readCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleResetReadingProgress}
+                  className="text-[9px] text-rose-200 hover:text-white hover:bg-rose-500/50 px-1.5 py-0.5 rounded transition cursor-pointer text-center"
+                  title="পড়ার অগ্রগতি শূন্য করুন"
+                >
+                  রিসেট
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1033,6 +1201,15 @@ export default function RoutineHierarchicalMCQModal({
             const catKey = `cat-${catNode.name}`;
             const isCatExpanded = !!expandedNodes[catKey];
 
+            const catAllQuestions = [
+              ...catNode.directQuestions,
+              ...catNode.subNodes.flatMap(s => [
+                ...s.directQuestions,
+                ...s.leafNodes.flatMap(l => l.questions)
+              ])
+            ];
+            const catStats = getQuestionListReadingStats(catAllQuestions);
+
             return (
               <div 
                 key={`cat-${catIdx}-${catNode.name}`}
@@ -1061,7 +1238,26 @@ export default function RoutineHierarchicalMCQModal({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] text-indigo-600 font-bold hidden sm:inline">
+                    {/* Circular Reading Progress for Category */}
+                    <div 
+                      className="flex items-center gap-1.5 bg-white border border-indigo-200/90 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                      title={`এই বিষয়ের পড়ার অগ্রগতি: ${toBengaliDigits(catStats.read)}/${toBengaliDigits(catStats.total)} (${toBengaliDigits(catStats.percentage)}%)`}
+                    >
+                      <CircularProgressBar
+                        percentage={catStats.percentage}
+                        size={26}
+                        strokeWidth={2.5}
+                        textSizeClass="text-[7.5px]"
+                      />
+                      <div className="text-right hidden sm:block">
+                        <span className="text-[8.5px] text-indigo-700 font-bold block leading-none">পড়া হয়েছে</span>
+                        <span className="text-[10px] font-black text-indigo-950 leading-tight">
+                          {toBengaliDigits(catStats.percentage)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] text-indigo-600 font-bold hidden md:inline">
                       {isCatExpanded ? 'সংকুচিত করুন' : 'অধ্যায় দেখতে ক্লিক করুন'}
                     </span>
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition ${
@@ -1078,6 +1274,12 @@ export default function RoutineHierarchicalMCQModal({
                     {catNode.subNodes.map((subNode, subIdx) => {
                       const subKey = `sub-${catNode.name}-${subNode.name}`;
                       const isSubExpanded = !!expandedNodes[subKey];
+
+                      const subAllQuestions = [
+                        ...subNode.directQuestions,
+                        ...subNode.leafNodes.flatMap(l => l.questions)
+                      ];
+                      const subStats = getQuestionListReadingStats(subAllQuestions);
 
                       // Check if this subfolder has a single leaf that is the same topic, or if folder and subfolder names match
                       const hasSingleLeaf = subNode.leafNodes.length === 1;
@@ -1122,6 +1324,25 @@ export default function RoutineHierarchicalMCQModal({
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {/* Circular Reading Progress for Subcategory */}
+                              <div 
+                                className="flex items-center gap-1.5 bg-white border border-purple-200/90 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                                title={`এই অধ্যায়ের পড়ার অগ্রগতি: ${toBengaliDigits(subStats.read)}/${toBengaliDigits(subStats.total)} (${toBengaliDigits(subStats.percentage)}%)`}
+                              >
+                                <CircularProgressBar
+                                  percentage={subStats.percentage}
+                                  size={24}
+                                  strokeWidth={2.5}
+                                  textSizeClass="text-[7px]"
+                                />
+                                <div className="text-right hidden sm:block">
+                                  <span className="text-[8.5px] text-purple-700 font-bold block leading-none">পড়া হয়েছে</span>
+                                  <span className="text-[10px] font-black text-purple-950 leading-tight">
+                                    {toBengaliDigits(subStats.percentage)}%
+                                  </span>
+                                </div>
+                              </div>
+
                               {canDirectOpen ? (
                                 <button
                                   type="button"
@@ -1153,6 +1374,8 @@ export default function RoutineHierarchicalMCQModal({
                           {!canDirectOpen && isSubExpanded && (
                             <div className="p-3 sm:p-4 space-y-2.5 bg-slate-50/30">
                               {subNode.leafNodes.map((leafNode, leafIdx) => {
+                                const leafStats = getQuestionListReadingStats(leafNode.questions);
+
                                 return (
                                   <div 
                                     key={`leaf-${leafIdx}-${leafNode.name}`}
@@ -1174,6 +1397,25 @@ export default function RoutineHierarchicalMCQModal({
                                     </div>
 
                                     <div className="flex items-center gap-2 shrink-0">
+                                      {/* Circular Reading Progress for Leaf Topic */}
+                                      <div 
+                                        className="flex items-center gap-1.5 bg-emerald-50/90 border border-emerald-200 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                                        title={`এই পরিচ্ছেদের পড়ার অগ্রগতি: ${toBengaliDigits(leafStats.read)}/${toBengaliDigits(leafStats.total)} (${toBengaliDigits(leafStats.percentage)}%)`}
+                                      >
+                                        <CircularProgressBar
+                                          percentage={leafStats.percentage}
+                                          size={24}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[7px]"
+                                        />
+                                        <div className="text-right hidden sm:block">
+                                          <span className="text-[8px] text-emerald-700 font-bold block leading-none">পড়া হয়েছে</span>
+                                          <span className="text-[9.5px] font-black text-emerald-950 leading-tight">
+                                            {toBengaliDigits(leafStats.percentage)}%
+                                          </span>
+                                        </div>
+                                      </div>
+
                                       <button
                                         type="button"
                                         onClick={(e) => {

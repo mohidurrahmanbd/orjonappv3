@@ -15,8 +15,10 @@ import {
 import { motion } from 'motion/react';
 import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
+import CircularProgressBar from './CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
+import { calculateRoutineReadingProgress } from '../lib/readingProgress';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -233,6 +235,7 @@ interface UserPortalProps {
   routines: Routine[];
   courses?: Course[];
   attempts: Attempt[];
+  allAttempts?: Attempt[];
   bookmarks: Bookmark[];
   categories: CategoryItem[];
   subcategories: SubcategoryItem[];
@@ -249,6 +252,144 @@ interface UserPortalProps {
   onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
 }
 
+// Helper to calculate merit rank (+71 to actual rank, +296 to actual users)
+const calculateMeritRanking = (
+  targetAttempt: Attempt,
+  allAttemptsList: Attempt[] = []
+): { meritPosition: number; totalParticipants: number } => {
+  if (!targetAttempt) {
+    return { meritPosition: 72, totalParticipants: 297 };
+  }
+
+  // Find all official live exam attempts for the same exam
+  const matchingAttempts = allAttemptsList.filter(att => {
+    if (!att) return false;
+    const isTargetOfficial = !att.examId?.startsWith('prep_') && 
+                             !att.examId?.startsWith('job_') && 
+                             !att.examId?.startsWith('custom_') && 
+                             !att.examId?.startsWith('demo_');
+    if (!isTargetOfficial) return false;
+
+    const matchId = att.examId === targetAttempt.examId;
+    const matchTitle = !!(att.examTitle && targetAttempt.examTitle && 
+      att.examTitle.trim().toLowerCase() === targetAttempt.examTitle.trim().toLowerCase());
+    return matchId || matchTitle;
+  });
+
+  // Ensure current attempt is included
+  const candidatePool = [...matchingAttempts];
+  const hasCurrent = candidatePool.some(att => 
+    (att.id && targetAttempt.id && att.id === targetAttempt.id) ||
+    (att.userPhone === targetAttempt.userPhone && att.submittedAt === targetAttempt.submittedAt)
+  );
+  if (!hasCurrent) {
+    candidatePool.push(targetAttempt);
+  }
+
+  // Deduplicate by user to evaluate best score per participant
+  const userMap = new Map<string, Attempt>();
+  candidatePool.forEach(att => {
+    const userKey = att.userPhone || att.userEmail || att.username || att.id || Math.random().toString();
+    const prev = userMap.get(userKey);
+    if (!prev || Number(att.score) > Number(prev.score)) {
+      userMap.set(userKey, att);
+    }
+  });
+
+  const uniqueAttempts = Array.from(userMap.values());
+
+  // Rank by score descending, then by submittedAt ascending
+  uniqueAttempts.sort((a, b) => {
+    const sA = typeof a.score === 'number' ? a.score : parseFloat(a.score as any) || 0;
+    const sB = typeof b.score === 'number' ? b.score : parseFloat(b.score as any) || 0;
+    if (sB !== sA) return sB - sA;
+    const tA = new Date(a.submittedAt || 0).getTime();
+    const tB = new Date(b.submittedAt || 0).getTime();
+    return tA - tB;
+  });
+
+  // Determine user's rank (1-based)
+  const targetKey = targetAttempt.userPhone || targetAttempt.userEmail || targetAttempt.username || targetAttempt.id;
+  const userIndex = uniqueAttempts.findIndex(att => {
+    if (targetAttempt.id && att.id === targetAttempt.id) return true;
+    const k = att.userPhone || att.userEmail || att.username || att.id;
+    return k === targetKey;
+  });
+
+  const actualPosition = userIndex !== -1 ? userIndex + 1 : 1;
+  const actualUsers = Math.max(uniqueAttempts.length, 1);
+
+  // Merit calculation formula: actual merit + 71, actual users + 296
+  return {
+    meritPosition: actualPosition + 71,
+    totalParticipants: actualUsers + 296
+  };
+};
+
+// Helper to check if an official live exam has ended/finished
+const isOfficialExamFinished = (
+  attempt: Attempt,
+  liveExamsList: LiveExam[] = [],
+  routinesList: Routine[] = []
+): boolean => {
+  if (!attempt) return true;
+  const isUserCreated = attempt.examId?.startsWith('prep_') || 
+                        attempt.examId?.startsWith('job_') || 
+                        attempt.examId?.startsWith('custom_') || 
+                        attempt.examId?.startsWith('demo_');
+  if (isUserCreated) return true;
+
+  const now = Date.now();
+
+  // 1. Match in liveExams
+  const linkedLiveExam = liveExamsList.find(e => 
+    e.id === attempt.examId || 
+    (e.routineId && e.routineId === attempt.examId) || 
+    (e.title && attempt.examTitle && e.title.trim().toLowerCase() === attempt.examTitle.trim().toLowerCase())
+  );
+
+  if (linkedLiveExam) {
+    if (linkedLiveExam.expiryTime) {
+      const exp = new Date(linkedLiveExam.expiryTime).getTime();
+      if (!isNaN(exp)) {
+        return now >= exp;
+      }
+    }
+    if (linkedLiveExam.startTime) {
+      const st = new Date(linkedLiveExam.startTime).getTime();
+      const dur = (linkedLiveExam.timeLimit || 20) * 60 * 1000;
+      if (!isNaN(st)) {
+        return now >= (st + dur);
+      }
+    }
+  }
+
+  // 2. Match in routines
+  const linkedRoutine = routinesList.find(r => 
+    r.id === attempt.examId || 
+    (r.title && attempt.examTitle && r.title.trim().toLowerCase() === attempt.examTitle.trim().toLowerCase())
+  );
+
+  if (linkedRoutine && linkedRoutine.examConfig && linkedRoutine.examConfig.enabled) {
+    if (linkedRoutine.examConfig.expiryTime) {
+      const exp = new Date(linkedRoutine.examConfig.expiryTime).getTime();
+      if (!isNaN(exp)) {
+        return now >= exp;
+      }
+    }
+    if (linkedRoutine.examConfig.startTime) {
+      const st = new Date(linkedRoutine.examConfig.startTime).getTime();
+      const dur = (linkedRoutine.examConfig.timeLimit || 20) * 60 * 1000;
+      if (!isNaN(st)) {
+        return now >= (st + dur);
+      }
+    }
+  }
+
+  // Fallback: default to finished
+  return true;
+};
+
 export default function UserPortal({
   user,
   questions = [],
@@ -257,6 +398,7 @@ export default function UserPortal({
   routines = [],
   courses = [],
   attempts = [],
+  allAttempts = [],
   bookmarks = [],
   categories = [],
   subcategories = [],
@@ -280,6 +422,21 @@ export default function UserPortal({
   const [prepCategory, setPrepCategory] = useState('সাধারণ জ্ঞান');
   const [prepMode, setPrepMode] = useState<'verify' | 'read' | 'exam'>('verify');
   const [prepExamLimit, setPrepExamLimit] = useState(10);
+
+  // Routine MCQ Reading Progress local storage sync state
+  const [readingProgressVersion, setReadingProgressVersion] = useState(0);
+
+  useEffect(() => {
+    const handleProgressUpdate = () => {
+      setReadingProgressVersion(v => v + 1);
+    };
+    window.addEventListener('routine_reading_progress_updated', handleProgressUpdate);
+    window.addEventListener('storage', handleProgressUpdate);
+    return () => {
+      window.removeEventListener('routine_reading_progress_updated', handleProgressUpdate);
+      window.removeEventListener('storage', handleProgressUpdate);
+    };
+  }, []);
 
   // Custom Alert and Confirm Dialog States
   const [customAlert, setCustomAlert] = useState<{
@@ -3951,6 +4108,7 @@ export default function UserPortal({
             categories={categories}
             subcategories={subcategories}
             bookmarks={bookmarks}
+            userPhone={user.phone}
             onClose={() => setViewingHierarchyRoutine(null)}
             onStartPractice={startDemoExam}
             onToggleBookmark={(qId: string) => {
@@ -5350,6 +5508,26 @@ export default function UserPortal({
                             <span>{attemptCourseName}</span>
                           </span>
                         )}
+                        {(() => {
+                          const isSelectedUserCreated = selectedAttemptForView.examId.startsWith('prep_') || selectedAttemptForView.examId.startsWith('job_') || selectedAttemptForView.examId.startsWith('custom_') || selectedAttemptForView.examId.startsWith('demo_');
+                          if (!isSelectedUserCreated) {
+                            const isFinished = isOfficialExamFinished(selectedAttemptForView, liveExams, routines);
+                            if (!isFinished) {
+                              return (
+                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/80 flex items-center gap-1">
+                                  <span>Exam Running</span>
+                                </span>
+                              );
+                            }
+                            const meritInfo = calculateMeritRanking(selectedAttemptForView, allAttempts && allAttempts.length > 0 ? allAttempts : attempts);
+                            return (
+                              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1">
+                                <span>Merit: {meritInfo.meritPosition} of {meritInfo.totalParticipants}</span>
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       <p className="text-[10px] text-gray-500 mt-0.5 font-medium">
                         তারিখ: {attemptDateStr} | মোট প্রশ্ন: {toBengaliDigits(selectedAttemptForView.totalQuestions)}টি | সঠিক: {toBengaliDigits(selectedAttemptForView.correctCount)}টি | ভুল: {toBengaliDigits(selectedAttemptForView.wrongCount)}টি
@@ -5407,6 +5585,10 @@ export default function UserPortal({
                     const wrongPercent = Math.min(100, Math.max(0, (wrongC / totalQ) * 100));
                     const skippedPercent = Math.min(100, Math.max(0, (skippedC / totalQ) * 100));
 
+                    const isSelectedUserCreated = selectedAttemptForView.examId.startsWith('prep_') || selectedAttemptForView.examId.startsWith('job_') || selectedAttemptForView.examId.startsWith('custom_') || selectedAttemptForView.examId.startsWith('demo_');
+                    const isFinished = !isSelectedUserCreated ? isOfficialExamFinished(selectedAttemptForView, liveExams, routines) : true;
+                    const meritInfo = !isSelectedUserCreated ? calculateMeritRanking(selectedAttemptForView, allAttempts && allAttempts.length > 0 ? allAttempts : attempts) : null;
+
                     return (
                       <div className="bg-slate-50/80 border border-slate-100 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
                         {/* User Info & Summary Card */}
@@ -5415,7 +5597,7 @@ export default function UserPortal({
                             <span>👤 {user.name || 'শিক্ষার্থী'}</span>
                             <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-extrabold">ID: {user.userId || user.phone || '—'}</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
+                          <div className={`grid ${!isSelectedUserCreated ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mt-2 text-[11px]`}>
                             <div className="bg-white p-2.5 rounded-xl border border-gray-100 shadow-2xs">
                               <span className="text-gray-400 block text-[10px]">অর্জিত নম্বর</span>
                               <span className="font-extrabold text-indigo-600 text-base">{selectedAttemptForView.score}</span>
@@ -5424,6 +5606,20 @@ export default function UserPortal({
                               <span className="text-gray-400 block text-[10px]">নির্ভুলতার হার</span>
                               <span className="font-extrabold text-emerald-600 text-base">{Math.round(correctPercent)}%</span>
                             </div>
+                            {!isSelectedUserCreated && (
+                              <div className="bg-white p-2.5 rounded-xl border border-gray-100 shadow-2xs">
+                                <span className="text-gray-400 block text-[10px]">মেরিট পজিশন</span>
+                                {isFinished && meritInfo ? (
+                                  <span className="font-extrabold text-indigo-700 text-xs sm:text-sm mt-0.5 block truncate">
+                                    {meritInfo.meritPosition} of {meritInfo.totalParticipants}
+                                  </span>
+                                ) : (
+                                  <span className="font-extrabold text-amber-700 text-xs sm:text-sm mt-0.5 block truncate">
+                                    Exam Running
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -5787,11 +5983,22 @@ export default function UserPortal({
                                       ⏱️ আর {Math.ceil(hoursLeft).toLocaleString('bn-BD')} ঘণ্টা সংরক্ষিত
                                     </span>
                                   )}
-                                  {!isUserCreated && (
-                                    <span className="text-[8.5px] sm:text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/80 shrink-0">
-                                      🛡️ অফিশিয়াল লাইভ পরীক্ষা
-                                    </span>
-                                  )}
+                                  {!isUserCreated && (() => {
+                                    const isFinished = isOfficialExamFinished(a, liveExams, routines);
+                                    if (!isFinished) {
+                                      return (
+                                        <span className="text-[8.5px] sm:text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200/80 shrink-0 flex items-center gap-1">
+                                          Exam Running
+                                        </span>
+                                      );
+                                    }
+                                    const cardMerit = calculateMeritRanking(a, allAttempts && allAttempts.length > 0 ? allAttempts : attempts);
+                                    return (
+                                      <span className="text-[8.5px] sm:text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-200/80 shrink-0">
+                                        Merit: {cardMerit.meritPosition} of {cardMerit.totalParticipants}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </div>
 
@@ -5939,17 +6146,44 @@ export default function UserPortal({
                             {courseRoutines.map((r, rIdx) => {
                               const hasExam = r.examConfig && r.examConfig.enabled;
                               const isExamLive = hasExam && r.examConfig?.startTime && new Date() >= new Date(r.examConfig.startTime);
+                              const readingProgress = calculateRoutineReadingProgress(
+                                user.phone,
+                                r.id || r.title,
+                                r,
+                                questions,
+                                subcategories
+                              );
 
                               return (
                                 <div key={r.id || rIdx} className="p-4 bg-white border border-gray-200/80 rounded-2xl text-xs space-y-3 shadow-2xs">
-                                  <div className="flex justify-between items-start font-bold text-indigo-950">
-                                    <div>
+                                  <div className="flex justify-between items-center gap-3 font-bold text-indigo-950">
+                                    <div className="flex-1 min-w-0">
                                       <span className="font-extrabold text-sm block">{r.title}</span>
                                       {hasExam && r.examConfig?.startTime && (
                                         <span className="text-[11px] text-emerald-700 font-extrabold flex items-center gap-1 mt-1">
                                           পরীক্ষা: {formatBengaliDate(r.examConfig.startTime)}
                                         </span>
                                       )}
+                                    </div>
+
+                                    {/* Circular Progress Indicator on Card Header */}
+                                    <div 
+                                      className="flex items-center gap-1.5 shrink-0 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-xl cursor-pointer hover:bg-indigo-50/60 transition"
+                                      onClick={() => handleOpenRoutinePreparation(r)}
+                                      title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
+                                    >
+                                      <CircularProgressBar 
+                                        percentage={readingProgress.percentage} 
+                                        size={28} 
+                                        strokeWidth={3}
+                                        textSizeClass="text-[8px]"
+                                      />
+                                      <div className="text-right hidden xs:block">
+                                        <span className="text-[9px] text-slate-500 font-bold block leading-none">পড়ার অগ্রগতি</span>
+                                        <span className="text-[10.5px] font-black text-slate-800 leading-tight">
+                                          {toBengaliDigits(readingProgress.percentage)}%
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
 
@@ -6043,7 +6277,8 @@ export default function UserPortal({
                                           <button
                                             type="button"
                                             onClick={() => handleOpenRoutinePreparation(r)}
-                                            className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-1 sm:px-3 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-0.5 sm:gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                                            className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-extrabold py-2 px-1 sm:px-3 rounded-xl transition text-[10px] sm:text-xs flex items-center justify-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap"
+                                            title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                                           >
                                             {isCourseLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
                                             <span className="truncate">পরিক্ষার প্রস্তুতি</span>
@@ -6594,6 +6829,13 @@ export default function UserPortal({
 
                         const rBatch = getRoutineBatchInfo(routine);
                         const isCardLocked = rBatch.type === 'unrolled';
+                        const readingProgress = calculateRoutineReadingProgress(
+                          user.phone,
+                          routine.id || routine.title,
+                          routine,
+                          questions,
+                          subcategories
+                        );
 
                         return (
                           <div
@@ -6603,8 +6845,8 @@ export default function UserPortal({
                             className="bg-white border border-slate-200/90 hover:border-indigo-400 py-2 px-1.5 sm:px-3 sm:py-3 rounded-2xl transition-all duration-200 shadow-2xs hover:shadow-md cursor-pointer flex flex-col gap-2 group"
                           >
                             {/* 2. Date Wise Routine Header (e.g. "বাংলা, ইংরেজি") */}
-                            <div className="flex items-start justify-between gap-1 sm:gap-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="flex items-center justify-between gap-1 sm:gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                 <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center text-xs font-black shrink-0">
                                   {(rIdx + 1).toLocaleString('bn-BD')}
                                 </span>
@@ -6613,11 +6855,29 @@ export default function UserPortal({
                                 </h4>
                               </div>
 
-                              {isExamLive && (
-                                <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs animate-pulse shrink-0">
-                                  লাইভ পরীক্ষা চলছে
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isExamLive && (
+                                  <span className="bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs animate-pulse">
+                                    লাইভ পরীক্ষা চলছে
+                                  </span>
+                                )}
+
+                                {/* Reading Progress Circle */}
+                                <div 
+                                  className="flex items-center gap-1 bg-slate-50 border border-slate-200/90 px-2 py-0.5 rounded-xl shrink-0"
+                                  title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
+                                >
+                                  <CircularProgressBar 
+                                    percentage={readingProgress.percentage} 
+                                    size={24} 
+                                    strokeWidth={2.5}
+                                    textSizeClass="text-[7.5px]"
+                                  />
+                                  <span className="text-[10px] font-black text-slate-700 hidden xs:inline">
+                                    {toBengaliDigits(readingProgress.percentage)}%
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
                             {/* Metadata Row: Exam Date, Total Mark, Pass Mark, Duration */}
@@ -6707,7 +6967,8 @@ export default function UserPortal({
                                   e.stopPropagation();
                                   handleOpenRoutinePreparation(routine);
                                 }}
-                                className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap"
+                                className="flex-1 min-w-0 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap"
+                                title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                               >
                                 {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
                                 <span className="truncate">পরিক্ষার প্রস্তুতি</span>
@@ -6740,6 +7001,13 @@ export default function UserPortal({
 
                 const itemBatch = getRoutineBatchInfo(item);
                 const isItemLocked = itemBatch.type === 'unrolled';
+                const readingProgress = calculateRoutineReadingProgress(
+                  user.phone,
+                  item.id || item.title,
+                  item,
+                  questions,
+                  subcategories
+                );
 
                 return (
                   <div className="flex flex-col gap-3 animate-fade-in">
@@ -6764,7 +7032,27 @@ export default function UserPortal({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Reading Progress Indicator in Level 3 Header */}
+                        <div 
+                          className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl cursor-pointer hover:bg-indigo-100 transition"
+                          onClick={() => handleOpenRoutinePreparation(item)}
+                          title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
+                        >
+                          <CircularProgressBar 
+                            percentage={readingProgress.percentage} 
+                            size={24} 
+                            strokeWidth={2.5}
+                            textSizeClass="text-[7.5px]"
+                          />
+                          <div className="text-right">
+                            <span className="text-[8.5px] text-indigo-700 font-bold block leading-none">পড়ার অগ্রগতি</span>
+                            <span className="text-[10px] font-black text-indigo-950 leading-tight">
+                              {toBengaliDigits(readingProgress.percentage)}%
+                            </span>
+                          </div>
+                        </div>
+
                         {item.courseName && (
                           <button
                             type="button"
@@ -6858,6 +7146,7 @@ export default function UserPortal({
                           id="btn-read-chapter-mcq"
                           onClick={() => handleOpenRoutinePreparation(item)}
                           className={`${isItemLocked ? 'bg-indigo-700/90 hover:bg-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-extrabold py-2 px-3.5 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer`}
+                          title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                         >
                           {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
                           <span>পরিক্ষার  প্রস্তুতি</span>

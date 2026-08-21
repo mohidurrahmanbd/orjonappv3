@@ -2630,6 +2630,7 @@ export default function App() {
               if (currentUser.email && a.userPhone && a.userPhone.toLowerCase() === currentUser.email.toLowerCase()) return true;
               return false;
             })}
+            allAttempts={attempts}
             bookmarks={bookmarks.filter(b => b.userPhone === currentUser.phone)}
             categories={categories}
             subcategories={subcategories}
