@@ -1,0 +1,56 @@
+name: Build Android APK & AAB
+
+on:
+  push:
+    branches:
+      - main  # আপনার গিটহাবের মেইন ব্রাঞ্চের নাম (main বা master)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Add Capacitor Android Platform
+        run: |
+          npx cap add android || true
+          npx cap copy android
+          npx cap sync android
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Build Android App (APK & AAB)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          ./gradlew bundleRelease
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Unsigned Release AAB (For Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-Release-AAB
+          path: android/app/build/outputs/bundle/release/app-release.aab
