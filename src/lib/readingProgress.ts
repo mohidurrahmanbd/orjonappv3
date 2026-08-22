@@ -19,6 +19,70 @@ export const getRoutineStorageKey = (userKey: string | undefined, routineId: str
   return `bcs_routine_read_mcqs_${u}_${routineId}`;
 };
 
+export const getUserAllReadStorageKey = (userKey: string | undefined): string => {
+  const u = getCleanUserKey(userKey);
+  return `bcs_user_all_read_mcqs_${u}`;
+};
+
+export const getUserAllReadQuestionIds = (userKey: string | undefined): string[] => {
+  try {
+    const key = getUserAllReadStorageKey(userKey);
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to parse all read question IDs from localStorage', e);
+  }
+  return [];
+};
+
+export const markUserQuestionsAsRead = (
+  userKey: string | undefined,
+  questionIds: string[]
+): string[] => {
+  if (!questionIds || questionIds.length === 0) {
+    return getUserAllReadQuestionIds(userKey);
+  }
+  try {
+    const existing = getUserAllReadQuestionIds(userKey);
+    const combinedSet = new Set([...existing, ...questionIds.map(String)]);
+    const updated = Array.from(combinedSet);
+    const key = getUserAllReadStorageKey(userKey);
+    localStorage.setItem(key, JSON.stringify(updated));
+
+    const u = getCleanUserKey(userKey);
+    window.dispatchEvent(new CustomEvent('mcq_reading_progress_updated', {
+      detail: { userKey: u, readCount: updated.length }
+    }));
+
+    return updated;
+  } catch (e) {
+    console.error('Failed to save all read question IDs to localStorage', e);
+    return [];
+  }
+};
+
+export const calculateQuestionsReadingProgress = (
+  userKey: string | undefined,
+  questionsList: Question[],
+  cachedReadSet?: Set<string>
+): { readCount: number; totalCount: number; percentage: number } => {
+  const totalCount = questionsList.length;
+  if (totalCount === 0) {
+    return { readCount: 0, totalCount: 0, percentage: 0 };
+  }
+
+  const readSet = cachedReadSet || new Set(getUserAllReadQuestionIds(userKey));
+  const readCount = questionsList.filter(q => readSet.has(String(q.id))).length;
+  const percentage = Math.min(100, Math.round((readCount / totalCount) * 100));
+
+  return { readCount, totalCount, percentage };
+};
+
 export const getStoredReadQuestionIds = (userKey: string | undefined, routineId: string): string[] => {
   try {
     const key = getRoutineStorageKey(userKey, routineId);
@@ -76,6 +140,10 @@ export const markRoutineQuestionsAsRead = (
 
   const percentage = total > 0 ? Math.min(100, Math.round((updatedIds.length / total) * 100)) : 0;
   saveStoredReadQuestionIds(userKey, routineId, updatedIds, percentage);
+
+  if (newQuestionIds.length > 0) {
+    markUserQuestionsAsRead(userKey, newQuestionIds);
+  }
 
   return {
     readCount: updatedIds.length,

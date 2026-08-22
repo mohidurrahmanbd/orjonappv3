@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, generateAutoUserId } from './types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, generateAutoUserId } from './types';
 import { 
   INITIAL_QUESTIONS, 
   INITIAL_NOTICES, 
@@ -39,7 +39,7 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -112,6 +112,13 @@ export default function App() {
     }
     return [];
   });
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => {
+    const saved = localStorage.getItem('orjon_payment_settings');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_PAYMENT_SETTINGS;
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -174,6 +181,8 @@ export default function App() {
   const [regGender, setRegGender] = useState('পুরুষ');
   const [regEducation, setRegEducation] = useState('');
   const [regAvatar, setRegAvatar] = useState('');
+  const [regErrors, setRegErrors] = useState<Record<string, string>>({});
+  const [regGeneralError, setRegGeneralError] = useState<string | null>(null);
 
   // Email Verification & Auto ID registration states
   const [regStep, setRegStep] = useState<'form' | 'verify' | 'success'>('form');
@@ -1411,30 +1420,40 @@ export default function App() {
     const pass = regPassword.trim();
     const confirmPass = regConfirmPassword.trim();
 
-    if (!name || !email || !pass || !confirmPass) {
-      alert('Please fill in all required fields (Name, Email, Password, and Confirm Password).');
+    const errors: Record<string, string> = {};
+
+    if (!name) {
+      errors.name = 'Full name is required.';
+    }
+
+    if (!email) {
+      errors.email = 'Email address is required.';
+    } else if (!email.includes('@') || !email.includes('.') || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address.';
+    } else if (users.some(u => u.email?.toLowerCase() === email.toLowerCase() && u.emailVerified)) {
+      errors.email = 'An account with this email address already exists.';
+    }
+
+    if (!pass) {
+      errors.password = 'Password is required.';
+    } else if (pass.length < 6) {
+      errors.password = 'Password must be at least 6 characters long.';
+    }
+
+    if (!confirmPass) {
+      errors.confirmPassword = 'Confirm password is required.';
+    } else if (pass && pass !== confirmPass) {
+      errors.confirmPassword = 'Passwords do not match.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setRegErrors(errors);
+      setRegGeneralError('Please correct the highlighted fields.');
       return;
     }
 
-    if (!email.includes('@') || !email.includes('.')) {
-      alert('Please enter a valid email address.');
-      return;
-    }
-
-    if (pass.length < 6) {
-      alert('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (pass !== confirmPass) {
-      alert('Password and Confirm Password do not match.');
-      return;
-    }
-
-    if (users.some(u => u.email?.toLowerCase() === email.toLowerCase() && u.emailVerified)) {
-      alert('An account with this email address already exists.');
-      return;
-    }
+    setRegErrors({});
+    setRegGeneralError(null);
 
     // User ID is created ONLY after email verification; phone is not set at registration
     const newTempUser: User = {
@@ -1464,13 +1483,19 @@ export default function App() {
     } catch (fbError: any) {
       console.warn("Firebase Auth Register warning:", fbError);
       if (fbError.code === 'auth/email-already-in-use') {
-        alert('An account with this email already exists in Firebase Auth.');
+        setRegErrors({ email: 'An account with this email already exists in Firebase Auth.' });
+        setRegGeneralError('An account with this email already exists.');
         return;
       } else if (fbError.code === 'auth/invalid-email') {
-        alert('Please enter a valid email address.');
+        setRegErrors({ email: 'Please enter a valid email address.' });
+        setRegGeneralError('Invalid email address format.');
         return;
       } else if (fbError.code === 'auth/weak-password') {
-        alert('Password must be at least 6 characters long.');
+        setRegErrors({ password: 'Password must be at least 6 characters long.' });
+        setRegGeneralError('Password is too weak (must be at least 6 characters).');
+        return;
+      } else {
+        setRegGeneralError(fbError.message || 'Registration failed. Please check your information and try again.');
         return;
       }
     }
@@ -1587,7 +1612,7 @@ export default function App() {
     e.preventDefault();
     const q = forgotQuery.trim().toLowerCase();
     if (!q) {
-      alert('অনুগ্রহ করে আপনার রেজিস্টার্ড ইমেইল, ইউজার আইডি অথবা মোবাইল নম্বর প্রদান করুন!');
+      alert('Please enter your registered email, User ID, or mobile number.');
       return;
     }
 
@@ -1598,7 +1623,7 @@ export default function App() {
     );
 
     if (!found) {
-      alert('প্রদানকৃত ইমেইল, আইডি বা মোবাইল নম্বরে কোনো নিবন্ধিত অ্যাকাউন্ট পাওয়া যায়নি!');
+      alert('No registered account found with the provided email, User ID, or mobile number.');
       return;
     }
 
@@ -1627,7 +1652,7 @@ export default function App() {
     if (!forgotUser) return;
 
     if (forgotOtpInput.trim() !== forgotOtpCode) {
-      alert('ভুল রিকভারি ওটিপি কোড! অনুগ্রহ করে ৬ ডিজিটের সঠিক কোডটি প্রদান করুন।');
+      alert('Invalid recovery code! Please enter the correct 6-digit code.');
       return;
     }
 
@@ -1656,12 +1681,12 @@ export default function App() {
     const confirmPass = confirmPassword.trim();
 
     if (pass.length < 6) {
-      alert('নতুন পাসওয়ার্ডটি নূন্যতম ৬ ডিজিটের হতে হবে!');
+      alert('New password must be at least 6 characters long.');
       return;
     }
 
     if (pass !== confirmPass) {
-      alert('নতুন পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না! আবার চেষ্টা করুন।');
+      alert('New password and confirm password do not match.');
       return;
     }
 
@@ -2163,6 +2188,23 @@ export default function App() {
       });
     }
     addAuditLog('কোর্স এনরোলমেন্ট', `শিক্ষার্থী: ${newEnrollment.userName} (${newEnrollment.userPhone}), কোর্স: ${newEnrollment.courseTitle}, পরিশোধিত: ৳${newEnrollment.finalPrice}`, 'other');
+  };
+
+  const handleUpdatePaymentSettings = (newSettings: PaymentSettings) => {
+    setPaymentSettings(newSettings);
+    localStorage.setItem('orjon_payment_settings', JSON.stringify(newSettings));
+    syncCollectionToFirestore('payment_settings', [newSettings], 'item');
+    addAuditLog('পেমেন্ট সেটিংস পরিবর্তন', `বিকাশ: ${newSettings.bkashNumber} (${newSettings.bkashType}), নগদ: ${newSettings.nagadNumber}, রকেট: ${newSettings.rocketNumber}`, 'update');
+  };
+
+  const handleDeleteEnrollment = (id: string) => {
+    setCourseEnrollments(prev => {
+      const updated = prev.filter(e => e.id !== id);
+      localStorage.setItem('orjon_course_enrollments', JSON.stringify(updated));
+      syncCollectionToFirestore('course_enrollments', updated, 'item');
+      return updated;
+    });
+    addAuditLog('এনরোলমেন্ট মুছে ফেলা (Delete Enrollment)', `ID: ${id}`, 'delete');
   };
 
   const handleSaveRoutine = (
@@ -2709,6 +2751,7 @@ export default function App() {
             courses={courses}
             coupons={coupons}
             courseEnrollments={courseEnrollments}
+            paymentSettings={paymentSettings}
             onEnrollCourse={handleEnrollCourse}
             attempts={attempts.filter(a => {
               if (currentUser.phone && a.userPhone === currentUser.phone) return true;
@@ -2751,6 +2794,9 @@ export default function App() {
             courses={courses}
             coupons={coupons}
             courseEnrollments={courseEnrollments}
+            paymentSettings={paymentSettings}
+            onUpdatePaymentSettings={handleUpdatePaymentSettings}
+            onDeleteEnrollment={handleDeleteEnrollment}
             users={users}
             attempts={attempts}
             categories={categories}
@@ -2847,6 +2893,8 @@ export default function App() {
                   onClick={() => {
                     setAuthScreen('login');
                     setLoginErrorMessage(null);
+                    setRegErrors({});
+                    setRegGeneralError(null);
                   }}
                   className={`flex-1 py-2 rounded-lg transition text-center ${
                     authScreen === 'login' ? 'bg-white text-indigo-700 shadow-xs' : 'text-gray-500 hover:text-indigo-700'
@@ -2859,6 +2907,8 @@ export default function App() {
                   onClick={() => {
                     setAuthScreen('register');
                     setLoginErrorMessage(null);
+                    setRegErrors({});
+                    setRegGeneralError(null);
                   }}
                   className={`flex-1 py-2 rounded-lg transition text-center ${
                     authScreen === 'register' ? 'bg-white text-indigo-700 shadow-xs' : 'text-gray-500 hover:text-indigo-700'
@@ -2964,89 +3014,150 @@ export default function App() {
                   
                   {/* STEP 1: REGISTRATION INPUT FORM */}
                   {regStep === 'form' && (
-                    <form onSubmit={handleUserRegister} className="flex flex-col gap-3">
+                    <form onSubmit={handleUserRegister} noValidate className="flex flex-col gap-3">
+                      {regGeneralError && (
+                        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs flex items-center gap-2 font-bold shadow-2xs">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{regGeneralError}</span>
+                        </div>
+                      )}
+
                       <div>
-                        <label className="block text-gray-600 mb-1 font-bold">পূর্ণ নাম (বাংলা অথবা ইংরেজি):</label>
+                        <label className={`block mb-1 font-bold transition-colors ${regErrors.name ? 'text-rose-700' : 'text-gray-600'}`}>
+                          Full Name:
+                        </label>
                         <input
                           type="text"
-                          required
                           value={regName}
-                          onChange={e => setRegName(e.target.value)}
-                          placeholder="যেমন: মোঃ সাকিব হাসান"
-                          className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                          onChange={e => {
+                            setRegName(e.target.value);
+                            if (regErrors.name) setRegErrors(prev => ({ ...prev, name: '' }));
+                            if (regGeneralError) setRegGeneralError(null);
+                          }}
+                          placeholder="e.g. John Doe / Sakib Hasan"
+                          className={`w-full px-3 py-2 border rounded-xl font-medium focus:outline-none transition ${
+                            regErrors.name
+                              ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500'
+                              : 'border-gray-300 text-gray-800 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500'
+                          }`}
                         />
+                        {regErrors.name && (
+                          <p className="text-rose-600 text-[11px] font-bold mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{regErrors.name}</span>
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-gray-600 mb-1 font-bold flex items-center gap-1">
-                          <Mail className="w-3.5 h-3.5 text-indigo-600" />
-                          ইমেইল এড্রেস (যাচাইকরণের জন্য প্রয়োজনীয়):
+                        <label className={`block mb-1 font-bold flex items-center gap-1 transition-colors ${regErrors.email ? 'text-rose-700' : 'text-gray-600'}`}>
+                          <Mail className={`w-3.5 h-3.5 ${regErrors.email ? 'text-rose-600' : 'text-indigo-600'}`} />
+                          Email Address (required for verification):
                         </label>
                         <input
                           type="email"
-                          required
                           value={regEmail}
-                          onChange={e => setRegEmail(e.target.value)}
-                          placeholder="যেমন: sakib@example.com"
-                          className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                          onChange={e => {
+                            setRegEmail(e.target.value);
+                            if (regErrors.email) setRegErrors(prev => ({ ...prev, email: '' }));
+                            if (regGeneralError) setRegGeneralError(null);
+                          }}
+                          placeholder="e.g. user@example.com"
+                          className={`w-full px-3 py-2 border rounded-xl font-medium focus:outline-none transition ${
+                            regErrors.email
+                              ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500'
+                              : 'border-gray-300 text-gray-800 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500'
+                          }`}
                         />
+                        {regErrors.email && (
+                          <p className="text-rose-600 text-[11px] font-bold mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{regErrors.email}</span>
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-gray-600 mb-1 font-bold flex items-center gap-1">
-                          <Lock className="w-3.5 h-3.5 text-indigo-600" />
-                          নতুন পাসওয়ার্ড:
+                        <label className={`block mb-1 font-bold flex items-center gap-1 transition-colors ${regErrors.password ? 'text-rose-700' : 'text-gray-600'}`}>
+                          <Lock className={`w-3.5 h-3.5 ${regErrors.password ? 'text-rose-600' : 'text-indigo-600'}`} />
+                          Password:
                         </label>
                         <div className="relative">
                           <input
                             type={showRegPassword ? 'text' : 'password'}
-                            required
                             value={regPassword}
-                            onChange={e => setRegPassword(e.target.value)}
-                            placeholder="নূন্যতম ৬ ডিজিট"
-                            className="w-full px-3 py-2 pr-10 border rounded-xl text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                            onChange={e => {
+                              setRegPassword(e.target.value);
+                              if (regErrors.password) setRegErrors(prev => ({ ...prev, password: '' }));
+                              if (regGeneralError) setRegGeneralError(null);
+                            }}
+                            placeholder="Minimum 6 characters"
+                            className={`w-full px-3 py-2 pr-10 border rounded-xl font-medium focus:outline-none transition ${
+                              regErrors.password
+                                ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500'
+                                : 'border-gray-300 text-gray-800 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500'
+                            }`}
                           />
                           <button
                             type="button"
                             onClick={() => setShowRegPassword(!showRegPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 focus:outline-none"
-                            title={showRegPassword ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                            title={showRegPassword ? 'Hide password' : 'Show password'}
                           >
                             {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
+                        {regErrors.password && (
+                          <p className="text-rose-600 text-[11px] font-bold mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{regErrors.password}</span>
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        <label className="block text-gray-600 mb-1 font-bold flex items-center gap-1">
-                          <Lock className="w-3.5 h-3.5 text-indigo-600" />
-                          পাসওয়ার্ড নিশ্চিতকরণ (Confirm Password):
+                        <label className={`block mb-1 font-bold flex items-center gap-1 transition-colors ${regErrors.confirmPassword ? 'text-rose-700' : 'text-gray-600'}`}>
+                          <Lock className={`w-3.5 h-3.5 ${regErrors.confirmPassword ? 'text-rose-600' : 'text-indigo-600'}`} />
+                          Confirm Password:
                         </label>
                         <div className="relative">
                           <input
                             type={showRegConfirmPassword ? 'text' : 'password'}
-                            required
                             value={regConfirmPassword}
-                            onChange={e => setRegConfirmPassword(e.target.value)}
-                            placeholder="পুনরায় একই পাসওয়ার্ড দিন"
-                            className="w-full px-3 py-2 pr-10 border rounded-xl text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                            onChange={e => {
+                              setRegConfirmPassword(e.target.value);
+                              if (regErrors.confirmPassword) setRegErrors(prev => ({ ...prev, confirmPassword: '' }));
+                              if (regGeneralError) setRegGeneralError(null);
+                            }}
+                            placeholder="Re-enter your password"
+                            className={`w-full px-3 py-2 pr-10 border rounded-xl font-medium focus:outline-none transition ${
+                              regErrors.confirmPassword
+                                ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500'
+                                : 'border-gray-300 text-gray-800 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500'
+                            }`}
                           />
                           <button
                             type="button"
                             onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 focus:outline-none"
-                            title={showRegConfirmPassword ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                            title={showRegConfirmPassword ? 'Hide password' : 'Show password'}
                           >
                             {showRegConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
+                        {regErrors.confirmPassword && (
+                          <p className="text-rose-600 text-[11px] font-bold mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{regErrors.confirmPassword}</span>
+                          </p>
+                        )}
                       </div>
 
                       <button
                         type="submit"
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl transition shadow mt-2 flex items-center justify-center gap-1.5"
                       >
-                        <Mail className="w-4 h-4" /> ইমেইল ভেরিফিকেশন ও রেজিস্ট্রেশন
+                        <Mail className="w-4 h-4" /> Register & Verify Email
                       </button>
                     </form>
                   )}
@@ -3057,18 +3168,18 @@ export default function App() {
                       <div className="bg-indigo-50/80 border border-indigo-100 p-4 rounded-2xl flex flex-col gap-2">
                         <div className="flex items-center gap-2">
                           <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
-                          <span className="font-extrabold text-indigo-950 text-xs">ফায়ারবেস ইমেইল ভেরিফিকেশন</span>
+                          <span className="font-extrabold text-indigo-950 text-xs">Email Verification</span>
                         </div>
                         <p className="text-gray-700 text-[11px] leading-relaxed font-medium">
-                          আপনার ইমেইল ঠিকানা: <span className="font-bold text-indigo-900 font-mono">{pendingUser?.email}</span>
+                          Verification email sent to: <span className="font-bold text-indigo-900 font-mono">{pendingUser?.email}</span>
                         </p>
                       </div>
 
                       {/* Auto ID Display Badge / Status */}
                       <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-amber-900">অটো ইউজার আইডি স্ট্যাটাস:</span>
+                        <span className="text-[11px] font-bold text-amber-900">User ID Status:</span>
                         <span className="font-bold font-mono text-amber-800 bg-white px-2.5 py-1 rounded-lg border border-amber-200 text-[11px] shadow-2xs">
-                          {pendingUser?.userId ? pendingUser.userId : 'ইমেইল ভেরিফাই করার পর আইডি তৈরি হবে'}
+                          {pendingUser?.userId ? pendingUser.userId : 'Will be generated after email verification'}
                         </span>
                       </div>
 
@@ -3081,7 +3192,7 @@ export default function App() {
                         }`}>
                           <div className="flex items-center gap-1.5 font-bold">
                             <Mail className="w-4 h-4 shrink-0 text-indigo-600" />
-                            <span>ইমেইল স্ট্যাটাস বার্তা:</span>
+                            <span>Email Status:</span>
                           </div>
                           <p className="leading-relaxed">{otpDeliveryMessage.text}</p>
                         </div>
@@ -3089,12 +3200,12 @@ export default function App() {
 
                       <div className="bg-gray-50 border border-gray-200 p-3.5 rounded-xl text-[11px] text-gray-600 space-y-1.5">
                         <div className="font-bold text-gray-800 flex items-center gap-1.5">
-                          <HelpCircle className="w-3.5 h-3.5 text-indigo-600" /> নির্দেশিকা:
+                          <HelpCircle className="w-3.5 h-3.5 text-indigo-600" /> Instructions:
                         </div>
                         <ol className="list-decimal list-inside space-y-1 pl-1">
-                          <li>আপনার ইমেইল ইনবক্স বা স্প্যাম (Spam) ফোল্ডার চেক করুন।</li>
-                          <li>ফায়ারবেস থেকে পাঠানো ভেরিফিকেশন লিঙ্কে ক্লিক করুন।</li>
-                          <li>লিঙ্কে ক্লিক করার পর নিচের 'আমি ইমেইল ভেরিফাই করেছি' বাটনে চাপ দিন।</li>
+                          <li>Check your email inbox or spam folder.</li>
+                          <li>Click on the verification link sent to your email.</li>
+                          <li>After clicking the link, click the "I Have Verified My Email" button below.</li>
                         </ol>
                       </div>
 
@@ -3104,7 +3215,7 @@ export default function App() {
                         disabled={isSendingOtp}
                         className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-xl transition shadow flex items-center justify-center gap-2"
                       >
-                        <CheckCircle2 className="w-4.5 h-4.5" /> আমি ইমেইল ভেরিফাই করেছি / স্ট্যাটাস চেক করুন
+                        <CheckCircle2 className="w-4.5 h-4.5" /> I Have Verified My Email / Check Status
                       </button>
 
                       <div className="flex justify-between items-center pt-1 text-[11px]">
@@ -3120,10 +3231,10 @@ export default function App() {
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin text-indigo-600' : ''}`} />
                           {isSendingOtp 
-                            ? 'ইমেইল পাঠানো হচ্ছে...' 
+                            ? 'Sending email...' 
                             : resendCooldown > 0 
-                              ? `পুনরায় ভেরিফিকেশন ইমেইল পাঠান (${resendCooldown}s)` 
-                              : 'পুনরায় ভেরিফিকেশন ইমেইল পাঠান'
+                              ? `Resend Verification Email (${resendCooldown}s)` 
+                              : 'Resend Verification Email'
                           }
                         </button>
                         <button
@@ -3131,7 +3242,7 @@ export default function App() {
                           onClick={() => setRegStep('form')}
                           className="text-gray-500 hover:underline font-semibold flex items-center gap-1"
                         >
-                          <ArrowLeft className="w-3 h-3" /> তথ্য সংশোধন করুন
+                          <ArrowLeft className="w-3 h-3" /> Edit Details
                         </button>
                       </div>
                     </div>
@@ -3142,47 +3253,47 @@ export default function App() {
                     <div className="flex flex-col gap-3.5 animate-fade-in text-xs">
                       <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
                         <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 রেজিস্ট্রেশন ও ইমেইল ভেরিফিকেশন সফল!</h3>
+                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 Registration & Email Verification Successful!</h3>
                         <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          আপনার ইমেইল অ্যাকাউন্টটি সফলভাবে যাচাইকৃত হয়েছে।
+                          Your email account has been verified successfully.
                         </p>
                       </div>
 
                       {/* Credentials Box */}
                       <div className="bg-gray-50 border border-gray-200 p-4 rounded-2xl space-y-2.5">
-                        <h4 className="font-bold text-gray-800 border-b pb-1.5 text-xs">আপনার অ্যাকাউন্ট ও লগইন তথ্য:</h4>
+                        <h4 className="font-bold text-gray-800 border-b pb-1.5 text-xs">Your Account & Login Credentials:</h4>
                         
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">🆔 অটো ইউজার আইডি:</span>
+                          <span className="text-gray-500 font-semibold">🆔 User ID:</span>
                           <span className="font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
                             {pendingUser?.userId}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">📧 নিবন্ধিত ইমেইল:</span>
+                          <span className="text-gray-500 font-semibold">📧 Registered Email:</span>
                           <span className="font-mono font-bold text-gray-800">
                             {pendingUser?.email}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">📱 মোবাইল নম্বর:</span>
+                          <span className="text-gray-500 font-semibold">📱 Mobile Number:</span>
                           <span className="font-mono font-bold text-gray-800">
-                            {pendingUser?.phone || 'যুক্ত করা হয়নি (প্রোফাইল থেকে যোগ করতে পারবেন)'}
+                            {pendingUser?.phone || 'Not added (can be added from profile)'}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold"> স্ট্যাটাস:</span>
+                          <span className="text-gray-500 font-semibold">Status:</span>
                           <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full">
-                            ✅ ইমেইল যাচাইকৃত
+                            ✅ Email Verified
                           </span>
                         </div>
                       </div>
 
                       <p className="text-[10px] text-gray-500 text-center font-medium leading-relaxed">
-                        💡 পরবর্তীতে লগইন করার সময় আপনি আপনার **অটো ইউজার আইডি** অথবা **ইমেইল** ব্যবহার করতে পারবেন (প্রোফাইল থেকে মোবাইল নম্বর যুক্ত করার পর মোবাইল নম্বর দিয়েও লগইন করা যাবে)।
+                        💡 For future logins, you can use your **User ID** or **Email** (after adding a mobile number in your profile, you can also log in with your phone number).
                       </p>
 
                       <button
@@ -3200,7 +3311,7 @@ export default function App() {
                         }}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
                       >
-                        <LogIn className="w-4 h-4" /> এখনই স্টুডেন্ট পোর্টালে লগইন করুন
+                        <LogIn className="w-4 h-4" /> Proceed to Student Portal Login
                       </button>
                     </div>
                   )}
@@ -3483,24 +3594,24 @@ export default function App() {
                       <div className="bg-indigo-50/80 border border-indigo-100 p-3.5 rounded-2xl flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-indigo-950 font-extrabold text-xs">
                           <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0" />
-                          পাসওয়ার্ড রিসেট ধাপ (১/৩)
+                          Password Reset (Step 1/3)
                         </div>
                         <p className="text-gray-600 text-[11px] leading-relaxed font-medium">
-                          আপনার একাউন্টের পাসওয়ার্ড রিসেট করতে রেজিস্টার্ড ইমেইল এড্রেস, অটো ইউজার আইডি অথবা মোবাইল নম্বর প্রদান করুন।
+                          Enter your registered email address, User ID, or mobile number to reset your password.
                         </p>
                       </div>
 
                       <div>
                         <label className="block text-gray-700 mb-1.5 font-bold flex items-center gap-1">
                           <Mail className="w-4 h-4 text-indigo-600" />
-                          রেজিস্টার্ড ইমেইল / ইউজার আইডি / মোবাইল নম্বর:
+                          Registered Email / User ID / Mobile Number:
                         </label>
                         <input
                           type="text"
                           required
                           value={forgotQuery}
                           onChange={e => setForgotQuery(e.target.value)}
-                          placeholder="যেমন: sakib@example.com / MDH-1029A / 017XXXXXXXX"
+                          placeholder="e.g. user@example.com / MDH-1029A / 017XXXXXXXX"
                           className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium bg-white"
                         />
                       </div>
@@ -3509,7 +3620,7 @@ export default function App() {
                         type="submit"
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5"
                       >
-                        <Mail className="w-4 h-4" /> রিকভারি ওটিপি পাঠান
+                        <Mail className="w-4 h-4" /> Send Recovery Code
                       </button>
 
                       <button
@@ -3517,7 +3628,7 @@ export default function App() {
                         onClick={() => setAuthScreen('login')}
                         className="text-gray-500 hover:text-gray-800 font-bold text-center text-[11px] flex items-center justify-center gap-1 pt-1"
                       >
-                        <ArrowLeft className="w-3.5 h-3.5" /> স্টুডেন্ট লগইন পাতায় ফিরে যান
+                        <ArrowLeft className="w-3.5 h-3.5" /> Back to Student Login
                       </button>
                     </form>
                   )}
@@ -3528,10 +3639,10 @@ export default function App() {
                       <div className="bg-indigo-50/80 border border-indigo-100 p-3.5 rounded-2xl flex flex-col gap-1.5">
                         <div className="flex items-center gap-1.5 text-indigo-950 font-extrabold text-xs">
                           <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                          পাসওয়ার্ড রিসেট ওটিপি যাচাই (২/৩)
+                          Verify Reset Code (Step 2/3)
                         </div>
                         <p className="text-gray-700 text-[11px] leading-relaxed font-medium">
-                          আপনার ইমেইল <span className="font-bold text-indigo-900 font-mono">{forgotUser?.email}</span>-এ ৬ ডিজিটের পাসওয়ার্ড রিসেট কোড পাঠানো হয়েছে।
+                          A 6-digit password reset code has been sent to your email: <span className="font-bold text-indigo-900 font-mono">{forgotUser?.email}</span>.
                         </p>
                       </div>
 
@@ -3544,21 +3655,21 @@ export default function App() {
                         }`}>
                           <div className="flex items-center gap-1.5 font-bold">
                             <Mail className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
-                            <span>Resend রিয়েল ইমেইল সার্ভিস:</span>
+                            <span>Email Delivery Status:</span>
                           </div>
                           <p className="leading-relaxed">{otpDeliveryMessage.text}</p>
                         </div>
                       )}
 
                       <div>
-                        <label className="block text-gray-700 mb-1.5 font-bold">৬ ডিজিটের ওটিপি কোডটি দিন:</label>
+                        <label className="block text-gray-700 mb-1.5 font-bold">Enter 6-Digit Verification Code:</label>
                         <input
                           type="text"
                           required
                           maxLength={6}
                           value={forgotOtpInput}
                           onChange={e => setForgotOtpInput(e.target.value)}
-                          placeholder="যেমন: 839201"
+                          placeholder="e.g. 839201"
                           className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-center text-lg font-mono font-bold tracking-widest text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
                         />
                       </div>
@@ -3568,7 +3679,7 @@ export default function App() {
                         disabled={isSendingOtp}
                         className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-emerald-100 flex items-center justify-center gap-1.5"
                       >
-                        <ShieldCheck className="w-4 h-4" /> ওটিপি যাচাই করুন
+                        <ShieldCheck className="w-4 h-4" /> Verify Code
                       </button>
 
                       <div className="flex justify-between items-center text-[11px] pt-1">
@@ -3584,10 +3695,10 @@ export default function App() {
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin text-indigo-600' : ''}`} />
                           {isSendingOtp 
-                            ? 'ইমেইল পাঠানো হচ্ছে...' 
+                            ? 'Sending email...' 
                             : resendCooldown > 0 
-                              ? `কোড পুনরায় পাঠান (${resendCooldown}s)` 
-                              : 'ওটিপি কোড পুনরায় পাঠান'
+                              ? `Resend Code (${resendCooldown}s)` 
+                              : 'Resend Verification Code'
                           }
                         </button>
                         <button
@@ -3595,7 +3706,7 @@ export default function App() {
                           onClick={() => setForgotStep('email')}
                           className="text-gray-500 hover:underline font-semibold flex items-center gap-1"
                         >
-                          <ArrowLeft className="w-3 h-3" /> ইমেইল পরিবর্তন করুন
+                          <ArrowLeft className="w-3 h-3" /> Change Email / ID
                         </button>
                       </div>
                     </form>
@@ -3607,33 +3718,33 @@ export default function App() {
                       <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-emerald-950 font-extrabold text-xs">
                           <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                          নতুন পাসওয়ার্ড সেট করুন (৩/৩)
+                          Set New Password (Step 3/3)
                         </div>
                         <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          শিক্ষার্থী: <span className="font-bold">{forgotUser?.name}</span> ({forgotUser?.userId})
+                          Student: <span className="font-bold">{forgotUser?.name}</span> ({forgotUser?.userId})
                         </p>
                       </div>
 
                       <div>
-                        <label className="block text-gray-700 mb-1 font-bold">নতুন পাসওয়ার্ড (নূন্যতম ৬ ডিজিট):</label>
+                        <label className="block text-gray-700 mb-1 font-bold">New Password (Minimum 6 characters):</label>
                         <input
                           type="password"
                           required
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
-                          placeholder="নতুন পাসওয়ার্ড লিখুন"
+                          placeholder="Enter new password"
                           className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-gray-700 mb-1 font-bold">নতুন পাসওয়ার্ড পুনরায় নিশ্চিত করুন:</label>
+                        <label className="block text-gray-700 mb-1 font-bold">Confirm New Password:</label>
                         <input
                           type="password"
                           required
                           value={confirmPassword}
                           onChange={e => setConfirmPassword(e.target.value)}
-                          placeholder="পুনরায় নতুন পাসওয়ার্ড লিখুন"
+                          placeholder="Re-enter new password"
                           className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         />
                       </div>
@@ -3642,7 +3753,7 @@ export default function App() {
                         type="submit"
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
                       >
-                        <CheckCircle2 className="w-4 h-4" /> পাসওয়ার্ড পরিবর্তন সম্পন্ন করুন
+                        <CheckCircle2 className="w-4 h-4" /> Complete Password Reset
                       </button>
                     </form>
                   )}
@@ -3652,20 +3763,20 @@ export default function App() {
                     <div className="flex flex-col gap-3.5 text-xs">
                       <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
                         <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে!</h3>
+                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 Password Changed Successfully!</h3>
                         <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          আপনার অ্যাকাউন্টের জন্য নতুন পাসওয়ার্ড সংরক্ষণ করা হয়েছে।
+                          Your new password has been saved for your account.
                         </p>
                       </div>
 
                       <div className="bg-gray-50 border border-gray-200 p-4 rounded-2xl space-y-2">
-                        <h4 className="font-bold text-gray-800 border-b pb-1 text-xs">আপনার লগইন বিবরণী:</h4>
+                        <h4 className="font-bold text-gray-800 border-b pb-1 text-xs">Your Account & Login Details:</h4>
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">🆔 অটো ইউজার আইডি:</span>
+                          <span className="text-gray-500 font-semibold">🆔 User ID:</span>
                           <span className="font-mono font-extrabold text-indigo-700">{forgotUser?.userId}</span>
                         </div>
                         <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">📧 নিবন্ধিত ইমেইল:</span>
+                          <span className="text-gray-500 font-semibold">📧 Registered Email:</span>
                           <span className="font-mono font-bold text-gray-800">{forgotUser?.email}</span>
                         </div>
                       </div>
@@ -3682,7 +3793,7 @@ export default function App() {
                         }}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5"
                       >
-                        <LogIn className="w-4 h-4" /> নতুন পাসওয়ার্ড দিয়ে লগইন করুন
+                        <LogIn className="w-4 h-4" /> Log In with New Password
                       </button>
                     </div>
                   )}

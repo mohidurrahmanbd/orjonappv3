@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, formatBengaliDate } from '../types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../types';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -19,7 +19,12 @@ import CircularProgressBar from './CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
 import CourseEnrollmentModal from './CourseEnrollmentModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
-import { calculateRoutineReadingProgress } from '../lib/readingProgress';
+import { 
+  calculateRoutineReadingProgress, 
+  calculateQuestionsReadingProgress, 
+  getUserAllReadQuestionIds, 
+  markUserQuestionsAsRead 
+} from '../lib/readingProgress';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -237,6 +242,7 @@ interface UserPortalProps {
   courses?: Course[];
   coupons?: Coupon[];
   courseEnrollments?: CourseEnrollment[];
+  paymentSettings?: PaymentSettings;
   onEnrollCourse?: (enrollment: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => void;
   attempts: Attempt[];
   allAttempts?: Attempt[];
@@ -403,6 +409,7 @@ export default function UserPortal({
   courses = [],
   coupons = [],
   courseEnrollments = [],
+  paymentSettings,
   onEnrollCourse,
   attempts = [],
   allAttempts = [],
@@ -771,6 +778,50 @@ export default function UserPortal({
   const [flagCommentText, setFlagCommentText] = useState('');
   const [userExplModalQ, setUserExplModalQ] = useState<Question | null>(null);
   const [userExplText, setUserExplText] = useState('');
+
+  // Reading Progress State & Listener for Hierarchy Cards
+  const [readQuestionsTick, setReadQuestionsTick] = useState(0);
+
+  useEffect(() => {
+    const handleProgressUpdate = () => {
+      setReadQuestionsTick(t => t + 1);
+    };
+    window.addEventListener('mcq_reading_progress_updated', handleProgressUpdate);
+    window.addEventListener('routine_reading_progress_updated', handleProgressUpdate);
+    return () => {
+      window.removeEventListener('mcq_reading_progress_updated', handleProgressUpdate);
+      window.removeEventListener('routine_reading_progress_updated', handleProgressUpdate);
+    };
+  }, []);
+
+  const userReadSet = useMemo(() => {
+    const userKey = user.phone || user.email || user.name || 'guest';
+    return new Set(getUserAllReadQuestionIds(userKey));
+  }, [user.phone, user.email, user.name, readQuestionsTick]);
+
+  // Auto-record reading progress when questions are viewed in Reader mode
+  useEffect(() => {
+    if (!readerModeActive || !readerQuestions || readerQuestions.length === 0) return;
+    const userKey = user.phone || user.email || user.name || 'guest';
+    const filteredReaderQuestions = readerQuestions.filter(q => {
+      if (readerSource === 'job' && readerCategoryFilter !== 'সব প্রশ্ন') {
+        const normFilter = readerCategoryFilter.trim().toLowerCase();
+        const matchCsv = q.csvCategory && q.csvCategory.trim().toLowerCase() === normFilter;
+        const matchCat = q.category && q.category.trim().toLowerCase() === normFilter;
+        const matchCats = q.categories && q.categories.some(c => c.trim().toLowerCase() === normFilter);
+        return matchCsv || matchCat || matchCats;
+      }
+      return true;
+    });
+    const pageSize = 20;
+    const totalPages = Math.ceil(filteredReaderQuestions.length / pageSize) || 1;
+    const currentPage = Math.min(Math.max(1, readerPage), totalPages);
+    const startIndex = (currentPage - 1) * pageSize;
+    const pageQuestions = filteredReaderQuestions.slice(startIndex, startIndex + pageSize);
+    if (pageQuestions.length > 0) {
+      markUserQuestionsAsRead(userKey, pageQuestions.map(q => String(q.id)));
+    }
+  }, [readerModeActive, readerPage, readerQuestions, readerSource, readerCategoryFilter, user.phone, user.email, user.name]);
 
   // Challenge Modal State
   const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
@@ -3188,6 +3239,7 @@ export default function UserPortal({
             course={selectedCourseForEnrollment}
             user={user}
             coupons={coupons}
+            paymentSettings={paymentSettings}
             onEnrollSuccess={handleEnrollSuccess}
           />
         )}
@@ -3964,23 +4016,33 @@ export default function UserPortal({
                 const idx = startIndex + i;
                 const selectedOpt = readerSelectedAnswers[q.id];
                 const hasSelected = !!selectedOpt;
+                const existingBookmark = bookmarks.find(b => b.questionId === q.id);
+                const isBookmarked = !!existingBookmark;
                 
                 return (
                   <div key={q.id} className="p-2.5 sm:p-3 bg-gray-50 rounded-xl border border-gray-100 relative text-xs shadow-xs">
-                    {/* Save bookmark option */}
+                    {/* Save / Remove bookmark option */}
                     <button 
-                      onClick={() => handleOpenBookmarkDialog(q.id)}
-                      className={`absolute top-3 right-3 font-bold flex items-center gap-1 text-[10px] ${
-                        bookmarks.some(b => b.questionId === q.id)
-                          ? 'text-yellow-600' 
-                          : 'text-gray-400 hover:text-amber-500'
+                      onClick={() => {
+                        if (isBookmarked && existingBookmark) {
+                          onRemoveBookmark(existingBookmark.id);
+                        } else {
+                          handleOpenBookmarkDialog(q.id);
+                        }
+                      }}
+                      className={`absolute top-3 right-3 font-bold flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-lg border transition shadow-2xs cursor-pointer ${
+                        isBookmarked
+                          ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300' 
+                          : 'text-gray-400 border-transparent hover:text-amber-600 hover:bg-white hover:border-amber-200'
                       }`}
+                      title={isBookmarked ? 'বুকমার্ক বাতিল করতে ক্লিক করুন' : 'বুকমার্কে সংরক্ষণ করুন'}
                     >
                       <BookmarkIcon className={`w-3.5 h-3.5 ${
-                        bookmarks.some(b => b.questionId === q.id)
-                          ? 'fill-yellow-300 text-yellow-500' 
+                        isBookmarked
+                          ? 'fill-amber-500 text-amber-500' 
                           : ''
-                      }`} /> {bookmarks.some(b => b.questionId === q.id) ? 'বুকমার্কড' : 'বুকমার্ক'}
+                      }`} /> 
+                      <span>{isBookmarked ? 'বুকমার্কড' : 'বুকমার্ক'}</span>
                     </button>
 
                     <h4 className="font-extrabold text-gray-900 leading-relaxed mb-3 pr-20">
@@ -4452,7 +4514,9 @@ export default function UserPortal({
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                               {categoryItems.map((item, idx) => {
-                                const qCount = getQuestionsForPrepNode(item, false).length;
+                                const catQuestions = getQuestionsForPrepNode(item, false);
+                                const qCount = catQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, catQuestions, userReadSet);
                                 const subCount = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase()).length;
                                 const theme = getSubjectTheme(item);
                                 const targetSub = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
@@ -4472,9 +4536,18 @@ export default function UserPortal({
                                       <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg ${theme.bg} text-white flex items-center justify-center shadow-2xs shrink-0 group-hover:scale-105 transition-transform`}>
                                         {renderSubjectIcon(item, "w-4 h-4")}
                                       </div>
-                                      <span className={`text-[9px] sm:text-[9.5px] ${theme.badgeBg} font-extrabold px-1.5 py-0.5 rounded-md border shrink-0`}>
-                                        {subCount.toLocaleString('bn-BD')} টি উপ-অধ্যায়
-                                      </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={24}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[7px]"
+                                          title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                        />
+                                        <span className={`text-[9px] sm:text-[9.5px] ${theme.badgeBg} font-extrabold px-1.5 py-0.5 rounded-md border shrink-0`}>
+                                          {subCount.toLocaleString('bn-BD')} টি
+                                        </span>
+                                      </div>
                                     </div>
 
                                     <div className="my-0.5">
@@ -4518,7 +4591,9 @@ export default function UserPortal({
                                 const subObj = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
                                 const catObj = categories.find(c => c.name.trim().toLowerCase() === item.trim().toLowerCase());
                                 const itemSubHeading = subObj?.subHeading || catObj?.subHeading;
-                                const qCount = getQuestionsForPrepNode(item, false).length;
+                                const leafQuestions = getQuestionsForPrepNode(item, false);
+                                const qCount = leafQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, leafQuestions, userReadSet);
                                 const theme = getSubjectTheme(item);
 
                                 return (
@@ -4574,15 +4649,34 @@ export default function UserPortal({
                                         )}
                                       </div>
                                     </div>
-                                    {user.isGuest ? (
-                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                        🔒 আনলক করুন
-                                      </span>
-                                    ) : showMcqCount ? (
-                                      <span className="text-[10px] bg-slate-900 text-white font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs">
-                                        {qCount.toLocaleString('bn-BD')} MCQ
-                                      </span>
-                                    ) : null}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div 
+                                        className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                                        title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                      >
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={24}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[7px]"
+                                        />
+                                        <div className="text-right hidden sm:block">
+                                          <span className="text-[8px] text-slate-500 font-bold block leading-none">পড়া হয়েছে</span>
+                                          <span className="text-[9.5px] font-black text-slate-900 leading-tight">
+                                            {toBengaliDigits(progress.percentage)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {user.isGuest ? (
+                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                          🔒 আনলক করুন
+                                        </span>
+                                      ) : showMcqCount ? (
+                                        <span className="text-[10px] bg-slate-900 text-white font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs">
+                                          {qCount.toLocaleString('bn-BD')} MCQ
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -4703,7 +4797,9 @@ export default function UserPortal({
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                               {categoryItems.map((item, idx) => {
-                                const qCount = getQuestionsForJobNode(item, false).length;
+                                const catQuestions = getQuestionsForJobNode(item, false);
+                                const qCount = catQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, catQuestions, userReadSet);
                                 const subCount = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase()).length;
                                 const theme = getSubjectTheme(item);
                                 const targetSub = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
@@ -4723,9 +4819,18 @@ export default function UserPortal({
                                       <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
                                         {renderSubjectIcon(item, "w-3.5 h-3.5")}
                                       </div>
-                                      <span className="text-[8.5px] bg-emerald-50 text-emerald-700 font-extrabold px-1 py-0.5 rounded border border-emerald-150 shrink-0">
-                                        {subCount.toLocaleString('bn-BD')} টি উপ-ধাপ
-                                      </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={22}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[6.5px]"
+                                          title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                        />
+                                        <span className="text-[8.5px] bg-emerald-50 text-emerald-700 font-extrabold px-1 py-0.5 rounded border border-emerald-150 shrink-0">
+                                          {subCount.toLocaleString('bn-BD')} টি
+                                        </span>
+                                      </div>
                                     </div>
 
                                     <div className="my-0">
@@ -4767,7 +4872,9 @@ export default function UserPortal({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
                               {leafItems.map((item, idx) => {
                                 const subObj = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
-                                const qCount = getQuestionsForJobNode(item, false).length;
+                                const leafQuestions = getQuestionsForJobNode(item, false);
+                                const qCount = leafQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, leafQuestions, userReadSet);
 
                                 return (
                                   <button
@@ -4820,15 +4927,34 @@ export default function UserPortal({
                                         )}
                                       </div>
                                     </div>
-                                    {user.isGuest ? (
-                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                        🔒 আনলক করুন
-                                      </span>
-                                    ) : showMcqCount ? (
-                                      <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
-                                        {qCount.toLocaleString('bn-BD')} MCQ
-                                      </span>
-                                    ) : null}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div 
+                                        className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                                        title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                      >
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={24}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[7px]"
+                                        />
+                                        <div className="text-right hidden sm:block">
+                                          <span className="text-[8px] text-slate-500 font-bold block leading-none">পড়া হয়েছে</span>
+                                          <span className="text-[9.5px] font-black text-slate-900 leading-tight">
+                                            {toBengaliDigits(progress.percentage)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {user.isGuest ? (
+                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                          🔒 আনলক করুন
+                                        </span>
+                                      ) : showMcqCount ? (
+                                        <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
+                                          {qCount.toLocaleString('bn-BD')} MCQ
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -4949,7 +5075,9 @@ export default function UserPortal({
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                               {categoryItems.map((item, idx) => {
-                                const qCount = getQuestionsForYearJobNode(item, false).length;
+                                const catQuestions = getQuestionsForYearJobNode(item, false);
+                                const qCount = catQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, catQuestions, userReadSet);
                                 const subCount = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase()).length;
 
                                 return (
@@ -4965,9 +5093,18 @@ export default function UserPortal({
                                       <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-amber-600 text-white flex items-center justify-center shadow-2xs shrink-0">
                                         {renderSubjectIcon(item, "w-3.5 h-3.5")}
                                       </div>
-                                      <span className="text-[8.5px] bg-amber-50 text-amber-800 font-extrabold px-1 py-0.5 rounded border border-amber-200 shrink-0">
-                                        {subCount.toLocaleString('bn-BD')} টি ধাপ
-                                      </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={22}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[6.5px]"
+                                          title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                        />
+                                        <span className="text-[8.5px] bg-amber-50 text-amber-800 font-extrabold px-1 py-0.5 rounded border border-amber-200 shrink-0">
+                                          {subCount.toLocaleString('bn-BD')} টি
+                                        </span>
+                                      </div>
                                     </div>
 
                                     <div className="my-0">
@@ -5004,7 +5141,9 @@ export default function UserPortal({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
                               {leafItems.map((item, idx) => {
                                 const subObj = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
-                                const qCount = getQuestionsForYearJobNode(item, false).length;
+                                const leafQuestions = getQuestionsForYearJobNode(item, false);
+                                const qCount = leafQuestions.length;
+                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, leafQuestions, userReadSet);
 
                                 return (
                                   <button
@@ -5054,15 +5193,34 @@ export default function UserPortal({
                                         )}
                                       </div>
                                     </div>
-                                    {user.isGuest ? (
-                                      <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                        🔒 আনলক করুন
-                                      </span>
-                                    ) : showMcqCount ? (
-                                      <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
-                                        {qCount.toLocaleString('bn-BD')} MCQ
-                                      </span>
-                                    ) : null}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div 
+                                        className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-2 py-1 rounded-xl shadow-2xs shrink-0"
+                                        title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
+                                      >
+                                        <CircularProgressBar
+                                          percentage={progress.percentage}
+                                          size={24}
+                                          strokeWidth={2.5}
+                                          textSizeClass="text-[7px]"
+                                        />
+                                        <div className="text-right hidden sm:block">
+                                          <span className="text-[8px] text-slate-500 font-bold block leading-none">পড়া হয়েছে</span>
+                                          <span className="text-[9.5px] font-black text-slate-900 leading-tight">
+                                            {toBengaliDigits(progress.percentage)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {user.isGuest ? (
+                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
+                                          🔒 আনলক করুন
+                                        </span>
+                                      ) : showMcqCount ? (
+                                        <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
+                                          {qCount.toLocaleString('bn-BD')} MCQ
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -5179,11 +5337,12 @@ export default function UserPortal({
                                   <button 
                                     onClick={() => {
                                       onRemoveBookmark(b.id);
-                                      alert('বুকমার্ক সফলভাবে মুছে ফেলা হয়েছে।');
                                     }}
-                                    className="absolute top-1.5 right-1 text-rose-500 hover:text-rose-700 hover:underline text-[10px] font-bold"
+                                    className="absolute top-1.5 right-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 hover:border-rose-300 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                    title="বুকমার্ক থেকে মুছুন"
                                   >
-                                    রিমুভ 🗑️
+                                    <BookmarkIcon className="w-3 h-3 fill-rose-500 text-rose-500" />
+                                    <span>রিমুভ</span>
                                   </button>
 
                                   <h5 className="font-bold text-gray-900 leading-relaxed pr-16 mb-2">
@@ -6185,24 +6344,19 @@ export default function UserPortal({
                           </span>
                         </div>
 
-                        {/* Enrollment CTA inside Single Course View */}
-                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            {coupons && coupons.some(c => c.isActive) && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl">
-                                <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                                ডিসকাউন্ট কুপন কোড ব্যবহার করে ছাড় পান!
-                              </span>
-                            )}
-                          </div>
+                        {/* Enrollment CTA inside Single Course View (only when not enrolled) */}
+                        {!isEnrolled && (
+                          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {coupons && coupons.some(c => c.isActive) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl">
+                                  <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                                  ডিসকাউন্ট কুপন কোড ব্যবহার করে ছাড় পান!
+                                </span>
+                              )}
+                            </div>
 
-                          <div className="flex items-center gap-2">
-                            {isEnrolled ? (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                                আপনি এই কোর্সে এনরোলড
-                              </span>
-                            ) : (
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => setSelectedCourseForEnrollment(selectedCourse)}
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl transition shadow flex items-center gap-2 text-xs"
@@ -6210,9 +6364,9 @@ export default function UserPortal({
                                 <GraduationCap className="w-4 h-4 text-indigo-200" />
                                 কোর্সে এনরোল করুন {selectedCourse.price ? `(৳${selectedCourse.price})` : '(ফ্রি)'}
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
 
                       {/* Course Routines List */}

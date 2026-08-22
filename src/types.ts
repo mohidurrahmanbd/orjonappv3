@@ -120,6 +120,27 @@ export interface CourseEnrollment {
   paymentStatus: 'paid' | 'free' | 'pending';
 }
 
+export interface PaymentSettings {
+  bkashNumber: string;
+  bkashType: 'Personal' | 'Merchant' | 'Agent';
+  nagadNumber: string;
+  nagadType: 'Personal' | 'Merchant' | 'Agent';
+  rocketNumber: string;
+  rocketType: 'Personal' | 'Merchant' | 'Agent';
+  instructions?: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  bkashNumber: '01711223344',
+  bkashType: 'Personal',
+  nagadNumber: '01811223344',
+  nagadType: 'Personal',
+  rocketNumber: '01911223344',
+  rocketType: 'Personal',
+  instructions: 'টাকা পাঠানোর পর ট্রানজেকশন আইডি (TrxID) এবং আপনার মোবাইল নম্বর নিচে প্রদান করুন।'
+};
+
 export interface Course {
   id: string;
   title: string;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Course, Coupon, CourseEnrollment, User } from '../types';
+import { Course, Coupon, CourseEnrollment, User, PaymentSettings, DEFAULT_PAYMENT_SETTINGS } from '../types';
 import { 
   X, CheckCircle2, Tag, Percent, Sparkles, ShieldCheck, 
   AlertCircle, GraduationCap, ArrowRight, Wallet, Check, Copy
@@ -12,6 +12,7 @@ interface CourseEnrollmentModalProps {
   course: Course;
   user: User;
   coupons?: Coupon[];
+  paymentSettings?: PaymentSettings;
   onEnrollSuccess: (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => void;
 }
 
@@ -21,6 +22,7 @@ export default function CourseEnrollmentModal({
   course,
   user,
   coupons = [],
+  paymentSettings = DEFAULT_PAYMENT_SETTINGS,
   onEnrollSuccess
 }: CourseEnrollmentModalProps) {
   const [couponInput, setCouponInput] = useState('');
@@ -32,6 +34,7 @@ export default function CourseEnrollmentModal({
   const [paymentMethod, setPaymentMethod] = useState<'bkash' | 'nagad' | 'rocket' | 'free'>('bkash');
   const [senderPhone, setSenderPhone] = useState(user.phone || '');
   const [trxId, setTrxId] = useState('');
+  const [copiedNumber, setCopiedNumber] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Price calculations
@@ -99,8 +102,42 @@ export default function CourseEnrollmentModal({
     setCouponSuccess(null);
   };
 
+  const activeReceiveNumber = useMemo(() => {
+    if (paymentMethod === 'bkash') return paymentSettings.bkashNumber || '01711223344';
+    if (paymentMethod === 'nagad') return paymentSettings.nagadNumber || '01811223344';
+    if (paymentMethod === 'rocket') return paymentSettings.rocketNumber || '01911223344';
+    return '';
+  }, [paymentMethod, paymentSettings]);
+
+  const activeAccountType = useMemo(() => {
+    if (paymentMethod === 'bkash') return paymentSettings.bkashType || 'Personal';
+    if (paymentMethod === 'nagad') return paymentSettings.nagadType || 'Personal';
+    if (paymentMethod === 'rocket') return paymentSettings.rocketType || 'Personal';
+    return 'Personal';
+  }, [paymentMethod, paymentSettings]);
+
+  const handleCopyNumber = () => {
+    if (!activeReceiveNumber) return;
+    const cleanNumber = activeReceiveNumber.replace(/\s+/g, '');
+    navigator.clipboard.writeText(cleanNumber);
+    setCopiedNumber(true);
+    setTimeout(() => setCopiedNumber(false), 2000);
+  };
+
   const handleConfirmEnrollment = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!isFree) {
+      if (!senderPhone.trim()) {
+        alert('অনুগ্রহ করে প্রেরকের মোবাইল নম্বর প্রদান করুন!');
+        return;
+      }
+      if (!trxId.trim()) {
+        alert('অনুগ্রহ করে ট্রানজেকশন আইডি (TrxID) প্রদান করুন!');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'> = {
@@ -335,14 +372,57 @@ export default function CourseEnrollmentModal({
                 </div>
 
                 {/* Instruction Box */}
-                <div className="bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl text-[11px] text-amber-900 leading-relaxed space-y-1">
-                  <p className="font-bold flex items-center gap-1 text-amber-950">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
-                    পেমেন্ট নির্দেশনা ({paymentMethod.toUpperCase()} Personal/Merchant):
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200/90 p-3.5 rounded-2xl text-[11px] text-amber-950 leading-relaxed space-y-2">
+                  <div className="flex items-center justify-between gap-2 border-b border-amber-200/60 pb-2">
+                    <p className="font-extrabold flex items-center gap-1.5 text-amber-950 text-xs">
+                      <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>{paymentMethod.toUpperCase()} পেমেন্ট গ্রহণ নম্বর:</span>
+                    </p>
+                    <span className="bg-amber-200/70 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-md uppercase">
+                      {activeAccountType}
+                    </span>
+                  </div>
+
+                  {/* Payment Number Highlight & Copy */}
+                  <div className="flex items-center justify-between bg-white/90 border border-amber-200 px-3 py-2 rounded-xl">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-slate-500">টাকা পাঠানোর নম্বর ({activeAccountType}):</span>
+                      <span className="font-mono text-sm font-black text-slate-900 tracking-wider">
+                        {activeReceiveNumber}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyNumber}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+                        copiedNumber 
+                          ? 'bg-emerald-600 text-white' 
+                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                      }`}
+                    >
+                      {copiedNumber ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>কপি হয়েছে!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>নম্বর কপি</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <p className="text-slate-700 text-[11px]">
+                    মোট <strong className="text-indigo-950 font-black">৳{finalPrice}</strong> টাকা উপরের নম্বরে <strong>Send Money / Payment</strong> করুন এবং নিচে প্রেরকের নম্বর ও ট্রানজেকশন আইডি (TrxID) লিখুন।
                   </p>
-                  <p>
-                    মোট <strong>৳{finalPrice}</strong> টাকা <strong>০১৭১১-২২৩৩৪৪</strong> নম্বরে Send Money/Payment করুন এবং নিচের বক্সে TrxID লিখুন।
-                  </p>
+
+                  {paymentSettings.instructions && (
+                    <p className="text-[10.5px] text-amber-800 italic bg-amber-100/40 p-2 rounded-lg border border-amber-200/40">
+                      💡 নোট: {paymentSettings.instructions}
+                    </p>
+                  )}
                 </div>
 
                 {/* Sender Phone & TrxID */}

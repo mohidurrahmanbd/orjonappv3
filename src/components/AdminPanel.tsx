@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, formatBengaliDate, formatBengaliDateTime } from '../types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime } from '../types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
   History, FileText, CheckCircle2, Sparkles, Menu, ChevronDown, ChevronRight, ShieldAlert, AlertTriangle,
   Download, Database, FileJson, RotateCcw, HardDrive, GraduationCap,
-  Cloud, UploadCloud, ShieldCheck, Tag, Percent, DollarSign, Copy, Check, Eye
+  Cloud, UploadCloud, ShieldCheck, Tag, Percent, DollarSign, Copy, Check, Eye,
+  Wallet, Search, Filter, Phone, Mail, UserCheck, CreditCard, Printer, FileSpreadsheet, ExternalLink, ArrowUpDown
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as ReactWindow from 'react-window';
@@ -70,9 +71,12 @@ interface AdminPanelProps {
   onDeleteCourse?: (id: string) => void;
   coupons?: Coupon[];
   courseEnrollments?: CourseEnrollment[];
+  paymentSettings?: PaymentSettings;
   onSaveCoupon?: (coupon: Omit<Coupon, 'id' | 'createdAt'>) => void;
   onUpdateCoupon?: (id: string, updatedCoupon: Partial<Coupon>) => void;
   onDeleteCoupon?: (id: string) => void;
+  onUpdatePaymentSettings?: (settings: Partial<PaymentSettings>) => void;
+  onDeleteEnrollment?: (id: string) => void;
   onLogout: () => void;
   allowUserExplanation: boolean;
   onToggleUserExplanation: (allowed: boolean) => void;
@@ -202,9 +206,12 @@ export default function AdminPanel({
   onDeleteCourse,
   coupons = [],
   courseEnrollments = [],
+  paymentSettings = DEFAULT_PAYMENT_SETTINGS,
   onSaveCoupon,
   onUpdateCoupon,
   onDeleteCoupon,
+  onUpdatePaymentSettings,
+  onDeleteEnrollment,
   onLogout,
   allowUserExplanation,
   onToggleUserExplanation,
@@ -226,7 +233,7 @@ export default function AdminPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Course & Pricing Form States
-  const [courseSubTab, setCourseSubTab] = useState<'courses' | 'coupons' | 'enrollments'>('courses');
+  const [courseSubTab, setCourseSubTab] = useState<'courses' | 'coupons' | 'enrollments' | 'payment-settings'>('courses');
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [courseTitle, setCourseTitle] = useState('');
   const [courseDesc, setCourseDesc] = useState('');
@@ -237,6 +244,37 @@ export default function AdminPanel({
   const [courseStartDate, setCourseStartDate] = useState('');
   const [courseEndDate, setCourseEndDate] = useState('');
   const [routineCourseId, setRoutineCourseId] = useState('');
+
+  // Payment Receive Settings Form States
+  const [bkashNumber, setBkashNumber] = useState(paymentSettings?.bkashNumber || '01711223344');
+  const [bkashType, setBkashType] = useState<'Personal' | 'Merchant' | 'Agent'>(paymentSettings?.bkashType || 'Personal');
+  const [nagadNumber, setNagadNumber] = useState(paymentSettings?.nagadNumber || '01811223344');
+  const [nagadType, setNagadType] = useState<'Personal' | 'Merchant' | 'Agent'>(paymentSettings?.nagadType || 'Personal');
+  const [rocketNumber, setRocketNumber] = useState(paymentSettings?.rocketNumber || '01911223344');
+  const [rocketType, setRocketType] = useState<'Personal' | 'Merchant' | 'Agent'>(paymentSettings?.rocketType || 'Personal');
+  const [paymentInstructions, setPaymentInstructions] = useState(paymentSettings?.instructions || 'টাকা পাঠানোর পর ট্রানজেকশন আইডি (TrxID) এবং আপনার মোবাইল নম্বর নিচে প্রদান করুন।');
+  const [paymentSaveSuccess, setPaymentSaveSuccess] = useState(false);
+
+  // Sync payment settings when prop changes
+  useEffect(() => {
+    if (paymentSettings) {
+      setBkashNumber(paymentSettings.bkashNumber || '01711223344');
+      setBkashType(paymentSettings.bkashType || 'Personal');
+      setNagadNumber(paymentSettings.nagadNumber || '01811223344');
+      setNagadType(paymentSettings.nagadType || 'Personal');
+      setRocketNumber(paymentSettings.rocketNumber || '01911223344');
+      setRocketType(paymentSettings.rocketType || 'Personal');
+      setPaymentInstructions(paymentSettings.instructions || '');
+    }
+  }, [paymentSettings]);
+
+  // Enrollment Filter & Modal States
+  const [enrollmentSearch, setEnrollmentSearch] = useState('');
+  const [enrollmentCourseFilter, setEnrollmentCourseFilter] = useState('all');
+  const [enrollmentMethodFilter, setEnrollmentMethodFilter] = useState('all');
+  const [selectedEnrollmentForModal, setSelectedEnrollmentForModal] = useState<CourseEnrollment | null>(null);
+  const [selectedUserForProfileModal, setSelectedUserForProfileModal] = useState<{ enrollment: CourseEnrollment; user?: User } | null>(null);
+  const [copiedTrxId, setCopiedTrxId] = useState<string | null>(null);
 
   // Discount Coupon Form States
   const [couponCode, setCouponCode] = useState('');
@@ -346,6 +384,126 @@ export default function AdminPanel({
       setCouponExpiryDate('');
       setCouponIsActive(true);
     }
+  };
+
+  // Payment Settings Handlers
+  const handleSavePaymentSettingsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bkashNumber.trim() || !nagadNumber.trim() || !rocketNumber.trim()) {
+      showCustomAlert('ত্রুটি', 'অনুগ্রহ করে বিকাশ, নগদ এবং রকেট তিনটি পেমেন্ট নম্বরই প্রদান করুন!', 'error');
+      return;
+    }
+    const updated: PaymentSettings = {
+      bkashNumber: bkashNumber.trim(),
+      bkashType,
+      nagadNumber: nagadNumber.trim(),
+      nagadType,
+      rocketNumber: rocketNumber.trim(),
+      rocketType,
+      instructions: paymentInstructions.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    if (onUpdatePaymentSettings) {
+      onUpdatePaymentSettings(updated);
+    }
+    setPaymentSaveSuccess(true);
+    setTimeout(() => setPaymentSaveSuccess(false), 3000);
+    showCustomAlert('সফল!', 'পেমেন্ট গ্রহণ নম্বর ও নির্দেশনা সফলভাবে সেভ করা হয়েছে!', 'success');
+  };
+
+  // Filtered Course Enrollments Memo
+  const filteredEnrollments = useMemo(() => {
+    return (courseEnrollments || []).filter(enr => {
+      // Course filter
+      if (enrollmentCourseFilter !== 'all' && enr.courseId !== enrollmentCourseFilter) {
+        return false;
+      }
+      // Method filter
+      if (enrollmentMethodFilter !== 'all') {
+        const m = (enr.paymentMethod || '').toLowerCase();
+        if (enrollmentMethodFilter === 'free' && enr.finalPrice !== 0 && m !== 'free') return false;
+        if (enrollmentMethodFilter !== 'free' && !m.includes(enrollmentMethodFilter)) return false;
+      }
+      // Search query
+      if (enrollmentSearch.trim()) {
+        const q = enrollmentSearch.toLowerCase().trim();
+        const matchName = (enr.userName || '').toLowerCase().includes(q);
+        const matchId = (enr.userId || '').toLowerCase().includes(q);
+        const matchEmail = (enr.userEmail || '').toLowerCase().includes(q);
+        const matchPhone = (enr.userPhone || '').toLowerCase().includes(q);
+        const matchCourse = (enr.courseTitle || '').toLowerCase().includes(q);
+        const matchTrx = (enr.trxId || '').toLowerCase().includes(q);
+        const matchCoupon = (enr.couponCode || '').toLowerCase().includes(q);
+        return matchName || matchId || matchEmail || matchPhone || matchCourse || matchTrx || matchCoupon;
+      }
+      return true;
+    });
+  }, [courseEnrollments, enrollmentCourseFilter, enrollmentMethodFilter, enrollmentSearch]);
+
+  const handleExportEnrollmentsCSV = () => {
+    if (!filteredEnrollments || filteredEnrollments.length === 0) {
+      showCustomAlert('সতর্কতা', 'ডাউনলোড করার মতো কোনো এনরোলমেন্ট রেকর্ড পাওয়া যায়নি!', 'warning');
+      return;
+    }
+    const headers = [
+      'Student Name',
+      'User ID',
+      'Email',
+      'Phone',
+      'Course Title',
+      'Course ID',
+      'Original Price (BDT)',
+      'Discount %',
+      'Discount Amount (BDT)',
+      'Final Price (BDT)',
+      'Coupon Code',
+      'Payment Method',
+      'Transaction ID (TrxID)',
+      'Payment Status',
+      'Enrolled At'
+    ];
+    const rows = filteredEnrollments.map(e => [
+      `"${(e.userName || '').replace(/"/g, '""')}"`,
+      `"${(e.userId || '').replace(/"/g, '""')}"`,
+      `"${(e.userEmail || '').replace(/"/g, '""')}"`,
+      `"${(e.userPhone || '').replace(/"/g, '""')}"`,
+      `"${(e.courseTitle || '').replace(/"/g, '""')}"`,
+      `"${(e.courseId || '').replace(/"/g, '""')}"`,
+      e.originalPrice || 0,
+      e.discountPercent || 0,
+      e.discountAmount || 0,
+      e.finalPrice || 0,
+      `"${(e.couponCode || '').replace(/"/g, '""')}"`,
+      `"${(e.paymentMethod || '').replace(/"/g, '""')}"`,
+      `"${(e.trxId || '').replace(/"/g, '""')}"`,
+      `"${(e.paymentStatus || '').replace(/"/g, '""')}"`,
+      `"${(e.enrolledAt || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `orjon_course_enrollments_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyTrx = (trx: string) => {
+    if (!trx) return;
+    navigator.clipboard.writeText(trx);
+    setCopiedTrxId(trx);
+    setTimeout(() => setCopiedTrxId(null), 2000);
+  };
+
+  const handleViewUserProfile = (enr: CourseEnrollment) => {
+    const matchedUser = (users || []).find(u => 
+      (enr.userId && u.userId && u.userId.toLowerCase() === enr.userId.toLowerCase()) ||
+      (enr.userPhone && u.phone && u.phone === enr.userPhone) ||
+      (enr.userEmail && u.email && u.email.toLowerCase() === enr.userEmail.toLowerCase())
+    );
+    setSelectedUserForProfileModal({ enrollment: enr, user: matchedUser });
   };
 
   useEffect(() => {
@@ -794,6 +952,14 @@ export default function AdminPanel({
         await syncCollectionToFirestore('subcategories', subcategories || [], 'subcat');
       } else if (key === 'notices') {
         await syncCollectionToFirestore('notices', notices || [], 'notice');
+      } else if (key === 'coupons') {
+        await syncCollectionToFirestore('coupons', coupons || [], 'coupon');
+      } else if (key === 'course_enrollments') {
+        await syncCollectionToFirestore('course_enrollments', courseEnrollments || [], 'enr');
+      } else if (key === 'payment_settings') {
+        if (paymentSettings) {
+          await syncCollectionToFirestore('payment_settings', [paymentSettings], 'item');
+        }
       } else if (key === 'audit_logs') {
         await syncCollectionToFirestore('audit_logs', auditLogs || [], 'log');
       }
@@ -7846,6 +8012,19 @@ export default function AdminPanel({
                 <Users className="w-4 h-4 text-purple-500" />
                 <span>👥 এনরোলমেন্ট রেকর্ড ({courseEnrollments.length})</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setCourseSubTab('payment-settings')}
+                className={`px-3 sm:px-4 py-2 rounded-xl font-extrabold text-xs transition flex items-center gap-1.5 ${
+                  courseSubTab === 'payment-settings'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Wallet className="w-4 h-4 text-amber-500" />
+                <span>💳 পেমেন্ট নম্বর সেটিংস</span>
+              </button>
             </div>
 
             {editingCourseId && (
@@ -8317,101 +8496,616 @@ export default function AdminPanel({
 
           {/* SUB-VIEW 3: ENROLLMENT & PAYMENT RECORDS */}
           {courseSubTab === 'enrollments' && (
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-              <div className="flex flex-wrap justify-between items-center gap-3 border-b border-gray-100 pb-3">
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm space-y-5">
+              {/* Header with Export Action */}
+              <div className="flex flex-wrap justify-between items-center gap-3 border-b border-gray-100 pb-4">
                 <div>
-                  <h3 className="font-bold text-sm text-gray-800 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-indigo-600" />
-                    <span>👥 শিক্ষার্থীদের কোর্স এনরোলমেন্ট ও পেমেন্ট হিস্ট্রি ({courseEnrollments.length})</span>
+                  <h3 className="font-extrabold text-base text-slate-800 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-indigo-600" />
+                    <span>👥 শিক্ষার্থীদের কোর্স এনরোলমেন্ট ও পেমেন্ট রেকর্ড ({courseEnrollments.length})</span>
                   </h3>
-                  <p className="text-gray-500 text-[11px]">শিক্ষার্থীদের প্রদত্ত ফি, কুপন ব্যবহারের পরিসংখ্যান ও পেমেন্ট রেকর্ড</p>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    শিক্ষার্থীর পূর্ণ বিবরণ, এনরোল্ড কোর্স, ট্রানজেকশন আইডি (TrxID) ও সংগৃহীত ফি ব্যবস্থাপনা
+                  </p>
                 </div>
 
-                {/* Summary Metrics */}
-                <div className="flex flex-wrap gap-2 text-[11px] font-bold">
-                  <span className="bg-indigo-50 text-indigo-900 border border-indigo-200 px-3 py-1 rounded-xl">
-                    মোট শিক্ষার্থী: {courseEnrollments.length} জন
-                  </span>
-                  <span className="bg-emerald-50 text-emerald-900 border border-emerald-200 px-3 py-1 rounded-xl">
-                    সংগৃহীত ফি: ৳{courseEnrollments.reduce((acc, curr) => acc + (curr.finalPrice || 0), 0)}
-                  </span>
-                  <span className="bg-purple-50 text-purple-900 border border-purple-200 px-3 py-1 rounded-xl">
-                    মোট ছাড়: ৳{courseEnrollments.reduce((acc, curr) => acc + (curr.discountAmount || 0), 0)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportEnrollmentsCSV}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition"
+                    title="CSV ফাইল আকারে ডাউনলোড করুন"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>📥 এক্সপোর্ট CSV ({filteredEnrollments.length})</span>
+                  </button>
                 </div>
               </div>
 
-              {(!courseEnrollments || courseEnrollments.length === 0) ? (
-                <div className="text-center py-10 text-gray-400">
-                  <GraduationCap className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                  <p className="font-bold">এখনও কোনো শিক্ষার্থী কোর্সে এনরোল করেনি।</p>
-                  <p className="text-[11px] text-gray-400 mt-1">ব্যবহারকারী কোর্সে এনরোল করলে এখানে বিস্তারিত রেকর্ড দেখা যাবে।</p>
+              {/* Summary Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-2xl">
+                  <div className="text-[11px] font-bold text-indigo-700">মোট এনরোলমেন্ট</div>
+                  <div className="text-xl font-black text-indigo-950 mt-1">{courseEnrollments.length} জন</div>
+                  <div className="text-[10px] text-indigo-600 mt-0.5">সফলভাবে নিবন্ধিত</div>
+                </div>
+
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+                  <div className="text-[11px] font-bold text-emerald-700">মোট সংগৃহীত ফি</div>
+                  <div className="text-xl font-black text-emerald-950 mt-1">
+                    ৳{courseEnrollments.reduce((acc, curr) => acc + (curr.finalPrice || 0), 0)}
+                  </div>
+                  <div className="text-[10px] text-emerald-600 mt-0.5">মোট প্রাপ্ত পেমেন্ট</div>
+                </div>
+
+                <div className="p-3.5 bg-purple-50/70 border border-purple-100 rounded-2xl">
+                  <div className="text-[11px] font-bold text-purple-700">মোট কুপন ছাড়</div>
+                  <div className="text-xl font-black text-purple-950 mt-1">
+                    ৳{courseEnrollments.reduce((acc, curr) => acc + (curr.discountAmount || 0), 0)}
+                  </div>
+                  <div className="text-[10px] text-purple-600 mt-0.5">ডিসকাউন্ট সুবিধা</div>
+                </div>
+
+                <div className="p-3.5 bg-amber-50/70 border border-amber-100 rounded-2xl">
+                  <div className="text-[11px] font-bold text-amber-700">পেইড বনাম ফ্রি</div>
+                  <div className="text-xl font-black text-amber-950 mt-1">
+                    {courseEnrollments.filter(e => e.finalPrice > 0).length} / {courseEnrollments.filter(e => e.finalPrice === 0).length}
+                  </div>
+                  <div className="text-[10px] text-amber-600 mt-0.5">পেইড / ফ্রি এনরোলমেন্ট</div>
+                </div>
+              </div>
+
+              {/* Live Search & Filter Bar */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                <div className="flex-1 min-w-[240px] relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={enrollmentSearch}
+                    onChange={(e) => setEnrollmentSearch(e.target.value)}
+                    placeholder="শিক্ষার্থীর নাম, User ID, মোবাইল, ইমেইল, কোর্স বা TrxID দিয়ে খুঁজুন..."
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+                  />
+                  {enrollmentSearch && (
+                    <button
+                      onClick={() => setEnrollmentSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1">
+                    <Filter className="w-3.5 h-3.5 text-slate-500" />
+                    <select
+                      value={enrollmentCourseFilter}
+                      onChange={(e) => setEnrollmentCourseFilter(e.target.value)}
+                      className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">সব কোর্স ({courses.length})</option>
+                      {courses.map(c => (
+                        <option key={c.id} value={c.id}>{c.title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1">
+                    <CreditCard className="w-3.5 h-3.5 text-slate-500" />
+                    <select
+                      value={enrollmentMethodFilter}
+                      onChange={(e) => setEnrollmentMethodFilter(e.target.value)}
+                      className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">সব মেথড</option>
+                      <option value="bkash">bKash (বিকাশ)</option>
+                      <option value="nagad">Nagad (নগদ)</option>
+                      <option value="rocket">Rocket (রকেট)</option>
+                      <option value="free">ফ্রি (Free)</option>
+                    </select>
+                  </div>
+
+                  {(enrollmentSearch || enrollmentCourseFilter !== 'all' || enrollmentMethodFilter !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setEnrollmentSearch('');
+                        setEnrollmentCourseFilter('all');
+                        setEnrollmentMethodFilter('all');
+                      }}
+                      className="px-2.5 py-1.5 text-slate-600 hover:text-rose-600 text-[11px] font-bold transition"
+                    >
+                      রিসেট ফিল্টার
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Records List Table */}
+              {(!filteredEnrollments || filteredEnrollments.length === 0) ? (
+                <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  <GraduationCap className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                  <p className="font-bold text-sm text-slate-600">কোনো এনরোলমেন্ট রেকর্ড পাওয়া যায়নি!</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {courseEnrollments.length === 0
+                      ? 'এখনও কোনো শিক্ষার্থী কোর্সে এনরোল করেনি।'
+                      : 'ফিল্টারের সাথে মিলে এমন কোনো রেকর্ড পাওয়া যায়নি।'}
+                  </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-[11px]">
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
+                  <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-100/80 text-slate-700 font-extrabold border-b border-slate-200">
-                        <th className="p-2.5">শিক্ষার্থী</th>
-                        <th className="p-2.5">কোর্স</th>
-                        <th className="p-2.5">তারিখ</th>
-                        <th className="p-2.5">মূল ফি</th>
-                        <th className="p-2.5">কুপন ও ছাড়</th>
-                        <th className="p-2.5">পরিশোধিত ফি</th>
-                        <th className="p-2.5">পেমেন্ট / TrxID</th>
-                        <th className="p-2.5 text-center">স্ট্যাটাস</th>
+                      <tr className="bg-slate-100/90 text-slate-700 font-black border-b border-slate-200 text-[11px]">
+                        <th className="p-3">শিক্ষার্থীর বিবরণ (User Details)</th>
+                        <th className="p-3">এনরোল্ড কোর্স (Course)</th>
+                        <th className="p-3">তারিখ ও সময়</th>
+                        <th className="p-3">মূল ফি ও ছাড়</th>
+                        <th className="p-3">পরিশোধিত ফি (Paid)</th>
+                        <th className="p-3">পেমেন্ট মেথড ও TrxID</th>
+                        <th className="p-3 text-center">স্ট্যাটাস</th>
+                        <th className="p-3 text-center">অ্যাকশন</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {courseEnrollments.map((enr, i) => (
-                        <tr key={enr.id || i} className="hover:bg-slate-50 transition">
-                          <td className="p-2.5">
-                            <div className="font-black text-indigo-950">{enr.userName || 'নাম নেই'}</div>
-                            <div className="text-slate-500 font-mono text-[10px]">{enr.userPhone || enr.userEmail}</div>
-                          </td>
-                          <td className="p-2.5 font-bold text-slate-800 max-w-[180px] truncate">
-                            {enr.courseTitle}
-                          </td>
-                          <td className="p-2.5 text-slate-500 whitespace-nowrap">
-                            {formatBengaliDate(enr.enrolledAt)}
-                          </td>
-                          <td className="p-2.5 font-bold text-slate-600">
-                            ৳{enr.originalPrice}
-                          </td>
-                          <td className="p-2.5">
-                            {enr.couponCode ? (
-                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-black text-[10px]">
-                                <Tag className="w-3 h-3 text-emerald-600" />
-                                {enr.couponCode} ({enr.discountPercent}% / -৳{enr.discountAmount})
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredEnrollments.map((enr, i) => {
+                        const isFree = enr.finalPrice === 0 || (enr.paymentMethod || '').toLowerCase() === 'free';
+                        const method = (enr.paymentMethod || '').toLowerCase();
+
+                        return (
+                          <tr key={enr.id || i} className="hover:bg-slate-50/80 transition">
+                            {/* User Details */}
+                            <td className="p-3">
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-black flex items-center justify-center text-xs shrink-0 mt-0.5">
+                                  {(enr.userName || 'U')[0].toUpperCase()}
+                                </div>
+                                <div className="space-y-0.5">
+                                  <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                                    <span>{enr.userName || 'নাম প্রদান করা হয়নি'}</span>
+                                    {enr.userId && (
+                                      <span className="bg-indigo-50 text-indigo-700 font-mono font-black text-[9.5px] px-1.5 py-0.2 rounded border border-indigo-200">
+                                        {enr.userId}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-slate-500 font-medium">
+                                    {enr.userPhone && (
+                                      <span className="flex items-center gap-0.5 font-mono">
+                                        <Phone className="w-3 h-3 text-slate-400" />
+                                        {enr.userPhone}
+                                      </span>
+                                    )}
+                                    {enr.userEmail && (
+                                      <span className="flex items-center gap-0.5">
+                                        <Mail className="w-3 h-3 text-slate-400" />
+                                        {enr.userEmail}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewUserProfile(enr)}
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50/60 hover:bg-indigo-100 px-2 py-0.5 rounded-md mt-1 transition cursor-pointer"
+                                  >
+                                    <UserCheck className="w-3 h-3" />
+                                    <span>পূর্ণ প্রোফাইল দেখুন</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Enrolled Course */}
+                            <td className="p-3">
+                              <div className="font-bold text-slate-900 max-w-[200px]">
+                                {enr.courseTitle}
+                              </div>
+                              {enr.courseId && (
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  ID: {enr.courseId}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Date */}
+                            <td className="p-3 text-slate-600 whitespace-nowrap text-[11px]">
+                              <div>{formatBengaliDate(enr.enrolledAt)}</div>
+                              <div className="text-[10px] text-slate-400">
+                                {formatBengaliDateTime(enr.enrolledAt).split(' ')[1] || ''}
+                              </div>
+                            </td>
+
+                            {/* Original Fee & Discount */}
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-600 text-xs">
+                                ৳{enr.originalPrice}
+                              </div>
+                              {enr.couponCode ? (
+                                <div className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-bold mt-0.5">
+                                  <Tag className="w-2.5 h-2.5 text-emerald-600" />
+                                  <span>{enr.couponCode} (-৳{enr.discountAmount})</span>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-slate-400">কোনো ছাড় নেই</div>
+                              )}
+                            </td>
+
+                            {/* Final Paid Amount */}
+                            <td className="p-3">
+                              {isFree ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-xs bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  ৳০ (ফ্রি)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-xs bg-indigo-900 text-white shadow-2xs">
+                                  ৳{enr.finalPrice}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Payment Method & TrxID */}
+                            <td className="p-3">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className={`px-2 py-0.5 rounded-md font-black text-[10.5px] uppercase tracking-wider ${
+                                  method.includes('bkash') ? 'bg-pink-100 text-pink-700 border border-pink-200' :
+                                  method.includes('nagad') ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                  method.includes('rocket') ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                                  'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}>
+                                  {enr.paymentMethod || (isFree ? 'Free' : 'Online')}
+                                </span>
+                              </div>
+
+                              {enr.trxId ? (
+                                <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono text-[10.5px] font-bold text-slate-800">
+                                  <span className="truncate max-w-[110px]" title={enr.trxId}>{enr.trxId}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyTrx(enr.trxId!)}
+                                    className="text-indigo-600 hover:text-indigo-800 cursor-pointer ml-auto"
+                                    title="TrxID কপি করুন"
+                                  >
+                                    {copiedTrxId === enr.trxId ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">TrxID নেই</span>
+                              )}
+                            </td>
+
+                            {/* Status */}
+                            <td className="p-3 text-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>সফল</span>
                               </span>
-                            ) : (
-                              <span className="text-slate-400">প্রযোজ্য নয়</span>
-                            )}
-                          </td>
-                          <td className="p-2.5 font-black text-indigo-950 text-xs">
-                            {enr.finalPrice === 0 ? (
-                              <span className="text-emerald-600 font-black">৳০ (ফ্রি)</span>
-                            ) : (
-                              `৳${enr.finalPrice}`
-                            )}
-                          </td>
-                          <td className="p-2.5">
-                            <div className="font-bold uppercase text-slate-700">{enr.paymentMethod || 'Free'}</div>
-                            {enr.trxId && (
-                              <div className="text-[10px] text-slate-500 font-mono font-bold">Trx: {enr.trxId}</div>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              ✓ সফল
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedEnrollmentForModal(enr)}
+                                  className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-800 transition cursor-pointer border border-indigo-200/80"
+                                  title="রশিদ / ইনভয়েস দেখুন ও প্রিন্ট করুন"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+
+                                {onDeleteEnrollment && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      showCustomConfirm(
+                                        'রেকর্ড মুছুন',
+                                        `"${enr.userName || 'শিক্ষার্থী'}"-এর "${enr.courseTitle}" কোর্সের এই এনরোলমেন্ট রেকর্ডটি মুছে ফেলতে চান?`,
+                                        () => {
+                                          onDeleteEnrollment(enr.id);
+                                          showCustomAlert('সম্পন্ন!', 'এনরোলমেন্ট রেকর্ড মুছে ফেলা হয়েছে!', 'success');
+                                        },
+                                        'warning'
+                                      );
+                                    }}
+                                    className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-800 transition cursor-pointer border border-rose-200/80"
+                                    title="এনরোলমেন্ট রেকর্ড মুছুন"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* SUB-VIEW 4: PAYMENT RECEIVE SETTINGS */}
+          {courseSubTab === 'payment-settings' && (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              {/* Configuration Form */}
+              <div className="md:col-span-7 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm space-y-5">
+                <div className="border-b border-gray-100 pb-3">
+                  <h3 className="font-black text-base text-slate-800 flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-amber-500" />
+                    <span>💳 পেমেন্ট গ্রহণ নম্বর ও নির্দেশনা কনফিগারেশন</span>
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-1">
+                    শিক্ষার্থীরা কোর্সে এনরোল করার সময় কোন বিকাশ, নগদ বা রকেট নম্বরে ফি পাঠাবে তা এখানে সেট করুন।
+                  </p>
+                </div>
+
+                <form onSubmit={handleSavePaymentSettingsSubmit} className="space-y-4">
+                  {/* bKash Configuration */}
+                  <div className="p-4 bg-pink-50/50 border border-pink-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-pink-600 text-white font-black text-xs flex items-center justify-center">
+                          b
+                        </div>
+                        <h4 className="font-extrabold text-slate-800 text-sm">বিকাশ (bKash) পেমেন্ট সেটিংস</h4>
+                      </div>
+                      <span className="text-[11px] font-bold text-pink-700 bg-pink-100 px-2 py-0.5 rounded-md">
+                        বিকাশ গেটওয়ে
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          বিকাশ গ্রহণ মোবাইল নম্বর <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={bkashNumber}
+                          onChange={(e) => setBkashNumber(e.target.value)}
+                          placeholder="e.g. 01711223344"
+                          className="w-full px-3 py-2 bg-white border border-pink-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          একাউন্ট ধরন
+                        </label>
+                        <select
+                          value={bkashType}
+                          onChange={(e) => setBkashType(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-white border border-pink-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
+                        >
+                          <option value="Personal">Personal (ব্যক্তিগত)</option>
+                          <option value="Merchant">Merchant (মার্চেন্ট)</option>
+                          <option value="Agent">Agent (এজেন্ট)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nagad Configuration */}
+                  <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-amber-600 text-white font-black text-xs flex items-center justify-center">
+                          ন
+                        </div>
+                        <h4 className="font-extrabold text-slate-800 text-sm">নগদ (Nagad) পেমেন্ট সেটিংস</h4>
+                      </div>
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                        নগদ গেটওয়ে
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          নগদ গ্রহণ মোবাইল নম্বর <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={nagadNumber}
+                          onChange={(e) => setNagadNumber(e.target.value)}
+                          placeholder="e.g. 01811223344"
+                          className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          একাউন্ট ধরন
+                        </label>
+                        <select
+                          value={nagadType}
+                          onChange={(e) => setNagadType(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                        >
+                          <option value="Personal">Personal (ব্যক্তিগত)</option>
+                          <option value="Merchant">Merchant (মার্চেন্ট)</option>
+                          <option value="Agent">Agent (এজেন্ট)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rocket Configuration */}
+                  <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-purple-600 text-white font-black text-xs flex items-center justify-center">
+                          R
+                        </div>
+                        <h4 className="font-extrabold text-slate-800 text-sm">রকেট (Rocket) পেমেন্ট সেটিংস</h4>
+                      </div>
+                      <span className="text-[11px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-md">
+                        রকেট গেটওয়ে
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          রকেট গ্রহণ মোবাইল নম্বর <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={rocketNumber}
+                          onChange={(e) => setRocketNumber(e.target.value)}
+                          placeholder="e.g. 01911223344"
+                          className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
+                          একাউন্ট ধরন
+                        </label>
+                        <select
+                          value={rocketType}
+                          onChange={(e) => setRocketType(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                        >
+                          <option value="Personal">Personal (ব্যক্তিগত)</option>
+                          <option value="Merchant">Merchant (মার্চেন্ট)</option>
+                          <option value="Agent">Agent (এজেন্ট)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instructions for Students */}
+                  <div>
+                    <label className="block font-bold text-slate-700 text-xs mb-1">
+                      শিক্ষার্থীদের জন্য চেকআউট নির্দেশনা ও নোটিশ
+                    </label>
+                    <textarea
+                      value={paymentInstructions}
+                      onChange={(e) => setPaymentInstructions(e.target.value)}
+                      placeholder="টাকা পাঠানোর পর ট্রানজেকশন আইডি (TrxID) এবং আপনার মোবাইল নম্বর নিচে প্রদান করুন।"
+                      rows={3}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      এই বার্তাটি কোর্স কেনার সময় পেমেন্ট পপআপে প্রদর্শিত হবে।
+                    </p>
+                  </div>
+
+                  {/* Save Action */}
+                  <div className="pt-2 flex items-center justify-between">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>💾 পেমেন্ট সেটিংস সংরক্ষণ করুন</span>
+                    </button>
+
+                    {paymentSaveSuccess && (
+                      <span className="text-emerald-700 font-bold text-xs flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>সফলভাবে সংরক্ষিত হয়েছে!</span>
+                      </span>
+                    )}
+                  </div>
+                </form>
+              </div>
+
+              {/* Live Preview for Students' Checkout Experience */}
+              <div className="md:col-span-5 bg-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <h4 className="font-extrabold text-sm text-slate-100">📱 স্টুডেন্ট চেকআউট প্রিভিউ</h4>
+                    </div>
+                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                      লাইভ প্রিভিউ
+                    </span>
+                  </div>
+
+                  <p className="text-slate-300 text-xs mb-4">
+                    শিক্ষার্থীরা কোর্সে এনরোল করার সময় যেভাবে আপনার নির্ধারিত পেমেন্ট নম্বর ও নির্দেশনা দেখতে পাবে:
+                  </p>
+
+                  <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    {/* bKash Sample Box */}
+                    <div className="p-3 bg-pink-950/40 border border-pink-800/50 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-pink-400 text-xs">বিকাশ (bKash)</span>
+                          <span className="bg-pink-500/20 text-pink-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-pink-500/30">
+                            {bkashType}
+                          </span>
+                        </div>
+                        <div className="font-mono font-black text-sm text-pink-100 mt-0.5">
+                          {bkashNumber || 'নম্বর দেওয়া হয়নি'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-pink-600 text-white px-2 py-1 rounded-lg font-bold">
+                        কপি করুন
+                      </span>
+                    </div>
+
+                    {/* Nagad Sample Box */}
+                    <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-amber-400 text-xs">নগদ (Nagad)</span>
+                          <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/30">
+                            {nagadType}
+                          </span>
+                        </div>
+                        <div className="font-mono font-black text-sm text-amber-100 mt-0.5">
+                          {nagadNumber || 'নম্বর দেওয়া হয়নি'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-amber-600 text-white px-2 py-1 rounded-lg font-bold">
+                        কপি করুন
+                      </span>
+                    </div>
+
+                    {/* Rocket Sample Box */}
+                    <div className="p-3 bg-purple-950/40 border border-purple-800/50 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-purple-400 text-xs">রকেট (Rocket)</span>
+                          <span className="bg-purple-500/20 text-purple-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-purple-500/30">
+                            {rocketType}
+                          </span>
+                        </div>
+                        <div className="font-mono font-black text-sm text-purple-100 mt-0.5">
+                          {rocketNumber || 'নম্বর দেওয়া হয়নি'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded-lg font-bold">
+                        কপি করুন
+                      </span>
+                    </div>
+                  </div>
+
+                  {paymentInstructions && (
+                    <div className="mt-4 p-3 bg-slate-800/60 rounded-xl border border-slate-700/60 text-slate-300 text-xs">
+                      <div className="font-bold text-slate-200 text-[11px] mb-1">📢 শিক্ষার্থীদের নোটিশ:</div>
+                      <p className="text-slate-300 text-[11px] leading-relaxed">{paymentInstructions}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>অ্যাডমিন সেভ করার সাথে সাথে সকল শিক্ষার্থী নতুন পেমেন্ট নম্বর দেখতে পাবে।</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -11434,6 +12128,319 @@ export default function AdminPanel({
                 type="button"
                 onClick={() => setShowSyncModal(false)}
                 className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ENROLLMENT INVOICE / RECEIPT MODAL */}
+      {selectedEnrollmentForModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 relative flex flex-col gap-4 text-xs shadow-2xl border border-slate-200 animate-scale-up">
+            {/* Modal Controls Header */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black">
+                  🧾
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">কোর্স এনরোলমেন্ট ও পেমেন্ট রশিদ</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">Invoice #{selectedEnrollmentForModal.id.slice(0, 8).toUpperCase()}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[11px] flex items-center gap-1 transition"
+                  title="প্রিন্ট করুন"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>প্রিন্ট</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEnrollmentForModal(null)}
+                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Receipt Card */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
+              {/* Slip Header */}
+              <div className="flex justify-between items-start border-b border-dashed border-slate-200 pb-3">
+                <div>
+                  <div className="font-black text-base text-indigo-950 tracking-tight">ORJON ACADEMY</div>
+                  <div className="text-[10px] text-slate-500">অনলাইন এক্সাম ও কোর্স ম্যানেজমেন্ট প্ল্যাটফর্ম</div>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    ✓ পরিশোধিত (PAID)
+                  </span>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    {formatBengaliDate(selectedEnrollmentForModal.enrolledAt)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Student Information */}
+              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">শিক্ষার্থীর তথ্য (Student Info)</div>
+                <div className="grid grid-cols-2 gap-2 text-[11.5px]">
+                  <div>
+                    <span className="text-slate-500">নাম:</span>{' '}
+                    <span className="font-extrabold text-slate-800">{selectedEnrollmentForModal.userName || 'নাম নেই'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">ইউজার আইডি:</span>{' '}
+                    <span className="font-mono font-bold text-indigo-700">{selectedEnrollmentForModal.userId || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">মোবাইল:</span>{' '}
+                    <span className="font-mono font-bold text-slate-700">{selectedEnrollmentForModal.userPhone || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">ইমেইল:</span>{' '}
+                    <span className="font-bold text-slate-700 truncate">{selectedEnrollmentForModal.userEmail || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Course & Transaction Details */}
+              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">কোর্স ও পেমেন্ট বিবরণ</div>
+                <div className="text-[11.5px] space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">কোর্সের নাম:</span>
+                    <span className="font-black text-slate-900 text-right max-w-[260px]">{selectedEnrollmentForModal.courseTitle}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">পেমেন্ট গেটওয়ে:</span>
+                    <span className="font-bold uppercase text-slate-800">{selectedEnrollmentForModal.paymentMethod || 'Free'}</span>
+                  </div>
+                  {selectedEnrollmentForModal.trxId && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">ট্রানজেকশন আইডি (TrxID):</span>
+                      <div className="flex items-center gap-1 font-mono font-black text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                        <span>{selectedEnrollmentForModal.trxId}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyTrx(selectedEnrollmentForModal.trxId!)}
+                          className="hover:text-indigo-950"
+                        >
+                          {copiedTrxId === selectedEnrollmentForModal.trxId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount Breakdown */}
+              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100 text-[11.5px]">
+                <div className="flex justify-between text-slate-600">
+                  <span>মূল কোর্স ফি:</span>
+                  <span>৳{selectedEnrollmentForModal.originalPrice}</span>
+                </div>
+                {selectedEnrollmentForModal.couponCode && (
+                  <div className="flex justify-between text-emerald-600 font-medium">
+                    <span>কুপন ছাড় ({selectedEnrollmentForModal.couponCode} / {selectedEnrollmentForModal.discountPercent}%):</span>
+                    <span>- ৳{selectedEnrollmentForModal.discountAmount}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-black text-sm text-indigo-950 pt-2 border-t border-slate-100">
+                  <span>মোট পরিশোধিত অর্থ:</span>
+                  <span className="text-emerald-700">৳{selectedEnrollmentForModal.finalPrice}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSelectedEnrollmentForModal(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STUDENT PROFILE & ALL ENROLLED COURSES MODAL */}
+      {selectedUserForProfileModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-xl p-6 relative flex flex-col gap-4 text-xs shadow-2xl border border-slate-200 animate-scale-up max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-sm">
+                  {(selectedUserForProfileModal.user?.name || selectedUserForProfileModal.enrollment.userName || 'U')[0].toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                    <span>{selectedUserForProfileModal.user?.name || selectedUserForProfileModal.enrollment.userName || 'নাম নেই'}</span>
+                    {(selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId) && (
+                      <span className="bg-indigo-50 text-indigo-700 font-mono font-black text-[10px] px-2 py-0.5 rounded border border-indigo-200">
+                        {selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">শিক্ষার্থীর বিস্তারিত তথ্য ও কোর্স এনরোলমেন্ট ইতিহাস</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedUserForProfileModal(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Profile Information Grid */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              <div className="text-[11px] font-black text-slate-700 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span>ব্যক্তিগত ও যোগাযোগ তথ্য</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11.5px] bg-white p-3 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-slate-400">মোবাইল নম্বর:</span>{' '}
+                  <span className="font-mono font-bold text-slate-800">
+                    {selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone || 'প্রদান করা হয়নি'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400">ইমেইল এড্রেস:</span>{' '}
+                  <span className="font-bold text-slate-800">
+                    {selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail || 'প্রদান করা হয়নি'}
+                  </span>
+                </div>
+                {selectedUserForProfileModal.user?.gender && (
+                  <div>
+                    <span className="text-slate-400">লিঙ্গ (Gender):</span>{' '}
+                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.gender}</span>
+                  </div>
+                )}
+                {selectedUserForProfileModal.user?.institution && (
+                  <div>
+                    <span className="text-slate-400">শিক্ষা প্রতিষ্ঠান:</span>{' '}
+                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.institution}</span>
+                  </div>
+                )}
+                {selectedUserForProfileModal.user?.district && (
+                  <div>
+                    <span className="text-slate-400">জেলা / শহর:</span>{' '}
+                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.district}</span>
+                  </div>
+                )}
+                {selectedUserForProfileModal.user?.createdAt && (
+                  <div>
+                    <span className="text-slate-400">রেজিস্ট্রেশন তারিখ:</span>{' '}
+                    <span className="font-bold text-slate-800">{formatBengaliDate(selectedUserForProfileModal.user.createdAt)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Performance Stats if Available */}
+            {selectedUserForProfileModal.user?.stats && (
+              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-2">
+                <div className="text-[11px] font-black text-indigo-900">📊 পরীক্ষার সার্বিক পারফরম্যান্স পরিসংখ্যান</div>
+                <div className="grid grid-cols-4 gap-2 text-center text-[10.5px]">
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <div className="font-black text-indigo-950 text-sm">{selectedUserForProfileModal.user.stats.totalExams || 0}</div>
+                    <div className="text-slate-500 mt-0.5">মোট পরীক্ষা</div>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <div className="font-black text-emerald-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeCorrect || 0}</div>
+                    <div className="text-slate-500 mt-0.5">সঠিক উত্তর</div>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <div className="font-black text-rose-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeWrong || 0}</div>
+                    <div className="text-slate-500 mt-0.5">ভুল উত্তর</div>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
+                    <div className="font-black text-purple-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeScore?.toFixed(1) || 0}</div>
+                    <div className="text-slate-500 mt-0.5">মোট স্কোর</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Enrolled Courses for this User */}
+            <div className="space-y-2.5">
+              {(() => {
+                const userPhone = selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone;
+                const userId = selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId;
+                const userEmail = selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail;
+
+                const userCourses = (courseEnrollments || []).filter(e => 
+                  (userId && e.userId && e.userId.toLowerCase() === userId.toLowerCase()) ||
+                  (userPhone && e.userPhone && e.userPhone === userPhone) ||
+                  (userEmail && e.userEmail && e.userEmail.toLowerCase() === userEmail.toLowerCase())
+                );
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-black text-xs text-slate-800 flex items-center gap-1.5">
+                        <GraduationCap className="w-4 h-4 text-indigo-600" />
+                        <span>এই শিক্ষার্থীর সকল এনরোল্ড কোর্স ({userCourses.length}টি)</span>
+                      </h4>
+                      <span className="text-[11px] font-bold text-emerald-700">
+                        মোট প্রদান: ৳{userCourses.reduce((acc, c) => acc + (c.finalPrice || 0), 0)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {userCourses.length === 0 ? (
+                        <p className="text-slate-400 text-center py-4">কোনো কোর্স পাওয়া যায়নি।</p>
+                      ) : (
+                        userCourses.map((c, idx) => (
+                          <div key={c.id || idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                            <div>
+                              <div className="font-black text-slate-900 text-xs">{c.courseTitle}</div>
+                              <div className="flex items-center gap-2 text-[10.5px] text-slate-500 mt-0.5">
+                                <span>তারিখ: {formatBengaliDate(c.enrolledAt)}</span>
+                                <span>•</span>
+                                <span>পেমেন্ট: {c.paymentMethod || 'Online'}</span>
+                                {c.trxId && <span className="font-mono font-bold text-indigo-700">Trx: {c.trxId}</span>}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-indigo-950 text-xs">৳{c.finalPrice}</span>
+                              {c.couponCode && (
+                                <div className="text-[9.5px] text-emerald-600 font-bold">🏷️ {c.couponCode}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t pt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedUserForProfileModal(null)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition"
               >
                 বন্ধ করুন
               </button>
