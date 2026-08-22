@@ -16,15 +16,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install Capacitor Core & CLI
+      - name: Install Capacitor CLI & Core
         run: npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
 
-      - name: Create Dummy Capacitor Config if Missing
+      - name: Create Capacitor Config if Missing
         run: |
           if [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.json ]; then
             echo "import { CapacitorConfig } from '@capacitor/cli'; const config: CapacitorConfig = { appId: 'com.orjonmcq.app', appName: 'Orjon MCQ', webDir: 'dist' }; export default config;" > capacitor.config.ts
@@ -40,21 +40,17 @@ jobs:
           npx cap sync android
 
       - name: Setup Java JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Build Android App (APK & AAB)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew clean
-          ./gradlew assembleDebug --stacktrace
-          ./gradlew bundleRelease --stacktrace
+          ./gradlew assembleDebug
+          ./gradlew bundleRelease
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
