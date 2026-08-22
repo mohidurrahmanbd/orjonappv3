@@ -118,6 +118,50 @@
         "category": { "type": "string" }
       }
     },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount coupon",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "discount": { "type": "number" },
+        "discountType": { "type": "string" }
+      }
+    },
+    "CourseEnrollment": {
+      "title": "CourseEnrollment",
+      "description": "Student course enrollment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "PaymentSettings": {
+      "title": "PaymentSettings",
+      "description": "Payment gateway and manual payment numbers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bkashNumber": { "type": "string" },
+        "nagadNumber": { "type": "string" },
+        "rocketNumber": { "type": "string" }
+      }
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Admin and system audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
     "UploadHistory": {
       "title": "UploadHistory",
       "description": "CSV or PDF upload log",
@@ -177,6 +221,22 @@
     "/live_exams/{liveExamId}": {
       "schema": "LiveExam",
       "description": "Live exams collection"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Coupons collection"
+    },
+    "/course_enrollments/{enrollmentId}": {
+      "schema": "CourseEnrollment",
+      "description": "Course enrollments collection"
+    },
+    "/payment_settings/{settingId}": {
+      "schema": "PaymentSettings",
+      "description": "Payment settings collection"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Audit logs collection"
     },
     "/upload_history/{uploadId}": {
       "schema": "UploadHistory",

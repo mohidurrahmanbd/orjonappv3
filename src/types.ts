@@ -43,7 +43,6 @@ export interface User {
   emailVerified?: boolean; // Email verification status
   phone: string;
   name: string;
-  password?: string;
   gender: string;
   education: string;
   avatar: string;

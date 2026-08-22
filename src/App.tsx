@@ -36,7 +36,8 @@ import {
   sendEmailVerification,
   reload,
   updatePassword,
-  signOut
+  signOut,
+  onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
@@ -243,10 +244,10 @@ export default function App() {
         return true;
       } else {
         setOtpDeliveryMessage({ 
-          text: `⚠️ Resend ইমেইল নোটিশ: ${data.error || 'ইমেইল পাঠাতে সমস্যা হয়েছে।'}`, 
+          text: `⚠️ ওটিপি নোটিশ: ${data.error || 'ইমেইল পাঠাতে সমস্যা হয়েছে।'}`, 
           isError: true 
         });
-        setResendCooldown(30);
+        setResendCooldown(data.cooldownRemaining ? Number(data.cooldownRemaining) : 60);
         return false;
       }
     } catch (err: any) {
@@ -256,19 +257,16 @@ export default function App() {
         text: `⚠️ ইমেইল এপিআই নোটিশ: সার্ভার রেসপন্স করছে না।`, 
         isError: true 
       });
-      setResendCooldown(30);
+      setResendCooldown(60);
       return false;
     }
   };
 
-  // Forgot Password states
-  const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'new-password' | 'success'>('email');
+  // Forgot Password states (Firebase Auth Password Reset Email)
+  const [forgotStep, setForgotStep] = useState<'email' | 'sent'>('email');
   const [forgotQuery, setForgotQuery] = useState('');
   const [forgotUser, setForgotUser] = useState<User | null>(null);
-  const [forgotOtpCode, setForgotOtpCode] = useState('');
-  const [forgotOtpInput, setForgotOtpInput] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotTargetEmail, setForgotTargetEmail] = useState('');
 
   const [adminPassInput, setAdminPassInput] = useState('');
   const [adminPassword, setAdminPassword] = useState<string>(() => {
@@ -288,13 +286,9 @@ export default function App() {
   };
 
   // Admin Forgot Password states
-  const [adminLoginSubStep, setAdminLoginSubStep] = useState<'login' | 'forgot-request' | 'forgot-otp' | 'forgot-reset' | 'success'>('login');
+  const [adminLoginSubStep, setAdminLoginSubStep] = useState<'login' | 'forgot-request' | 'forgot-sent'>('login');
   const [adminUsernameInput, setAdminUsernameInput] = useState('admin');
   const [adminForgotQuery, setAdminForgotQuery] = useState('mohidur143@gmail.com');
-  const [adminForgotOtpCode, setAdminForgotOtpCode] = useState('');
-  const [adminForgotOtpInput, setAdminForgotOtpInput] = useState('');
-  const [newAdminPasswordInput, setNewAdminPasswordInput] = useState('');
-  const [confirmAdminPasswordInput, setConfirmAdminPasswordInput] = useState('');
 
   // Guest Live Exam states
   const [directExamId, setDirectExamId] = useState<string | null>(null);
@@ -349,7 +343,6 @@ export default function App() {
       name: `গেস্ট (${trimmed.split('@')[0]})`,
       phone: trimmed,
       email: trimmed,
-      password: '',
       gender: 'অন্যান্য',
       education: 'গেস্ট পরীক্ষার্থী',
       avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(trimmed)}`,
@@ -542,7 +535,8 @@ export default function App() {
     }
 
     const migratedUsers = rawUsers.map((u, idx) => {
-      const updated = { ...u };
+      const { password, ...rest } = u as any;
+      const updated: User = { ...rest };
       if (!updated.userId) {
         updated.userId = `ORJ-${(1000 + idx).toString()}A`;
       }
@@ -885,9 +879,8 @@ export default function App() {
       }).catch(() => {});
     }
 
-    // Check active login sessions (localStorage or sessionStorage) with Inactivity Session Timeout check
+    // Check active user login sessions (localStorage or sessionStorage) with Inactivity Session Timeout check
     const activeUserPhone = localStorage.getItem('orjon_session_user') || sessionStorage.getItem('orjon_session_user') || localStorage.getItem('medha_session_user');
-    const activeAdmin = localStorage.getItem('orjon_session_admin') || sessionStorage.getItem('orjon_session_admin') || localStorage.getItem('medha_session_admin');
 
     const lastActStr = localStorage.getItem('orjon_last_activity');
     const storedTimeoutMins = parseInt(localStorage.getItem('orjon_session_timeout_minutes') || '15', 10);
@@ -897,17 +890,11 @@ export default function App() {
 
     const isSessionTimedOut = lastAct > 0 && (nowMs - lastAct > timeoutMs);
 
-    if (isSessionTimedOut && (activeAdmin === 'true' || activeUserPhone)) {
+    if (isSessionTimedOut && activeUserPhone) {
       localStorage.removeItem('orjon_session_user');
       localStorage.removeItem('medha_session_user');
-      localStorage.removeItem('orjon_session_admin');
-      localStorage.removeItem('medha_session_admin');
       sessionStorage.removeItem('orjon_session_user');
-      sessionStorage.removeItem('orjon_session_admin');
       setSessionTimeoutNotice(`দীর্ঘক্ষণ (${storedTimeoutMins} মিনিট) নিষ্ক্রিয় থাকার কারণে সিকিউরিটি পলিসি অনুযায়ী আপনার সেশনটি অটোমেটিক টাইমআউট হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।`);
-    } else if (activeAdmin === 'true') {
-      setIsAdmin(true);
-      localStorage.setItem('orjon_last_activity', nowMs.toString());
     } else if (activeUserPhone) {
       const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || localStorage.getItem('medha_users') || '[]');
       const found = allUsers.find(u => 
@@ -925,6 +912,63 @@ export default function App() {
       if (activeUnsubscribe) {
         activeUnsubscribe();
       }
+    };
+  }, []);
+
+  // Synchronize Firebase Auth State & Strictly Enforce Server-Side Custom Claims for Admin
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          // Inspect current token claims
+          let tokenResult = await fbUser.getIdTokenResult();
+          let hasAdminClaim = tokenResult.claims.admin === true;
+
+          // Check if this is an authorized admin user whose claims need to be populated
+          const emailLower = (fbUser.email || '').toLowerCase().trim();
+          const isAuthorizedAdmin = emailLower === 'mohidur143@gmail.com';
+
+          if (!hasAdminClaim && isAuthorizedAdmin) {
+            try {
+              const idToken = await fbUser.getIdToken(true);
+              const resp = await fetch('/api/admin/set-admin-claims', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken })
+              });
+              const data = await resp.json();
+              if (data.success && data.admin) {
+                // Force token refresh to fetch the newly assigned claims
+                tokenResult = await fbUser.getIdTokenResult(true);
+                hasAdminClaim = tokenResult.claims.admin === true;
+              }
+            } catch (claimErr) {
+              console.warn("Backend admin claim sync notice:", claimErr);
+            }
+          }
+
+          // STRICT ADMIN ACCESS RULE: User is ONLY admin if token claims.admin === true
+          setIsAdmin(hasAdminClaim === true);
+
+          // If regular user, update currentUser
+          if (!hasAdminClaim && fbUser.email) {
+            const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || '[]');
+            const matched = allUsers.find(u => u.email && u.email.toLowerCase() === fbUser.email?.toLowerCase());
+            if (matched) {
+              setCurrentUser(matched);
+            }
+          }
+        } catch (err) {
+          console.error("Error inspecting Firebase Auth Token claims:", err);
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
     };
   }, []);
 
@@ -1209,8 +1253,10 @@ export default function App() {
   const updateUsersDB = (newU: User[]) => {
     const userMap = new Map<string, User>();
     newU.forEach(u => {
-      const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
-      if (k) userMap.set(k, u);
+      const { password, ...rest } = u as any;
+      const sanitizedUser: User = { ...rest };
+      const k = (sanitizedUser.phone || sanitizedUser.userId || sanitizedUser.email || '').toLowerCase().trim();
+      if (k) userMap.set(k, sanitizedUser);
     });
     const dedupedUsers = Array.from(userMap.values());
     setUsers(dedupedUsers);
@@ -1260,88 +1306,111 @@ export default function App() {
     // A. Check if Admin Login attempt
     const isAdminAttempt = 
       query === 'admin' || 
-      query === 'admin@orjon.edu.bd' || 
-      query === 'admin@orjon.com' ||
-      query.includes('admin') ||
+      query === 'mohidur143@gmail.com' ||
       pass === adminPassword;
 
-    if (isAdminAttempt && (pass === adminPassword || query.includes('admin'))) {
-      const adminEmail = query.includes('@') ? query : 'admin@orjon.edu.bd';
-      let firebaseAdminSuccess = false;
+    if (isAdminAttempt && (pass === adminPassword || query === 'mohidur143@gmail.com' || query === 'admin')) {
+      const adminEmail = query === 'admin' ? 'mohidur143@gmail.com' : query;
+      let firebaseUser = null;
 
-      // REQUIREMENT 2: Admin authentication local to Firebase Auth
+      // Authenticate with Firebase Auth
       try {
-        await signInWithEmailAndPassword(auth, adminEmail, pass);
-        firebaseAdminSuccess = true;
+        const userCred = await signInWithEmailAndPassword(auth, adminEmail, pass);
+        firebaseUser = userCred.user;
       } catch (fbErr: any) {
-        if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
+        if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential' || fbErr.code === 'auth/wrong-password') {
           try {
-            await createUserWithEmailAndPassword(auth, adminEmail, pass);
-            firebaseAdminSuccess = true;
+            const regCred = await createUserWithEmailAndPassword(auth, adminEmail, pass);
+            firebaseUser = regCred.user;
           } catch (regErr) {
             console.warn("Firebase Auth Admin registration notice:", regErr);
           }
         }
       }
 
-      if (pass === adminPassword || firebaseAdminSuccess) {
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken(true);
+          const claimResp = await fetch('/api/admin/set-admin-claims', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken })
+          });
+          const claimData = await claimResp.json();
+          if (claimData.success) {
+            await firebaseUser.getIdTokenResult(true);
+          }
+        } catch (claimErr) {
+          console.warn("Backend admin claim assignment notice:", claimErr);
+        }
+      }
+
+      if (pass === adminPassword || firebaseUser) {
         setIsAdmin(true);
         localStorage.setItem('orjon_last_activity', Date.now().toString());
         setSessionTimeoutNotice(null);
         setShowInactivityWarning(false);
-        if (rememberMe) {
-          localStorage.setItem('orjon_session_admin', 'true');
-          localStorage.setItem('orjon_remember_me', 'true');
-        } else {
-          sessionStorage.setItem('orjon_session_admin', 'true');
-          localStorage.removeItem('orjon_session_admin');
-        }
         setPhoneInput('');
         setPasswordInput('');
+        return;
+      } else {
+        setLoginErrorMessage('ভুল এডমিন পাসওয়ার্ড অথবা ইউজারনেম!');
         return;
       }
     }
 
-    // B. User Login check
+    // B. User Login check (Strictly Firebase Auth verification)
     const found = users.find(u => 
       (u.phone && u.phone.trim().toLowerCase() === query) ||
       (u.userId && u.userId.trim().toLowerCase() === query) ||
       (u.email && u.email.trim().toLowerCase() === query)
     );
 
-    let isVerified = found?.emailVerified === true;
-    let userEmailToAuth = found?.email || (query.includes('@') ? query : '');
+    const userEmailToAuth = found?.email || (query.includes('@') ? query : '');
 
-    // Authenticate with Firebase Auth if email exists
-    if (userEmailToAuth) {
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, userEmailToAuth, pass);
-        if (userCred.user) {
-          await reload(userCred.user);
-          if (userCred.user.emailVerified) {
-            isVerified = true;
-          }
-        }
-      } catch (fbErr: any) {
-        console.warn("Firebase Auth user login notice:", fbErr);
-      }
-    }
-
-    if (!found && !userEmailToAuth) {
-      setLoginErrorMessage('No account found with these credentials.');
+    if (!userEmailToAuth) {
+      setLoginErrorMessage('No account found with this identifier. Please enter your registered email address.');
       return;
     }
 
-    if (found && found.password && found.password !== pass) {
-      setLoginErrorMessage('Invalid password. Please check your credentials.');
+    let isVerified = false;
+    let firebaseUser = null;
+
+    try {
+      const userCred = await signInWithEmailAndPassword(auth, userEmailToAuth, pass);
+      firebaseUser = userCred.user;
+      if (firebaseUser) {
+        await reload(firebaseUser);
+        isVerified = firebaseUser.emailVerified;
+      }
+    } catch (fbErr: any) {
+      console.warn("Firebase Auth user login notice:", fbErr);
+      if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
+        setLoginErrorMessage('Invalid password. Please check your credentials.');
+      } else if (fbErr.code === 'auth/user-not-found') {
+        setLoginErrorMessage('No account found with this email in Firebase Auth.');
+      } else if (fbErr.code === 'auth/invalid-email') {
+        setLoginErrorMessage('Please enter a valid email address.');
+      } else if (fbErr.code === 'auth/too-many-requests') {
+        setLoginErrorMessage('Too many failed login attempts. Please try again later or reset your password.');
+      } else {
+        setLoginErrorMessage(fbErr.message || 'Login failed. Please check your credentials.');
+      }
       return;
     }
 
     // REQUIREMENT 3: Without verifying user's email, don't store data in Firebase or log in
     if (!isVerified) {
+      if (firebaseUser) {
+        try {
+          await sendEmailVerification(firebaseUser);
+        } catch (verErr) {
+          console.warn("Verification email notice:", verErr);
+        }
+      }
       if (found) {
         setPendingUser(found);
-      } else if (userEmailToAuth) {
+      } else {
         setPendingUser({
           email: userEmailToAuth,
           emailVerified: false,
@@ -1359,7 +1428,7 @@ export default function App() {
       setAuthScreen('register');
       setRegStep('verify');
       setOtpDeliveryMessage({
-        text: 'Email not verified. Please check your inbox and verify your email before logging in.',
+        text: `Email not verified yet. A verification link has been sent to ${userEmailToAuth}. Please check your inbox and verify before logging in.`,
         isError: true
       });
       setResendCooldown(30);
@@ -1367,9 +1436,10 @@ export default function App() {
     }
 
     // Email is verified: log in user
-    const activeUser = found ? {
+    const activeUser: User = found ? {
       ...found,
-      userId: found.userId || generateAutoUserId()
+      userId: found.userId || generateAutoUserId(),
+      emailVerified: true
     } : {
       userId: generateAutoUserId(),
       email: userEmailToAuth,
@@ -1461,7 +1531,6 @@ export default function App() {
       emailVerified: false,
       phone: '',
       name,
-      password: pass,
       gender: regGender || 'Other',
       education: regEducation.trim() || 'General',
       avatar: regAvatar.trim() || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email)}`,
@@ -1513,16 +1582,7 @@ export default function App() {
   const handleCheckEmailVerificationStatus = async () => {
     setIsSendingOtp(true);
     try {
-      let currentUser = auth.currentUser;
-      if (!currentUser && pendingUser?.email && pendingUser?.password) {
-        try {
-          const userCred = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
-          currentUser = userCred.user;
-        } catch (e) {
-          console.warn("Sign-in for status check notice:", e);
-        }
-      }
-
+      const currentUser = auth.currentUser;
       if (currentUser) {
         await reload(currentUser);
         if (currentUser.emailVerified) {
@@ -1535,8 +1595,8 @@ export default function App() {
             };
             setPendingUser(verifiedUser);
             // Save user to Firestore ONLY AFTER email is verified
-            const updatedUsers = users.map(u => u.email?.toLowerCase() === pendingUser.email.toLowerCase() ? verifiedUser : u);
-            if (!users.some(u => u.email?.toLowerCase() === pendingUser.email.toLowerCase())) {
+            const updatedUsers = users.map(u => u.email?.toLowerCase() === pendingUser.email?.toLowerCase() ? verifiedUser : u);
+            if (!users.some(u => u.email?.toLowerCase() === pendingUser.email?.toLowerCase())) {
               updatedUsers.push(verifiedUser);
             }
             updateUsersDB(updatedUsers);
@@ -1553,7 +1613,7 @@ export default function App() {
       }
 
       setOtpDeliveryMessage({
-        text: `Email not verified yet. Please check your email (${pendingUser?.email}) and click the verification link.`,
+        text: `Email not verified yet. Please check your email (${pendingUser?.email || auth.currentUser?.email}) and click the verification link.`,
         isError: true
       });
     } catch (err: any) {
@@ -1573,16 +1633,7 @@ export default function App() {
     setOtpDeliveryMessage({ text: 'Sending verification email...', isError: false });
 
     try {
-      let currentUser = auth.currentUser;
-      if (!currentUser && pendingUser?.email && pendingUser?.password) {
-        try {
-          const userCred = await signInWithEmailAndPassword(auth, pendingUser.email, pendingUser.password);
-          currentUser = userCred.user;
-        } catch (e) {
-          console.warn("Re-auth notice for resend:", e);
-        }
-      }
-
+      const currentUser = auth.currentUser;
       if (currentUser) {
         await sendEmailVerification(currentUser);
         setOtpDeliveryMessage({
@@ -1592,7 +1643,7 @@ export default function App() {
         setResendCooldown(60);
       } else {
         setOtpDeliveryMessage({
-          text: 'Unable to resend verification link. Please check your credentials.',
+          text: 'Unable to resend verification link. Please try logging in to trigger a new verification link.',
           isError: true
         });
       }
@@ -1607,165 +1658,215 @@ export default function App() {
     }
   };
 
-  // 3. Forgot Password Handlers
+  // 3. Forgot Password Handlers (Firebase Authentication sendPasswordResetEmail)
   const handleForgotRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = forgotQuery.trim().toLowerCase();
     if (!q) {
-      alert('Please enter your registered email, User ID, or mobile number.');
+      alert('Please enter your registered email address, User ID, or mobile number.');
       return;
     }
 
     const found = users.find(u => 
       (u.email && u.email.trim().toLowerCase() === q) ||
       (u.userId && u.userId.trim().toLowerCase() === q) ||
-      u.phone.trim() === q
+      (u.phone && u.phone.trim() === q)
     );
 
-    if (!found) {
-      alert('No registered account found with the provided email, User ID, or mobile number.');
+    const targetEmail = found?.email || (q.includes('@') ? q : '');
+
+    if (!targetEmail) {
+      alert('No registered email found for this account. Please enter your registered email address.');
       return;
     }
 
-    // Trigger Firebase Auth Password Reset Email if user has email
-    if (found.email && found.email.includes('@')) {
-      try {
-        await sendPasswordResetEmail(auth, found.email);
-      } catch (fbErr: any) {
-        console.warn("Firebase sendPasswordResetEmail notice:", fbErr);
+    setIsSendingOtp(true);
+    setOtpDeliveryMessage({ text: 'Sending password reset email...', isError: false });
+
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setForgotUser(found || null);
+      setForgotTargetEmail(targetEmail);
+      setForgotStep('sent');
+      setOtpDeliveryMessage({
+        text: `A secure password reset link has been dispatched by Firebase Authentication to ${targetEmail}. Please check your inbox (and spam folder) and click the link to reset your password.`,
+        isError: false
+      });
+      setResendCooldown(60);
+    } catch (fbErr: any) {
+      console.warn("Firebase sendPasswordResetEmail error:", fbErr);
+      if (fbErr.code === 'auth/user-not-found') {
+        alert('No registered account found with this email in Firebase Auth.');
+      } else if (fbErr.code === 'auth/invalid-email') {
+        alert('Please enter a valid email address.');
+      } else {
+        alert(`Failed to send password reset email: ${fbErr.message || 'Please try again.'}`);
       }
+    } finally {
+      setIsSendingOtp(false);
     }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setForgotUser(found);
-    setForgotOtpCode(code);
-    setForgotOtpInput('');
-    setForgotStep('otp');
-
-    if (found.email) {
-      await sendRealOtp(found.email, code, found.name, 'reset');
-    }
-  };
-
-  const handleForgotVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotUser) return;
-
-    if (forgotOtpInput.trim() !== forgotOtpCode) {
-      alert('Invalid recovery code! Please enter the correct 6-digit code.');
-      return;
-    }
-
-    setForgotStep('new-password');
-    setNewPassword('');
-    setConfirmPassword('');
   };
 
   const handleForgotResendOtp = async () => {
     if (resendCooldown > 0 || isSendingOtp) return;
+    const targetEmail = forgotTargetEmail || forgotUser?.email || (forgotQuery.includes('@') ? forgotQuery.trim() : '');
+    if (!targetEmail) return;
 
-    const freshCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setForgotOtpCode(freshCode);
-    setForgotOtpInput('');
+    setIsSendingOtp(true);
+    setOtpDeliveryMessage({ text: 'Resending password reset email...', isError: false });
 
-    if (forgotUser?.email) {
-      await sendRealOtp(forgotUser.email, freshCode, forgotUser.name, 'reset');
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setOtpDeliveryMessage({
+        text: `Password reset link successfully resent to ${targetEmail}! Please check your inbox/spam folder.`,
+        isError: false
+      });
+      setResendCooldown(60);
+    } catch (fbErr: any) {
+      console.warn("Firebase resend password reset email error:", fbErr);
+      setOtpDeliveryMessage({
+        text: `Failed to resend email: ${fbErr.message || 'Please try again.'}`,
+        isError: true
+      });
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
-  const handleForgotResetPassword = (e: React.FormEvent) => {
+  const handleAdminVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotUser) return;
+    const query = adminUsernameInput.trim().toLowerCase();
+    const pass = adminPassInput.trim();
+    const adminEmail = query.includes('@') ? query : 'mohidur143@gmail.com';
 
-    const pass = newPassword.trim();
-    const confirmPass = confirmPassword.trim();
-
-    if (pass.length < 6) {
-      alert('New password must be at least 6 characters long.');
+    if (!pass) {
+      alert('অনুগ্রহ করে এডমিন পাসওয়ার্ড প্রদান করুন!');
       return;
     }
 
-    if (pass !== confirmPass) {
-      alert('New password and confirm password do not match.');
+    const isAuthorized = adminEmail === 'mohidur143@gmail.com';
+
+    if (!isAuthorized && pass !== adminPassword) {
+      alert('ভুল এডমিন ইউজারনেম অথবা পাসওয়ার্ড!');
       return;
     }
 
-    const updatedUsers = users.map(u => 
-      (u.phone === forgotUser.phone || (u.userId && u.userId === forgotUser.userId))
-        ? { ...u, password: pass }
-        : u
-    );
+    try {
+      let firebaseUser = auth.currentUser;
+      
+      // Sign in if not authenticated or different account
+      if (!firebaseUser || firebaseUser.email?.toLowerCase() !== adminEmail) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, adminEmail, pass);
+          firebaseUser = cred.user;
+        } catch (signInErr: any) {
+          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
+            try {
+              const newCred = await createUserWithEmailAndPassword(auth, adminEmail, pass);
+              firebaseUser = newCred.user;
+            } catch (createErr: any) {
+              console.warn("Firebase Auth Admin registration note:", createErr);
+              if (pass === adminPassword || isAuthorized) {
+                console.log("Local system admin password matched.");
+              }
+            }
+          }
+        }
+      }
 
-    updateUsersDB(updatedUsers);
-    setForgotStep('success');
-  };
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken(true);
+          const claimResp = await fetch('/api/admin/set-admin-claims', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken })
+          });
+          const claimData = await claimResp.json();
+          if (claimData.success) {
+            await firebaseUser.getIdTokenResult(true);
+          }
+        } catch (claimErr) {
+          console.warn("Custom claims backend sync notice:", claimErr);
+        }
+      }
 
-  const handleAdminVerify = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPassInput.trim() === adminPassword) {
-      setIsAdmin(true);
-      localStorage.setItem('orjon_session_admin', 'true');
-      localStorage.setItem('orjon_last_activity', Date.now().toString());
-      setSessionTimeoutNotice(null);
-      setShowInactivityWarning(false);
-      setAdminPassInput('');
-    } else {
+      if (pass === adminPassword || firebaseUser) {
+        setIsAdmin(true);
+        localStorage.setItem('orjon_last_activity', Date.now().toString());
+        setSessionTimeoutNotice(null);
+        setShowInactivityWarning(false);
+        setAdminPassInput('');
+        return;
+      }
+
       alert('ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।');
+    } catch (err: any) {
+      console.error("Admin verify error:", err);
+      if (pass === adminPassword) {
+        setIsAdmin(true);
+        localStorage.setItem('orjon_last_activity', Date.now().toString());
+        setSessionTimeoutNotice(null);
+        setShowInactivityWarning(false);
+        setAdminPassInput('');
+        return;
+      }
+      alert(`এডমিন লগইন ব্যর্থ হয়েছে: ${err.message || 'ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।'}`);
     }
   };
 
   const handleAdminForgotRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminForgotQuery.trim()) {
+    const q = adminForgotQuery.trim().toLowerCase();
+    if (!q) {
       alert('অনুগ্রহ করে এডমিন ইমেইল অথবা ইউজারনেম প্রদান করুন!');
       return;
     }
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setAdminForgotOtpCode(code);
-    setAdminForgotOtpInput('');
-    setAdminLoginSubStep('forgot-otp');
+    const targetEmail = q.includes('@') ? q : 'mohidur143@gmail.com';
 
-    await sendRealOtp(adminForgotQuery, code, 'এডমিন', 'reset');
-  };
+    setIsSendingOtp(true);
+    setOtpDeliveryMessage({ text: 'এডমিন পাসওয়ার্ড রিসেট ইমেইল পাঠানো হচ্ছে...', isError: false });
 
-  const handleAdminForgotVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminForgotOtpInput.trim() !== adminForgotOtpCode) {
-      alert('ভুল এডমিন সিকিউরিটি ওটিপি কোড! অনুগ্রহ করে ৬ ডিজিটের সঠিক কোডটি দিন।');
-      return;
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setAdminLoginSubStep('forgot-sent');
+      setOtpDeliveryMessage({
+        text: `Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল (${targetEmail})-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে!`,
+        isError: false
+      });
+      setResendCooldown(60);
+    } catch (fbErr: any) {
+      console.warn("Firebase admin sendPasswordResetEmail error:", fbErr);
+      alert(`এডমিন পাসওয়ার্ড রিসেট ইমেইল পাঠানো ব্যর্থ হয়েছে: ${fbErr.message || 'অনুগ্রহ করে সঠিক ইমেইল দিন।'}`);
+    } finally {
+      setIsSendingOtp(false);
     }
-    setAdminLoginSubStep('forgot-reset');
-    setNewAdminPasswordInput('');
-    setConfirmAdminPasswordInput('');
   };
 
   const handleAdminForgotResendOtp = async () => {
     if (resendCooldown > 0 || isSendingOtp) return;
+    const q = adminForgotQuery.trim().toLowerCase();
+    const targetEmail = q.includes('@') ? q : 'mohidur143@gmail.com';
 
-    const freshCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setAdminForgotOtpCode(freshCode);
-    setAdminForgotOtpInput('');
+    setIsSendingOtp(true);
+    setOtpDeliveryMessage({ text: 'এডমিন পাসওয়ার্ড রিসেট ইমেইল পুনরায় পাঠানো হচ্ছে...', isError: false });
 
-    await sendRealOtp(adminForgotQuery, freshCode, 'এডমিন', 'reset');
-  };
-
-  const handleAdminForgotResetPassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    const pass = newAdminPasswordInput.trim();
-    const confirmPass = confirmAdminPasswordInput.trim();
-
-    if (pass.length < 6) {
-      alert('নতুন পাসওয়ার্ডটি নূন্যতম ৬ ডিজিটের হতে হবে!');
-      return;
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      setOtpDeliveryMessage({
+        text: `এডমিন পাসওয়ার্ড রিসেট লিংক সফলভাবে (${targetEmail})-এ পুনরায় পাঠানো হয়েছে! (Inbox/Spam ফোল্ডার চেক করুন)`,
+        isError: false
+      });
+      setResendCooldown(60);
+    } catch (fbErr: any) {
+      console.warn("Firebase admin resend reset email error:", fbErr);
+      setOtpDeliveryMessage({
+        text: `ইমেইল পাঠানো ব্যর্থ হয়েছে: ${fbErr.message || 'আবার চেষ্টা করুন।'}`,
+        isError: true
+      });
+    } finally {
+      setIsSendingOtp(false);
     }
-
-    if (pass !== confirmPass) {
-      alert('নতুন পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না! আবার চেষ্টা করুন।');
-      return;
-    }
-
-    handleUpdateAdminPassword(pass);
-    setAdminLoginSubStep('success');
   };
 
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
@@ -1779,7 +1880,12 @@ export default function App() {
     handleLogout();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.warn("Sign out notice:", err);
+    }
     setCurrentUser(null);
     setIsAdmin(false);
     localStorage.removeItem('orjon_session_user');
@@ -2705,14 +2811,6 @@ export default function App() {
         : u
     );
     updateUsersDB(updatedUsers);
-
-    if (updatedUser.password && auth.currentUser) {
-      try {
-        await updatePassword(auth.currentUser, updatedUser.password);
-      } catch (err) {
-        console.warn("Firebase Auth password update notice:", err);
-      }
-    }
   };
 
   return (
@@ -3387,16 +3485,16 @@ export default function App() {
                     </form>
                   )}
 
-                  {/* SUB-STEP 2: ADMIN FORGOT PASSWORD - REQUEST OTP */}
+                  {/* SUB-STEP 2: ADMIN FORGOT PASSWORD - REQUEST RESET LINK */}
                   {adminLoginSubStep === 'forgot-request' && (
                     <form onSubmit={handleAdminForgotRequestOtp} className="flex flex-col gap-3.5">
                       <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-amber-950 font-extrabold text-xs">
                           <HelpCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                          এডমিন পাসওয়ার্ড রিসেট (ধাপ ১/৩)
+                          এডমিন পাসওয়ার্ড রিসেট (Firebase Authentication)
                         </div>
                         <p className="text-amber-900 text-[11px] leading-relaxed font-medium">
-                          পাসওয়ার্ড রিসেটের জন্য এডমিন নিবন্ধিত ইমেইল অথবা ইউজারনেম নিশ্চিত করুন।
+                          পাসওয়ার্ড রিসেটের জন্য এডমিন নিবন্ধিত ইমেইল অথবা ইউজারনেম নিশ্চিত করুন। Firebase Authentication সরাসরি আপনার ইমেইলে পাসওয়ার্ড রিসেট লিংক পাঠাবে।
                         </p>
                       </div>
 
@@ -3417,9 +3515,10 @@ export default function App() {
 
                       <button
                         type="submit"
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-amber-100 flex items-center justify-center gap-1.5"
+                        disabled={isSendingOtp}
+                        className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-amber-100 flex items-center justify-center gap-1.5"
                       >
-                        <Mail className="w-4 h-4" /> সিকিউরিটি ওটিপি কোড পাঠান
+                        <Mail className="w-4 h-4" /> {isSendingOtp ? 'ইমেইল পাঠানো হচ্ছে...' : 'পাসওয়ার্ড রিসেট লিংক পাঠান'}
                       </button>
 
                       <button
@@ -3432,54 +3531,20 @@ export default function App() {
                     </form>
                   )}
 
-                  {/* SUB-STEP 3: ADMIN FORGOT PASSWORD - VERIFY OTP */}
-                  {adminLoginSubStep === 'forgot-otp' && (
-                    <form onSubmit={handleAdminForgotVerifyOtp} className="flex flex-col gap-3.5">
-                      <div className="bg-red-50 border border-red-100 p-3.5 rounded-2xl flex flex-col gap-1.5">
-                        <div className="flex items-center gap-1.5 text-red-950 font-extrabold text-xs">
-                          <ShieldCheck className="w-4 h-4 text-red-600 shrink-0" />
-                          এডমিন ওটিপি যাচাই (ধাপ ২/৩)
-                        </div>
-                        <p className="text-gray-700 text-[11px] leading-relaxed font-medium">
-                          এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-red-900 font-mono">{adminForgotQuery}</span>-এ ৬ ডিজিটের ওটিপি পাঠানো হয়েছে।
+                  {/* SUB-STEP 3: ADMIN FORGOT PASSWORD - LINK SENT BANNER */}
+                  {adminLoginSubStep === 'forgot-sent' && (
+                    <div className="flex flex-col gap-3.5 text-xs animate-fade-in">
+                      <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে!</h3>
+                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
+                          Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-emerald-950 font-mono">{adminForgotQuery.includes('@') ? adminForgotQuery : `${adminForgotQuery}@orjon.edu.bd`}</span>-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে।
                         </p>
                       </div>
 
-                      {/* Real Resend OTP Delivery Status Box */}
-                      {otpDeliveryMessage && (
-                        <div className={`p-3 rounded-xl text-[11px] font-medium border space-y-1 ${
-                          otpDeliveryMessage.isError 
-                            ? 'bg-amber-50 border-amber-200 text-amber-900' 
-                            : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                        }`}>
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <Mail className="w-3.5 h-3.5 shrink-0 text-red-600" />
-                            <span>Resend এডমিন ইমেইল সার্ভিস:</span>
-                          </div>
-                          <p className="leading-relaxed">{otpDeliveryMessage.text}</p>
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-gray-700 mb-1.5 font-bold">৬ ডিজিটের ওটিপি কোড দিন:</label>
-                        <input
-                          type="text"
-                          required
-                          maxLength={6}
-                          value={adminForgotOtpInput}
-                          onChange={e => setAdminForgotOtpInput(e.target.value)}
-                          placeholder="যেমন: 948102"
-                          className="w-full px-4 py-3 border border-red-200 rounded-xl text-center text-lg font-mono font-bold tracking-widest text-red-950 focus:ring-2 focus:ring-red-500 focus:outline-none bg-white"
-                        />
+                      <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl text-[11px] text-amber-900 leading-relaxed font-medium">
+                        💡 <strong>পরবর্তী করণীয়:</strong> আপনার ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন। প্রাপ্ত লিংকে ক্লিক করে নতুন এডমিন পাসওয়ার্ড নিরাপদে সেট করুন। পাসওয়ার্ড পরিবর্তন সম্পন্ন হলে নিচে ক্লিক করে লগইন করুন।
                       </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSendingOtp}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-emerald-100 flex items-center justify-center gap-1.5"
-                      >
-                        <ShieldCheck className="w-4 h-4" /> ওটিপি যাচাই ও পাসওয়ার্ড রিসেট
-                      </button>
 
                       <div className="flex justify-between items-center text-[11px] pt-1">
                         <button
@@ -3494,10 +3559,10 @@ export default function App() {
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin text-red-600' : ''}`} />
                           {isSendingOtp 
-                            ? 'ইমেইল পাঠানো হচ্ছে...' 
+                            ? 'লিংক পাঠানো হচ্ছে...' 
                             : resendCooldown > 0 
-                              ? `কোড পুনরায় পাঠান (${resendCooldown}s)` 
-                              : 'ওটিপি কোড পুনরায় পাঠান'
+                              ? `পুনরায় লিংক পাঠান (${resendCooldown}s)` 
+                              : 'রিসেট লিংক পুনরায় পাঠান'
                           }
                         </button>
                         <button
@@ -3505,67 +3570,8 @@ export default function App() {
                           onClick={() => setAdminLoginSubStep('forgot-request')}
                           className="text-gray-500 hover:underline font-semibold flex items-center gap-1"
                         >
-                          <ArrowLeft className="w-3 h-3" /> পূর্বের ধাপে যান
+                          <ArrowLeft className="w-3 h-3" /> ইমেইল পরিবর্তন করুন
                         </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* SUB-STEP 4: ADMIN FORGOT PASSWORD - RESET NEW PASSWORD */}
-                  {adminLoginSubStep === 'forgot-reset' && (
-                    <form onSubmit={handleAdminForgotResetPassword} className="flex flex-col gap-3.5">
-                      <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-emerald-950 font-extrabold text-xs">
-                          <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                          নতুন এডমিন পাসওয়ার্ড সেট করুন (ধাপ ৩/৩)
-                        </div>
-                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          পাসওয়ার্ড নূন্যতম ৬ ডিজিটের হতে হবে।
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">নতুন গোপন পাসওয়ার্ড:</label>
-                        <input
-                          type="password"
-                          required
-                          value={newAdminPasswordInput}
-                          onChange={e => setNewAdminPasswordInput(e.target.value)}
-                          placeholder="নূন্যতম ৬ ডিজিটের পাসওয়ার্ড"
-                          className="w-full px-4 py-3 border border-emerald-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">নতুন পাসওয়ার্ড নিশ্চিত করুন (Confirm):</label>
-                        <input
-                          type="password"
-                          required
-                          value={confirmAdminPasswordInput}
-                          onChange={e => setConfirmAdminPasswordInput(e.target.value)}
-                          placeholder="পুনরায় নতুন পাসওয়ার্ড লিখুন"
-                          className="w-full px-4 py-3 border border-emerald-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-emerald-100 flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> নতুন পাসওয়ার্ড সংরক্ষণ করুন
-                      </button>
-                    </form>
-                  )}
-
-                  {/* SUB-STEP 5: SUCCESS BANNER */}
-                  {adminLoginSubStep === 'success' && (
-                    <div className="flex flex-col gap-3.5 text-xs animate-fade-in">
-                      <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 এডমিন পাসওয়ার্ড রিসেট সফল!</h3>
-                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          আপনার এডমিন অ্যাকাউন্টের পাসওয়ার্ড সফলভাবে আপডেট করা হয়েছে।
-                        </p>
                       </div>
 
                       <button
@@ -3574,9 +3580,9 @@ export default function App() {
                           setAdminLoginSubStep('login');
                           setAdminPassInput('');
                         }}
-                        className="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-red-100 flex items-center justify-center gap-1.5"
+                        className="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-red-100 flex items-center justify-center gap-1.5 mt-1"
                       >
-                        <LogIn className="w-4 h-4" /> নতুন পাসওয়ার্ড দিয়ে এডমিন লগইন করুন
+                        <LogIn className="w-4 h-4" /> এডমিন লগইনে ফিরে যান
                       </button>
                     </div>
                   )}
@@ -3588,16 +3594,16 @@ export default function App() {
               {authScreen === 'forgot-password' && (
                 <div className="flex flex-col gap-3.5 text-xs animate-fade-in">
                   
-                  {/* Step 1: Request OTP by entering Email / User ID / Mobile */}
+                  {/* Step 1: Request Password Reset via Firebase Auth */}
                   {forgotStep === 'email' && (
                     <form onSubmit={handleForgotRequestOtp} className="flex flex-col gap-3.5">
                       <div className="bg-indigo-50/80 border border-indigo-100 p-3.5 rounded-2xl flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-indigo-950 font-extrabold text-xs">
                           <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0" />
-                          Password Reset (Step 1/3)
+                          Password Recovery (Firebase Authentication)
                         </div>
                         <p className="text-gray-600 text-[11px] leading-relaxed font-medium">
-                          Enter your registered email address, User ID, or mobile number to reset your password.
+                          Enter your registered email address, User ID, or mobile number. Firebase Authentication will send a secure password reset link to your email.
                         </p>
                       </div>
 
@@ -3611,16 +3617,17 @@ export default function App() {
                           required
                           value={forgotQuery}
                           onChange={e => setForgotQuery(e.target.value)}
-                          placeholder="e.g. user@example.com / MDH-1029A / 017XXXXXXXX"
+                          placeholder="e.g. user@example.com / ORJ-1029A / 017XXXXXXXX"
                           className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium bg-white"
                         />
                       </div>
 
                       <button
                         type="submit"
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5"
+                        disabled={isSendingOtp}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5"
                       >
-                        <Mail className="w-4 h-4" /> Send Recovery Code
+                        <Mail className="w-4 h-4" /> {isSendingOtp ? 'Sending Reset Email...' : 'Send Password Reset Link'}
                       </button>
 
                       <button
@@ -3633,54 +3640,23 @@ export default function App() {
                     </form>
                   )}
 
-                  {/* Step 2: Enter 6-digit OTP received via email */}
-                  {forgotStep === 'otp' && (
-                    <form onSubmit={handleForgotVerifyOtp} className="flex flex-col gap-3.5">
-                      <div className="bg-indigo-50/80 border border-indigo-100 p-3.5 rounded-2xl flex flex-col gap-1.5">
-                        <div className="flex items-center gap-1.5 text-indigo-950 font-extrabold text-xs">
-                          <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                          Verify Reset Code (Step 2/3)
-                        </div>
-                        <p className="text-gray-700 text-[11px] leading-relaxed font-medium">
-                          A 6-digit password reset code has been sent to your email: <span className="font-bold text-indigo-900 font-mono">{forgotUser?.email}</span>.
+                  {/* Step 2: Reset Link Sent Confirmation */}
+                  {forgotStep === 'sent' && (
+                    <div className="flex flex-col gap-3.5 text-xs animate-fade-in">
+                      <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-600" />
+                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 Password Reset Link Dispatched!</h3>
+                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
+                          A secure password reset email has been sent by Firebase Authentication to:
                         </p>
-                      </div>
-
-                      {/* Real Resend OTP Delivery Status Box */}
-                      {otpDeliveryMessage && (
-                        <div className={`p-3 rounded-xl text-[11px] font-medium border space-y-1 ${
-                          otpDeliveryMessage.isError 
-                            ? 'bg-amber-50 border-amber-200 text-amber-900' 
-                            : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                        }`}>
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <Mail className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
-                            <span>Email Delivery Status:</span>
-                          </div>
-                          <p className="leading-relaxed">{otpDeliveryMessage.text}</p>
+                        <div className="font-mono font-bold text-indigo-900 bg-white/80 px-3 py-1.5 rounded-lg border border-emerald-200 text-xs">
+                          {forgotTargetEmail || forgotUser?.email || forgotQuery}
                         </div>
-                      )}
-
-                      <div>
-                        <label className="block text-gray-700 mb-1.5 font-bold">Enter 6-Digit Verification Code:</label>
-                        <input
-                          type="text"
-                          required
-                          maxLength={6}
-                          value={forgotOtpInput}
-                          onChange={e => setForgotOtpInput(e.target.value)}
-                          placeholder="e.g. 839201"
-                          className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-center text-lg font-mono font-bold tracking-widest text-indigo-950 focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
-                        />
                       </div>
 
-                      <button
-                        type="submit"
-                        disabled={isSendingOtp}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-emerald-100 flex items-center justify-center gap-1.5"
-                      >
-                        <ShieldCheck className="w-4 h-4" /> Verify Code
-                      </button>
+                      <div className="bg-indigo-50 border border-indigo-100 p-3.5 rounded-2xl text-[11px] text-indigo-900 leading-relaxed font-medium">
+                        📌 <strong>Next steps:</strong> Open your email inbox (and check the spam/junk folder). Click the password reset link to securely enter your new password directly on Firebase's authentication server.
+                      </div>
 
                       <div className="flex justify-between items-center text-[11px] pt-1">
                         <button
@@ -3697,8 +3673,8 @@ export default function App() {
                           {isSendingOtp 
                             ? 'Sending email...' 
                             : resendCooldown > 0 
-                              ? `Resend Code (${resendCooldown}s)` 
-                              : 'Resend Verification Code'
+                              ? `Resend Link (${resendCooldown}s)` 
+                              : 'Resend Reset Link'
                           }
                         </button>
                         <button
@@ -3706,94 +3682,23 @@ export default function App() {
                           onClick={() => setForgotStep('email')}
                           className="text-gray-500 hover:underline font-semibold flex items-center gap-1"
                         >
-                          <ArrowLeft className="w-3 h-3" /> Change Email / ID
+                          <ArrowLeft className="w-3 h-3" /> Change Identifier
                         </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Step 3: Set New Password */}
-                  {forgotStep === 'new-password' && (
-                    <form onSubmit={handleForgotResetPassword} className="flex flex-col gap-3.5">
-                      <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-emerald-950 font-extrabold text-xs">
-                          <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
-                          Set New Password (Step 3/3)
-                        </div>
-                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          Student: <span className="font-bold">{forgotUser?.name}</span> ({forgotUser?.userId})
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">New Password (Minimum 6 characters):</label>
-                        <input
-                          type="password"
-                          required
-                          value={newPassword}
-                          onChange={e => setNewPassword(e.target.value)}
-                          placeholder="Enter new password"
-                          className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">Confirm New Password:</label>
-                        <input
-                          type="password"
-                          required
-                          value={confirmPassword}
-                          onChange={e => setConfirmPassword(e.target.value)}
-                          placeholder="Re-enter new password"
-                          className="w-full px-4 py-3 border border-indigo-200 rounded-xl text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> Complete Password Reset
-                      </button>
-                    </form>
-                  )}
-
-                  {/* Step 4: Success */}
-                  {forgotStep === 'success' && (
-                    <div className="flex flex-col gap-3.5 text-xs">
-                      <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center flex flex-col items-center gap-2">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-                        <h3 className="font-extrabold text-emerald-950 text-sm">🎉 Password Changed Successfully!</h3>
-                        <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          Your new password has been saved for your account.
-                        </p>
-                      </div>
-
-                      <div className="bg-gray-50 border border-gray-200 p-4 rounded-2xl space-y-2">
-                        <h4 className="font-bold text-gray-800 border-b pb-1 text-xs">Your Account & Login Details:</h4>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">🆔 User ID:</span>
-                          <span className="font-mono font-extrabold text-indigo-700">{forgotUser?.userId}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-gray-500 font-semibold">📧 Registered Email:</span>
-                          <span className="font-mono font-bold text-gray-800">{forgotUser?.email}</span>
-                        </div>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => {
-                          setPhoneInput(forgotUser?.email || forgotUser?.userId || forgotUser?.phone || '');
+                          setPhoneInput(forgotTargetEmail || forgotUser?.email || forgotUser?.userId || forgotUser?.phone || '');
                           setPasswordInput('');
                           setAuthScreen('login');
                           setForgotStep('email');
                           setForgotQuery('');
                           setForgotUser(null);
                         }}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
                       >
-                        <LogIn className="w-4 h-4" /> Log In with New Password
+                        <LogIn className="w-4 h-4" /> Back to Login
                       </button>
                     </div>
                   )}

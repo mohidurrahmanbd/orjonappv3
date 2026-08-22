@@ -19,6 +19,8 @@ import CircularProgressBar from './CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
 import CourseEnrollmentModal from './CourseEnrollmentModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
+import { updatePassword } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 import { 
   calculateRoutineReadingProgress, 
   calculateQuestionsReadingProgress, 
@@ -1113,13 +1115,16 @@ export default function UserPortal({
     setIsSavingProfile(true);
 
     try {
+      if (editPassword.trim() && auth.currentUser) {
+        await updatePassword(auth.currentUser, editPassword.trim());
+      }
+
       const updatedUser: User = {
         ...user,
         name: editName.trim(),
         phone: editPhone.trim(),
         education: editEducation.trim(),
-        avatar: editAvatar.trim() || user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        ...(editPassword.trim() ? { password: editPassword.trim() } : {})
+        avatar: editAvatar.trim() || user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
       };
 
       if (onUpdateUser) {

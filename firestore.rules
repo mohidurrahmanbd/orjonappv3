@@ -7,82 +7,101 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email in ['mohidur143@gmail.com']
+      );
+    }
+
     // Questions collection
     match /questions/{questionId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Users collection
     match /users/{userId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isSignedIn() || isAdmin();
     }
 
     // Bookmarks collection
     match /bookmarks/{bookmarkId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if isSignedIn();
     }
 
     // Attempts collection
     match /attempts/{attemptId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
     // Categories collection
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Subcategories collection
     match /subcategories/{subcategoryId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Notices collection
     match /notices/{noticeId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Routines collection
     match /routines/{routineId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
     // Courses collection
     match /courses/{courseId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
     }
 
-    // Audit Logs collection
-    match /audit_logs/{logId} {
-      allow read: if true;
-      allow write: if true;
+    // Course Enrollments collection
+    match /course_enrollments/{enrollmentId} {
+      allow read, write: if true;
     }
 
     // Live Exams collection
     match /live_exams/{liveExamId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coupons collection
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Payment settings collection
+    match /payment_settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Audit Logs collection
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
     }
 
     // Upload History collection
     match /upload_history/{uploadId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if isAdmin();
     }
 
     // Test connection collection
     match /test/{testId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
     // Default deny for unhandled paths
