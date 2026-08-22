@@ -1,0 +1,12 @@
+import { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.orjonmcq.app', // আপনার পছন্দমতো ডোমেইন আইডেন্টিফায়ার
+  appName: 'Orjon MCQ',       // আপনার অ্যাপের নাম
+  webDir: 'dist',             // Vite প্রজেক্টের বিল্ড ফোল্ডারের নাম (সাধারণত dist হয়)
+  server: {
+    androidScheme: 'https'
+  }
+};
+
+export default config;
