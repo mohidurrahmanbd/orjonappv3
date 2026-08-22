@@ -14,15 +14,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: 20
+          bun-version: latest
 
-      - name: Install All Dependencies
+      - name: Install Dependencies with Bun
         run: |
-          npm install --legacy-peer-deps
-          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
+          bun install
+          bun add @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Ensure Capacitor Config Exists
         run: |
@@ -43,21 +43,19 @@ jobs:
 
       - name: Build Web Application
         run: |
-          npx vite build || npm run build || true
-
-      - name: Generate Android Project
-        run: |
-          mkdir -p dist
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
-          npx cap sync android
+          bun run build || true
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Generate Android Project & Sync
+        run: |
+          mkdir -p dist
+          npx cap add android || true
+          npx cap sync android
 
       - name: Build Android App (APK & AAB)
         run: |
