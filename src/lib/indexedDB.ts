@@ -378,6 +378,39 @@ export async function fetchQuestionsLazyFromFirestore(filter: {
   }
 }
 
+// Helper to normalize question categories from variations
+function normalizeQuestion(q: any): Question {
+  let cat = (q.category || '').trim();
+  const lower = cat.toLowerCase();
+  if (
+    lower === 'জব সলিউশন পরীক্ষা' ||
+    lower === 'জব সলউশন পরিক্ষা' ||
+    lower === 'জব সলউশন পরীক্ষা' ||
+    lower === 'জব সলিউশন ব্যাংক' ||
+    lower === 'job solution' ||
+    lower === 'job solutions' ||
+    lower === 'জব সলিউশন' ||
+    lower === 'জব সলউশন'
+  ) {
+    cat = 'জব সলিউশন পরীক্ষা';
+  } else if (
+    lower === 'সাল ভিত্তিক জব সলিউশন' ||
+    lower === 'সাল ভিক্তিক জব সলউশন' ||
+    lower === 'সাল ভিত্তিক জব সল্যুশন' ||
+    lower === 'year-based job solution' ||
+    lower === 'সাল ভিত্তিক' ||
+    lower === 'সাল ভিক্তিক'
+  ) {
+    cat = 'সাল ভিত্তিক জব সলিউশন';
+  }
+
+  return {
+    ...q,
+    id: String(q.id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
+    category: cat
+  } as Question;
+}
+
 /**
  * Real-time Firestore subscriber for questions collection with incremental IndexedDB diff sync.
  */
@@ -394,7 +427,7 @@ export function subscribeQuestionsFromFirestore(
       async (snapshot) => {
         try {
           if (snapshot.empty) {
-            onUpdate([]);
+            // Do not wipe out local database if firestore snapshot is empty
             return;
           }
 
@@ -402,7 +435,6 @@ export function subscribeQuestionsFromFirestore(
           const docChanges = snapshot.docChanges();
 
           if (!isInitialSnapshot && docChanges.length === 0) {
-            // No changes present
             return;
           }
 
@@ -414,28 +446,33 @@ export function subscribeQuestionsFromFirestore(
             const fullDataset: Question[] = [];
             snapshot.forEach((docSnap) => {
               const data = docSnap.data();
-              fullDataset.push({
-                ...data,
-                id: data.id || docSnap.id
-              } as Question);
+              if (!data.isDeleted) {
+                fullDataset.push(normalizeQuestion({
+                  ...data,
+                  id: data.id || docSnap.id
+                }));
+              }
             });
-            await saveQuestionsToIDB(fullDataset);
-            onUpdate(fullDataset);
+
+            if (fullDataset.length > 0) {
+              await saveQuestionsToIDB(fullDataset);
+              onUpdate(fullDataset);
+            }
             isInitialSnapshot = false;
           } else {
             // Process ONLY modified, added, or removed docs (Incremental Sync)
             docChanges.forEach((change) => {
               const docSnap = change.doc;
               const data = docSnap.data();
-              const qId = data.id || docSnap.id;
+              const qId = String(data.id || docSnap.id);
 
               if (change.type === 'removed' || data.isDeleted) {
                 removeIds.push(qId);
               } else {
-                upsertList.push({
+                upsertList.push(normalizeQuestion({
                   ...data,
                   id: qId
-                } as Question);
+                }));
               }
             });
 

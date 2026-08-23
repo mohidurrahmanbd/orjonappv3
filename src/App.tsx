@@ -438,6 +438,26 @@ export default function App() {
       console.warn("IndexedDB initialization notice:", err);
     });
 
+    // Real-Time & Incremental Firestore Questions Sync
+    activeUnsubscribe = subscribeQuestionsFromFirestore(
+      (firestoreQuestions) => {
+        if (firestoreQuestions && firestoreQuestions.length > 0) {
+          const dedupedQ = dedupeQuestions(firestoreQuestions);
+          setQuestions(dedupedQ);
+          saveQuestionsToIDB(dedupedQ);
+          try {
+            localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
+          } catch (e) {
+            console.warn("localStorage quota notice for questions stringify:", e);
+          }
+          syncSubcategoriesWithFirestoreQuestions(dedupedQ);
+        }
+      },
+      (err) => {
+        console.warn('Real-time questions sync error (using local cache):', err);
+      }
+    );
+
     // Notices seed (Cache-First)
     const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
     if (storedN) {
@@ -3444,7 +3464,7 @@ export default function App() {
                           required
                           value={adminUsernameInput}
                           onChange={e => setAdminUsernameInput(e.target.value)}
-                          placeholder="admin / admin@orjon.edu.bd"
+                          placeholder="admin / mohidur143@gmail.com"
                           className="w-full px-4 py-3 border rounded-xl text-gray-800 focus:ring-2 focus:ring-red-500 focus:outline-none font-medium"
                         />
                       </div>
@@ -3459,7 +3479,7 @@ export default function App() {
                             type="button"
                             onClick={() => {
                               setAdminLoginSubStep('forgot-request');
-                              setAdminForgotQuery(adminUsernameInput.trim() || 'admin@orjon.edu.bd');
+                              setAdminForgotQuery(adminUsernameInput.trim() || 'mohidur143@gmail.com');
                             }}
                             className="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline transition flex items-center gap-1"
                           >
@@ -3508,7 +3528,7 @@ export default function App() {
                           required
                           value={adminForgotQuery}
                           onChange={e => setAdminForgotQuery(e.target.value)}
-                          placeholder="admin@orjon.edu.bd"
+                          placeholder="mohidur143@gmail.com"
                           className="w-full px-4 py-3 border border-amber-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium bg-white"
                         />
                       </div>
@@ -3538,7 +3558,7 @@ export default function App() {
                         <CheckCircle2 className="w-10 h-10 text-emerald-600" />
                         <h3 className="font-extrabold text-emerald-950 text-sm">🎉 পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে!</h3>
                         <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-emerald-950 font-mono">{adminForgotQuery.includes('@') ? adminForgotQuery : `${adminForgotQuery}@orjon.edu.bd`}</span>-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে।
+                          Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-emerald-950 font-mono">{adminForgotQuery.includes('@') ? adminForgotQuery : 'mohidur143@gmail.com'}</span>-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে।
                         </p>
                       </div>
 
