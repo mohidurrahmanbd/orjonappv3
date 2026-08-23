@@ -1,10 +1,13 @@
-import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
-import { Question } from '../types';
+import { Question, Course, LiveExam, Routine } from '../types';
 
 const DB_NAME = 'OrjonQuestionsDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_QUESTIONS = 'questions';
+const STORE_COURSES = 'courses';
+const STORE_LIVE_EXAMS = 'live_exams';
+const STORE_ROUTINES = 'routines';
 const STORE_META = 'metadata';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -30,6 +33,15 @@ function getDB(): Promise<IDBDatabase> {
         const idb = (event.target as IDBOpenDBRequest).result;
         if (!idb.objectStoreNames.contains(STORE_QUESTIONS)) {
           idb.createObjectStore(STORE_QUESTIONS, { keyPath: 'id' });
+        }
+        if (!idb.objectStoreNames.contains(STORE_COURSES)) {
+          idb.createObjectStore(STORE_COURSES, { keyPath: 'id' });
+        }
+        if (!idb.objectStoreNames.contains(STORE_LIVE_EXAMS)) {
+          idb.createObjectStore(STORE_LIVE_EXAMS, { keyPath: 'id' });
+        }
+        if (!idb.objectStoreNames.contains(STORE_ROUTINES)) {
+          idb.createObjectStore(STORE_ROUTINES, { keyPath: 'id' });
         }
         if (!idb.objectStoreNames.contains(STORE_META)) {
           idb.createObjectStore(STORE_META, { keyPath: 'key' });
@@ -108,6 +120,35 @@ export async function getQuestionsMetaFromIDB(): Promise<{ lastSyncedAt: number;
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Update metadata timestamp (lastSyncedAt) in IndexedDB.
+ */
+export async function updateQuestionsMetaTimestamp(timestamp: number = Date.now()): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_QUESTIONS, STORE_META], 'readwrite');
+      const qStore = tx.objectStore(STORE_QUESTIONS);
+      const metaStore = tx.objectStore(STORE_META);
+
+      const countReq = qStore.count();
+      countReq.onsuccess = () => {
+        metaStore.put({
+          key: 'questions_meta',
+          lastSyncedAt: timestamp,
+          count: countReq.result || 0,
+          version: 1
+        });
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore error
   }
 }
 
@@ -222,14 +263,48 @@ export async function deleteMultipleQuestionsFromIDB(ids: (string | number)[]): 
   await upsertQuestionsToIDB([], ids);
 }
 
+// Helper to normalize question categories from variations
+export function normalizeQuestion(q: any): Question {
+  let cat = (q.category || '').trim();
+  const lower = cat.toLowerCase();
+  if (
+    lower === 'জব সলিউশন পরীক্ষা' ||
+    lower === 'জব সলউশন পরিক্ষা' ||
+    lower === 'জব সলউশন পরীক্ষা' ||
+    lower === 'জব সলিউশন ব্যাংক' ||
+    lower === 'job solution' ||
+    lower === 'job solutions' ||
+    lower === 'জব সলিউশন' ||
+    lower === 'জব সলউশন'
+  ) {
+    cat = 'জব সলিউশন পরীক্ষা';
+  } else if (
+    lower === 'সাল ভিত্তিক জব সলিউশন' ||
+    lower === 'সাল ভিক্তিক জব সলউশন' ||
+    lower === 'সাল ভিত্তিক জব সল্যুশন' ||
+    lower === 'year-based job solution' ||
+    lower === 'সাল ভিত্তিক' ||
+    lower === 'সাল ভিক্তিক'
+  ) {
+    cat = 'সাল ভিত্তিক জব সলিউশন';
+  }
+
+  return {
+    ...q,
+    id: String(q.id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
+    category: cat
+  } as Question;
+}
+
 /**
- * Perform incremental background sync with Firestore using updatedAt / docChanges.
+ * Perform incremental background sync with Firestore using timestamp (updatedAt > lastSyncedAt).
  * Downloads ONLY new, updated, or deleted records since lastSyncedAt.
  */
 export async function performIncrementalSyncFromFirestore(
   onUpdate?: (updatedQuestions: Question[]) => void
 ): Promise<{ hasChanges: boolean; totalCount: number }> {
   try {
+    const syncStartTime = Date.now();
     const meta = await getQuestionsMetaFromIDB();
     const lastSyncedAt = meta?.lastSyncedAt || 0;
     const localCachedQuestions = await getQuestionsFromIDB();
@@ -241,16 +316,21 @@ export async function performIncrementalSyncFromFirestore(
         const fetched: Question[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data();
-          fetched.push({
-            ...data,
-            id: data.id || docSnap.id
-          } as Question);
+          if (!data.isDeleted) {
+            fetched.push(normalizeQuestion({
+              ...data,
+              id: data.id || docSnap.id
+            }));
+          }
         });
-        await saveQuestionsToIDB(fetched);
-        if (onUpdate) onUpdate(fetched);
-        return { hasChanges: true, totalCount: fetched.length };
+        if (fetched.length > 0) {
+          await saveQuestionsToIDB(fetched);
+          if (onUpdate) onUpdate(fetched);
+          return { hasChanges: true, totalCount: fetched.length };
+        }
       }
-      return { hasChanges: false, totalCount: 0 };
+      await updateQuestionsMetaTimestamp(syncStartTime);
+      return { hasChanges: false, totalCount: localCachedQuestions.length };
     }
 
     // Query ONLY documents modified after lastSyncedAt
@@ -258,22 +338,24 @@ export async function performIncrementalSyncFromFirestore(
     const snap = await getDocs(q);
 
     if (snap.empty) {
-      // Zero bandwidth downloaded! Return cached dataset
+      // Zero bandwidth downloaded! Update lastSyncedAt timestamp so future queries only check after this point
+      await updateQuestionsMetaTimestamp(syncStartTime);
       return { hasChanges: false, totalCount: localCachedQuestions.length };
     }
 
     const modifiedOrAdded: Question[] = [];
-    const removedIds: string[] = [];
+    const removedIds: (string | number)[] = [];
 
     snap.forEach((docSnap) => {
       const data = docSnap.data();
+      const qId = String(data.id || docSnap.id);
       if (data.isDeleted) {
-        removedIds.push(docSnap.id);
+        removedIds.push(qId);
       } else {
-        modifiedOrAdded.push({
+        modifiedOrAdded.push(normalizeQuestion({
           ...data,
-          id: data.id || docSnap.id
-        } as Question);
+          id: qId
+        }));
       }
     });
 
@@ -284,6 +366,7 @@ export async function performIncrementalSyncFromFirestore(
       return { hasChanges: true, totalCount: freshlyMerged.length };
     }
 
+    await updateQuestionsMetaTimestamp(syncStartTime);
     return { hasChanges: false, totalCount: localCachedQuestions.length };
   } catch (err) {
     console.warn('Incremental sync check error (using local cache):', err);
@@ -347,21 +430,21 @@ export async function fetchQuestionsLazyFromFirestore(filter: {
       const snap = await getDocs(qCat);
       snap.forEach(d => {
         const data = d.data();
-        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+        firestoreDocs.push(normalizeQuestion({ ...data, id: data.id || d.id }));
       });
     } else if (filter.subcategory) {
       const qSub = query(qColRef, where('subcategory', '==', filter.subcategory));
       const snap = await getDocs(qSub);
       snap.forEach(d => {
         const data = d.data();
-        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+        firestoreDocs.push(normalizeQuestion({ ...data, id: data.id || d.id }));
       });
     } else if (filter.examId) {
       const qExam = query(qColRef, where('examId', '==', filter.examId));
       const snap = await getDocs(qExam);
       snap.forEach(d => {
         const data = d.data();
-        firestoreDocs.push({ ...data, id: data.id || d.id } as Question);
+        firestoreDocs.push(normalizeQuestion({ ...data, id: data.id || d.id }));
       });
     }
 
@@ -378,124 +461,645 @@ export async function fetchQuestionsLazyFromFirestore(filter: {
   }
 }
 
-// Helper to normalize question categories from variations
-function normalizeQuestion(q: any): Question {
-  let cat = (q.category || '').trim();
-  const lower = cat.toLowerCase();
-  if (
-    lower === 'জব সলিউশন পরীক্ষা' ||
-    lower === 'জব সলউশন পরিক্ষা' ||
-    lower === 'জব সলউশন পরীক্ষা' ||
-    lower === 'জব সলিউশন ব্যাংক' ||
-    lower === 'job solution' ||
-    lower === 'job solutions' ||
-    lower === 'জব সলিউশন' ||
-    lower === 'জব সলউশন'
-  ) {
-    cat = 'জব সলিউশন পরীক্ষা';
-  } else if (
-    lower === 'সাল ভিত্তিক জব সলিউশন' ||
-    lower === 'সাল ভিক্তিক জব সলউশন' ||
-    lower === 'সাল ভিত্তিক জব সল্যুশন' ||
-    lower === 'year-based job solution' ||
-    lower === 'সাল ভিত্তিক' ||
-    lower === 'সাল ভিক্তিক'
-  ) {
-    cat = 'সাল ভিত্তিক জব সলিউশন';
-  }
+// ==========================================
+// COURSE INDEXEDDB CACHING & INCREMENTAL SYNC
+// ==========================================
 
+export function normalizeCourse(c: any): Course {
+  const nowIso = new Date().toISOString();
   return {
-    ...q,
-    id: String(q.id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
-    category: cat
-  } as Question;
+    ...c,
+    id: String(c.id || `course_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
+    createdAt: c.createdAt || nowIso,
+    updatedAt: c.updatedAt || c.createdAt || nowIso
+  } as Course;
 }
 
 /**
- * Real-time Firestore subscriber for questions collection with incremental IndexedDB diff sync.
+ * Fetch all courses stored in local IndexedDB.
  */
-export function subscribeQuestionsFromFirestore(
-  onUpdate: (questions: Question[]) => void,
-  onError?: (err: any) => void
-): () => void {
+export async function getCoursesFromIDB(): Promise<Course[]> {
   try {
-    let isInitialSnapshot = true;
-    const qColRef = collection(db, 'questions');
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_COURSES, 'readonly');
+      const store = tx.objectStore(STORE_COURSES);
+      const request = store.getAll();
 
-    const unsubscribe = onSnapshot(
-      qColRef,
-      async (snapshot) => {
-        try {
-          if (snapshot.empty) {
-            // Do not wipe out local database if firestore snapshot is empty
-            return;
-          }
+      request.onsuccess = () => {
+        const items = request.result || [];
+        resolve(items.map(normalizeCourse));
+      };
 
-          // Inspect snapshot changes for exact incremental diffs
-          const docChanges = snapshot.docChanges();
-
-          if (!isInitialSnapshot && docChanges.length === 0) {
-            return;
-          }
-
-          const upsertList: Question[] = [];
-          const removeIds: (string | number)[] = [];
-
-          if (isInitialSnapshot) {
-            // Initial snapshot load: process full snapshot
-            const fullDataset: Question[] = [];
-            snapshot.forEach((docSnap) => {
-              const data = docSnap.data();
-              if (!data.isDeleted) {
-                fullDataset.push(normalizeQuestion({
-                  ...data,
-                  id: data.id || docSnap.id
-                }));
-              }
-            });
-
-            if (fullDataset.length > 0) {
-              await saveQuestionsToIDB(fullDataset);
-              onUpdate(fullDataset);
-            }
-            isInitialSnapshot = false;
-          } else {
-            // Process ONLY modified, added, or removed docs (Incremental Sync)
-            docChanges.forEach((change) => {
-              const docSnap = change.doc;
-              const data = docSnap.data();
-              const qId = String(data.id || docSnap.id);
-
-              if (change.type === 'removed' || data.isDeleted) {
-                removeIds.push(qId);
-              } else {
-                upsertList.push(normalizeQuestion({
-                  ...data,
-                  id: qId
-                }));
-              }
-            });
-
-            if (upsertList.length > 0 || removeIds.length > 0) {
-              await upsertQuestionsToIDB(upsertList, removeIds);
-              const mergedDataset = await getQuestionsFromIDB();
-              onUpdate(mergedDataset);
-            }
-          }
-        } catch (e) {
-          console.warn('Error processing snapshot changes:', e);
-        }
-      },
-      (err) => {
-        console.warn('Real-time Firestore questions listener notice:', err);
-        if (onError) onError(err);
-      }
-    );
-
-    return unsubscribe;
-  } catch (e) {
-    console.warn('Could not establish real-time listener for questions:', e);
-    if (onError) onError(e);
-    return () => {};
+      request.onerror = () => {
+        console.warn('Error reading courses from IndexedDB:', request.error);
+        resolve([]);
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for getCourses:', err);
+    return [];
   }
 }
+
+/**
+ * Get stored metadata for IndexedDB courses (e.g. lastCourseSyncedAt timestamp).
+ */
+export async function getCoursesMetaFromIDB(): Promise<{ lastCourseSyncedAt: string; count: number; version?: number } | null> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_META, 'readonly');
+      const store = tx.objectStore(STORE_META);
+      const request = store.get('courses_meta');
+
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+
+      request.onerror = () => {
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update metadata timestamp (lastCourseSyncedAt) in IndexedDB.
+ */
+export async function updateCoursesMetaTimestamp(lastCourseSyncedAt: string = new Date().toISOString()): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_COURSES, STORE_META], 'readwrite');
+      const cStore = tx.objectStore(STORE_COURSES);
+      const metaStore = tx.objectStore(STORE_META);
+
+      const countReq = cStore.count();
+      countReq.onsuccess = () => {
+        metaStore.put({
+          key: 'courses_meta',
+          lastCourseSyncedAt,
+          count: countReq.result || 0,
+          version: 1
+        });
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore error
+  }
+}
+
+/**
+ * Bulk save all courses to IndexedDB.
+ */
+export async function saveCoursesToIDB(courses: Course[]): Promise<void> {
+  if (!courses || !Array.isArray(courses)) return;
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_COURSES, STORE_META], 'readwrite');
+      const cStore = tx.objectStore(STORE_COURSES);
+      const metaStore = tx.objectStore(STORE_META);
+
+      cStore.clear();
+
+      for (const c of courses) {
+        if (c && c.id) {
+          cStore.put(normalizeCourse(c));
+        }
+      }
+
+      metaStore.put({
+        key: 'courses_meta',
+        lastCourseSyncedAt: new Date().toISOString(),
+        count: courses.length,
+        version: 1
+      });
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => {
+        console.warn('Error saving courses to IndexedDB:', e);
+        resolve();
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for saveCourses:', err);
+  }
+}
+
+/**
+ * Incremental upsert & delete courses in IndexedDB without wiping unchanged records.
+ */
+export async function upsertCoursesToIDB(
+  toUpsert: Course[],
+  toRemoveIds: string[] = []
+): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_COURSES, STORE_META], 'readwrite');
+      const cStore = tx.objectStore(STORE_COURSES);
+      const metaStore = tx.objectStore(STORE_META);
+
+      for (const id of toRemoveIds) {
+        if (id) {
+          cStore.delete(id);
+        }
+      }
+
+      for (const c of toUpsert) {
+        if (c && c.id) {
+          cStore.put(normalizeCourse(c));
+        }
+      }
+
+      const countReq = cStore.count();
+      countReq.onsuccess = () => {
+        metaStore.put({
+          key: 'courses_meta',
+          lastCourseSyncedAt: new Date().toISOString(),
+          count: countReq.result || 0,
+          version: 1
+        });
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => {
+        console.warn('Error upserting courses to IndexedDB:', e);
+        resolve();
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for upsertCourses:', err);
+  }
+}
+
+/**
+ * Perform incremental background sync with Firestore for Courses using timestamp (updatedAt > lastCourseSyncedAt).
+ * Downloads ONLY changed or newly created courses since lastCourseSyncedAt.
+ */
+export async function performIncrementalCourseSyncFromFirestore(
+  onUpdate?: (updatedCourses: Course[]) => void
+): Promise<{ hasChanges: boolean; totalCount: number }> {
+  try {
+    const syncStartTimeIso = new Date().toISOString();
+    const meta = await getCoursesMetaFromIDB();
+    const lastCourseSyncedAt = meta?.lastCourseSyncedAt || '';
+    const localCached = await getCoursesFromIDB();
+
+    // If never synced before or local IDB cache is empty, perform full initial sync
+    if (!lastCourseSyncedAt || localCached.length === 0) {
+      const snap = await getDocs(collection(db, 'courses'));
+      if (!snap.empty) {
+        const fetched: Course[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (!data.isDeleted) {
+            fetched.push(normalizeCourse({
+              ...data,
+              id: data.id || docSnap.id
+            }));
+          }
+        });
+        if (fetched.length > 0) {
+          await saveCoursesToIDB(fetched);
+          if (onUpdate) onUpdate(fetched);
+          return { hasChanges: true, totalCount: fetched.length };
+        }
+      }
+      await updateCoursesMetaTimestamp(syncStartTimeIso);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    // Query ONLY course documents modified after lastCourseSyncedAt
+    const q = query(collection(db, 'courses'), where('updatedAt', '>', lastCourseSyncedAt));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      // 0 bandwidth & 0 reads! Update timestamp checkpoint
+      await updateCoursesMetaTimestamp(syncStartTimeIso);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    const modifiedOrAdded: Course[] = [];
+    const removedIds: string[] = [];
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const courseId = String(data.id || docSnap.id);
+      if (data.isDeleted) {
+        removedIds.push(courseId);
+      } else {
+        modifiedOrAdded.push(normalizeCourse({
+          ...data,
+          id: courseId
+        }));
+      }
+    });
+
+    if (modifiedOrAdded.length > 0 || removedIds.length > 0) {
+      await upsertCoursesToIDB(modifiedOrAdded, removedIds);
+      const freshlyMerged = await getCoursesFromIDB();
+      if (onUpdate) onUpdate(freshlyMerged);
+      return { hasChanges: true, totalCount: freshlyMerged.length };
+    }
+
+    await updateCoursesMetaTimestamp(syncStartTimeIso);
+    return { hasChanges: false, totalCount: localCached.length };
+  } catch (err) {
+    console.warn('Incremental course sync notice (using local cache):', err);
+    return { hasChanges: false, totalCount: 0 };
+  }
+}
+
+// ==========================================
+// EXAM & ROUTINE INDEXEDDB CACHING & SYNC
+// ==========================================
+
+export function normalizeLiveExam(e: any): LiveExam {
+  const nowIso = new Date().toISOString();
+  return {
+    ...e,
+    id: String(e.id || `exam_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
+    createdAt: e.createdAt || nowIso,
+    updatedAt: e.updatedAt || e.createdAt || nowIso
+  } as LiveExam;
+}
+
+export function normalizeRoutine(r: any): Routine {
+  const nowIso = new Date().toISOString();
+  return {
+    ...r,
+    id: String(r.id || `routine_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`),
+    createdAt: r.createdAt || nowIso,
+    updatedAt: r.updatedAt || r.createdAt || nowIso
+  } as Routine;
+}
+
+/**
+ * Fetch all live exams stored in local IndexedDB.
+ */
+export async function getLiveExamsFromIDB(): Promise<LiveExam[]> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_LIVE_EXAMS, 'readonly');
+      const store = tx.objectStore(STORE_LIVE_EXAMS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const items = request.result || [];
+        resolve(items.map(normalizeLiveExam));
+      };
+
+      request.onerror = () => {
+        console.warn('Error reading live exams from IndexedDB:', request.error);
+        resolve([]);
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for getLiveExams:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all routines stored in local IndexedDB.
+ */
+export async function getRoutinesFromIDB(): Promise<Routine[]> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_ROUTINES, 'readonly');
+      const store = tx.objectStore(STORE_ROUTINES);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const items = request.result || [];
+        resolve(items.map(normalizeRoutine));
+      };
+
+      request.onerror = () => {
+        console.warn('Error reading routines from IndexedDB:', request.error);
+        resolve([]);
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for getRoutines:', err);
+    return [];
+  }
+}
+
+/**
+ * Bulk save live exams to IndexedDB.
+ */
+export async function saveLiveExamsToIDB(exams: LiveExam[]): Promise<void> {
+  if (!exams || !Array.isArray(exams)) return;
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_LIVE_EXAMS, STORE_META], 'readwrite');
+      const leStore = tx.objectStore(STORE_LIVE_EXAMS);
+      const metaStore = tx.objectStore(STORE_META);
+
+      leStore.clear();
+
+      for (const e of exams) {
+        if (e && e.id) {
+          leStore.put(normalizeLiveExam(e));
+        }
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => {
+        console.warn('Error saving live exams to IndexedDB:', e);
+        resolve();
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for saveLiveExams:', err);
+  }
+}
+
+/**
+ * Bulk save routines to IndexedDB.
+ */
+export async function saveRoutinesToIDB(routines: Routine[]): Promise<void> {
+  if (!routines || !Array.isArray(routines)) return;
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_ROUTINES, STORE_META], 'readwrite');
+      const rStore = tx.objectStore(STORE_ROUTINES);
+
+      rStore.clear();
+
+      for (const r of routines) {
+        if (r && r.id) {
+          rStore.put(normalizeRoutine(r));
+        }
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => {
+        console.warn('Error saving routines to IndexedDB:', e);
+        resolve();
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for saveRoutines:', err);
+  }
+}
+
+/**
+ * Incremental upsert & delete for live exams in IndexedDB.
+ */
+export async function upsertLiveExamsToIDB(
+  toUpsert: LiveExam[],
+  toRemoveIds: string[] = []
+): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_LIVE_EXAMS, 'readwrite');
+      const leStore = tx.objectStore(STORE_LIVE_EXAMS);
+
+      for (const id of toRemoveIds) {
+        if (id) leStore.delete(id);
+      }
+
+      for (const e of toUpsert) {
+        if (e && e.id) leStore.put(normalizeLiveExam(e));
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for upsertLiveExams:', err);
+  }
+}
+
+/**
+ * Incremental upsert & delete for routines in IndexedDB.
+ */
+export async function upsertRoutinesToIDB(
+  toUpsert: Routine[],
+  toRemoveIds: string[] = []
+): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_ROUTINES, 'readwrite');
+      const rStore = tx.objectStore(STORE_ROUTINES);
+
+      for (const id of toRemoveIds) {
+        if (id) rStore.delete(id);
+      }
+
+      for (const r of toUpsert) {
+        if (r && r.id) rStore.put(normalizeRoutine(r));
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('IndexedDB not available for upsertRoutines:', err);
+  }
+}
+
+/**
+ * Get stored metadata for IndexedDB exams (e.g. lastExamSyncedAt timestamp).
+ */
+export async function getExamsMetaFromIDB(): Promise<{ lastExamSyncedAt: string; liveExamCount: number; routineCount: number; version?: number } | null> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_META, 'readonly');
+      const store = tx.objectStore(STORE_META);
+      const request = store.get('exams_meta');
+
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+
+      request.onerror = () => {
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update metadata timestamp (lastExamSyncedAt) in IndexedDB.
+ */
+export async function updateExamsMetaTimestamp(lastExamSyncedAt: string = new Date().toISOString()): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction([STORE_LIVE_EXAMS, STORE_ROUTINES, STORE_META], 'readwrite');
+      const leStore = tx.objectStore(STORE_LIVE_EXAMS);
+      const rStore = tx.objectStore(STORE_ROUTINES);
+      const metaStore = tx.objectStore(STORE_META);
+
+      let leCount = 0;
+      let rCount = 0;
+
+      const countReq1 = leStore.count();
+      countReq1.onsuccess = () => {
+        leCount = countReq1.result || 0;
+        const countReq2 = rStore.count();
+        countReq2.onsuccess = () => {
+          rCount = countReq2.result || 0;
+          metaStore.put({
+            key: 'exams_meta',
+            lastExamSyncedAt,
+            liveExamCount: leCount,
+            routineCount: rCount,
+            version: 1
+          });
+        };
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore error
+  }
+}
+
+/**
+ * Perform incremental background sync with Firestore for Exams (live_exams and routines) using timestamp (updatedAt > lastExamSyncedAt).
+ * Downloads ONLY changed or newly created live exams and routines since lastExamSyncedAt.
+ */
+export async function performIncrementalExamSyncFromFirestore(
+  onUpdate?: (data: { liveExams: LiveExam[]; routines: Routine[] }) => void
+): Promise<{ hasChanges: boolean; liveExamChanges: number; routineChanges: number }> {
+  try {
+    const syncStartTimeIso = new Date().toISOString();
+    const meta = await getExamsMetaFromIDB();
+    const lastExamSyncedAt = meta?.lastExamSyncedAt || '';
+    const localLiveExams = await getLiveExamsFromIDB();
+    const localRoutines = await getRoutinesFromIDB();
+
+    // If never synced before or local IDB cache is empty, perform full initial sync
+    if (!lastExamSyncedAt || (localLiveExams.length === 0 && localRoutines.length === 0)) {
+      const [snapLE, snapR] = await Promise.all([
+        getDocs(collection(db, 'live_exams')),
+        getDocs(collection(db, 'routines'))
+      ]);
+
+      const fetchedLE: LiveExam[] = [];
+      const fetchedR: Routine[] = [];
+
+      if (!snapLE.empty) {
+        snapLE.forEach(d => {
+          const data = d.data();
+          if (!data.isDeleted) {
+            fetchedLE.push(normalizeLiveExam({ ...data, id: data.id || d.id }));
+          }
+        });
+      }
+
+      if (!snapR.empty) {
+        snapR.forEach(d => {
+          const data = d.data();
+          if (!data.isDeleted) {
+            fetchedR.push(normalizeRoutine({ ...data, id: data.id || d.id }));
+          }
+        });
+      }
+
+      if (fetchedLE.length > 0) await saveLiveExamsToIDB(fetchedLE);
+      if (fetchedR.length > 0) await saveRoutinesToIDB(fetchedR);
+
+      await updateExamsMetaTimestamp(syncStartTimeIso);
+      if (onUpdate && (fetchedLE.length > 0 || fetchedR.length > 0)) {
+        onUpdate({ liveExams: fetchedLE, routines: fetchedR });
+      }
+
+      return {
+        hasChanges: fetchedLE.length > 0 || fetchedR.length > 0,
+        liveExamChanges: fetchedLE.length,
+        routineChanges: fetchedR.length
+      };
+    }
+
+    // Query ONLY documents modified after lastExamSyncedAt
+    const qLE = query(collection(db, 'live_exams'), where('updatedAt', '>', lastExamSyncedAt));
+    const qR = query(collection(db, 'routines'), where('updatedAt', '>', lastExamSyncedAt));
+
+    const [snapLE, snapR] = await Promise.all([getDocs(qLE), getDocs(qR)]);
+
+    const modifiedLE: LiveExam[] = [];
+    const removedLEIds: string[] = [];
+
+    const modifiedR: Routine[] = [];
+    const removedRIds: string[] = [];
+
+    snapLE.forEach(docSnap => {
+      const data = docSnap.data();
+      const id = String(data.id || docSnap.id);
+      if (data.isDeleted) {
+        removedLEIds.push(id);
+      } else {
+        modifiedLE.push(normalizeLiveExam({ ...data, id }));
+      }
+    });
+
+    snapR.forEach(docSnap => {
+      const data = docSnap.data();
+      const id = String(data.id || docSnap.id);
+      if (data.isDeleted) {
+        removedRIds.push(id);
+      } else {
+        modifiedR.push(normalizeRoutine({ ...data, id }));
+      }
+    });
+
+    const hasLEChanges = modifiedLE.length > 0 || removedLEIds.length > 0;
+    const hasRChanges = modifiedR.length > 0 || removedRIds.length > 0;
+
+    if (hasLEChanges) {
+      await upsertLiveExamsToIDB(modifiedLE, removedLEIds);
+    }
+    if (hasRChanges) {
+      await upsertRoutinesToIDB(modifiedR, removedRIds);
+    }
+
+    if (hasLEChanges || hasRChanges) {
+      const [freshLE, freshR] = await Promise.all([
+        getLiveExamsFromIDB(),
+        getRoutinesFromIDB()
+      ]);
+      await updateExamsMetaTimestamp(syncStartTimeIso);
+      if (onUpdate) {
+        onUpdate({ liveExams: freshLE, routines: freshR });
+      }
+      return {
+        hasChanges: true,
+        liveExamChanges: modifiedLE.length,
+        routineChanges: modifiedR.length
+      };
+    }
+
+    // Zero changes, update checkpoint timestamp
+    await updateExamsMetaTimestamp(syncStartTimeIso);
+    return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
+  } catch (err) {
+    console.warn('Incremental exam sync notice (using local cache):', err);
+    return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
+  }
+}
+
+

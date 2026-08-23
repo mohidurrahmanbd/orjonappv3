@@ -2,6 +2,58 @@ import { Question, LiveExam, Notice, Routine, User, Course, Coupon } from './typ
 
 export const INITIAL_QUESTIONS: Question[] = [
   {
+    id: 'q_bcs52_1',
+    text: '৫২তম বিসিএস প্রিলিমিনারি: "ইউনেস্কো" কর্তৃক ঘোষিত বাংলাদেশের সর্বশেষ বিশ্ব ঐতিহ্য বা ইনট্যাঞ্জিবল কালচারাল হেরিটেজ কোনটি?',
+    optionA: 'সুন্দরবন',
+    optionB: 'শীতলপাটি বুনন',
+    optionC: 'ঢাকার রিকশা ও রিকশাচিত্র',
+    optionD: 'বাউল গান',
+    correct: 'Option C',
+    explanation: '২০২৩ সালের ডিসেম্বরে ইউনেস্কোর ইনট্যাঞ্জিবল কালচারাল হেরিটেজ হিসেবে "ঢাকার রিকশা ও রিকশাচিত্র" তালিকাভুক্ত হয়।',
+    category: 'সাধারণ জ্ঞান',
+    subcategory: '৫২তম বিসিএস',
+    date: '2026-08-10'
+  },
+  {
+    id: 'q_bcs52_2',
+    text: '৫২তম বিসিএস: Choose the correct preposition: "He has a great passion ___ classical literature."',
+    optionA: 'for',
+    optionB: 'in',
+    optionC: 'with',
+    optionD: 'to',
+    correct: 'Option A',
+    explanation: '"Passion for" একটি উপযুক্ত prepositional phrase যার অর্থ কোনো কিছুর প্রতি প্রবল অনুরাগ বা আকর্ষণ।',
+    category: 'ইংরেজি',
+    subcategory: '৫২তম বিসিএস',
+    date: '2026-08-10'
+  },
+  {
+    id: 'q_bb2026_1',
+    text: 'বাংলাদেশ ব্যাংক এডি ২০২৬: বাংলাদেশের কেন্দ্রীয় ব্যাংকের বৈদেশিক মুদ্রার রিজার্ভ সুরক্ষায় ব্যবহৃত বর্তমান হিসাব পদ্ধতির নাম কী?',
+    optionA: 'Gross Reserves',
+    optionB: 'BPM6 (Balance of Payments and International Investment Position Manual 6th edition)',
+    optionC: 'IMF SDR Method',
+    optionD: 'Forex Net Assets',
+    correct: 'Option B',
+    explanation: 'আইএমএফ (IMF)-এর নীতিমালা অনুযায়ী বাংলাদেশ ব্যাংক BPM6 হিসাব পদ্ধতি অনুসরণ করে প্রকৃত বা নিট বৈদেশিক মুদ্রার রিজার্ভ প্রকাশ করে।',
+    category: 'সাধারণ জ্ঞান',
+    subcategory: 'বাংলাদেশ ব্যাংক সহকারী পরিচালক ২০২৬',
+    date: '2026-07-20'
+  },
+  {
+    id: 'q_bcs46_1',
+    text: '৪৬তম বিসিএস: চর্যাপদের কোন কবি সর্বাধিক পদ রচনা করেছেন?',
+    optionA: 'লুইপা',
+    optionB: 'ভুসুকুপা',
+    optionC: 'কাহ্নপা',
+    optionD: 'শবরপা',
+    correct: 'Option C',
+    explanation: 'চর্যাপদের পদকর্তাদের মধ্যে কাহ্নপা সর্বাধিক ১৩টি পদ (মতান্তরে ১২টি) রচনা করেছেন। ভুসুকুপা রচনা করেন ৮টি পদ।',
+    category: 'বাংলা',
+    subcategory: '৪৬তম বিসিএস',
+    date: '2026-06-15'
+  },
+  {
     id: 'q1',
     text: 'বাংলাদেশের স্বাধীনতা সুবর্ণজয়ন্তী বা ৫০ বছর পূর্তি কোন বছর পালিত হয়?',
     optionA: '২০২০',
@@ -119,7 +171,8 @@ export const INITIAL_QUESTIONS: Question[] = [
     correct: 'Option C',
     explanation: 'সেন্টমার্টিন দ্বীপ বাংলাদেশের একমাত্র সামুদ্রিক প্রবাল দ্বীপ (Coral Island)। এটি টেকনাফ উপজেলার অন্তর্গত বঙ্গোপসাগরের বুকে অবস্থিত।',
     category: 'সাধারণ জ্ঞান',
-    subcategory: '৩৮তম বিসিএস'
+    subcategory: '৩৮তম বিসিএস',
+    date: '2026-07-28'
   },
   {
     id: 'q11',
@@ -210,7 +263,8 @@ export const INITIAL_COURSES: Course[] = [
     endDate: '২০২৪-০৬-৩০',
     price: 500,
     originalPrice: 1000,
-    createdAt: '2026-07-17T12:00:00Z'
+    createdAt: '2026-07-17T12:00:00Z',
+    updatedAt: '2026-07-17T12:00:00Z'
   },
   {
     id: 'course_primary_2024',
@@ -222,7 +276,8 @@ export const INITIAL_COURSES: Course[] = [
     endDate: '২০২৪-০৭-১৫',
     price: 350,
     originalPrice: 700,
-    createdAt: '2026-07-17T14:00:00Z'
+    createdAt: '2026-07-17T14:00:00Z',
+    updatedAt: '2026-07-17T14:00:00Z'
   }
 ];
 
@@ -267,6 +322,7 @@ export const INITIAL_ROUTINES: Routine[] = [
 ৮ই আগস্ট - বাংলাদেশ বিষয়াবলী চূড়ান্ত পরীক্ষা
 ১০ই আগস্ট - সাধারণ বিজ্ঞান ও আইসিটি মডেল টেস্ট`,
     createdAt: '2026-07-18T02:00:00Z',
+    updatedAt: '2026-07-18T02:00:00Z',
     courseId: 'course_bcs_46',
     courseName: '৪৬তম বিসিএস প্রিলিমিনারি স্পেশাল ক্র্যাশ কোর্স'
   },
@@ -277,6 +333,7 @@ export const INITIAL_ROUTINES: Routine[] = [
 ১৭ই আগস্ট - বাংলা ও ইংরেজি রিভিশন পরীক্ষা
 ২০শে আগস্ট - ১০০ মার্কের পূর্ণাঙ্গ লাইভ মডেল টেস্ট`,
     createdAt: '2026-07-18T03:00:00Z',
+    updatedAt: '2026-07-18T03:00:00Z',
     courseId: 'course_primary_2024',
     courseName: 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩ স্পেশাল কোর্স'
   }
@@ -291,7 +348,8 @@ export const INITIAL_LIVE_EXAMS: LiveExam[] = [
     category: 'ALL',
     startTime: '2026-07-18T00:00:00Z',
     expiryTime: '2026-07-22T23:59:59Z',
-    createdAt: '2026-07-18T04:00:00Z'
+    createdAt: '2026-07-18T04:00:00Z',
+    updatedAt: '2026-07-18T04:00:00Z'
   },
   {
     id: 'le2',
@@ -301,7 +359,8 @@ export const INITIAL_LIVE_EXAMS: LiveExam[] = [
     category: 'সাধারণ জ্ঞান',
     startTime: '2026-07-18T06:00:00Z',
     expiryTime: '2026-07-25T23:59:59Z',
-    createdAt: '2026-07-18T04:30:00Z'
+    createdAt: '2026-07-18T04:30:00Z',
+    updatedAt: '2026-07-18T04:30:00Z'
   }
 ];
 

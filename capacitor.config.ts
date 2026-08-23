@@ -1,4 +1,13 @@
-import { CapacitorConfig } from '@capacitor/cli';
+export interface CapacitorConfig {
+  appId: string;
+  appName: string;
+  webDir: string;
+  server?: {
+    androidScheme?: string;
+    url?: string;
+    cleartext?: boolean;
+  };
+}
 
 const config: CapacitorConfig = {
   appId: 'com.orjonmcq.app', // আপনার পছন্দমতো ডোমেইন আইডেন্টিফায়ার

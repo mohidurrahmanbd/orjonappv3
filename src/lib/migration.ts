@@ -1,5 +1,6 @@
 import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
+import { Course, LiveExam, Routine, Attempt } from '../types';
 
 export interface CollectionCounts {
   questions: number;
@@ -48,11 +49,38 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
       const docRef = doc(db, collectionName, docId);
       
       // Clean undefined values and attach timestamp for incremental sync compatibility
-      const now = Date.now();
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      const existingUpdatedAt = (item as any)?.updatedAt;
+      const existingCreatedAt = (item as any)?.createdAt;
+      const existingSubmittedAt = (item as any)?.submittedAt;
+
+      let resolvedUpdatedAt = existingUpdatedAt;
+      if (!resolvedUpdatedAt) {
+        if (collectionName === 'courses' || collectionName === 'live_exams' || collectionName === 'routines') {
+          resolvedUpdatedAt = existingCreatedAt || nowIso;
+        } else if (collectionName === 'attempts') {
+          resolvedUpdatedAt = existingSubmittedAt || existingCreatedAt || nowIso;
+        } else {
+          resolvedUpdatedAt = typeof existingCreatedAt === 'number' ? existingCreatedAt : (typeof existingCreatedAt === 'string' ? existingCreatedAt : nowMs);
+        }
+      }
+
+      const isExamOrCourseOrRoutine = collectionName === 'courses' || collectionName === 'live_exams' || collectionName === 'routines';
+      const isAttempt = collectionName === 'attempts';
+
       const cleanItem = JSON.parse(JSON.stringify({
         ...item,
         id: docId,
-        updatedAt: (item as any)?.updatedAt || now
+        ...(isExamOrCourseOrRoutine ? {
+          createdAt: existingCreatedAt || nowIso,
+          updatedAt: resolvedUpdatedAt
+        } : isAttempt ? {
+          submittedAt: existingSubmittedAt || nowIso,
+          updatedAt: resolvedUpdatedAt
+        } : {
+          updatedAt: resolvedUpdatedAt
+        })
       }));
       batch.set(docRef, cleanItem, { merge: true });
     });
@@ -427,4 +455,436 @@ export async function deleteItemFromFirestore(colName: string, id: string): Prom
 export async function syncCollectionToFirestore(colName: string, items: any[], idPrefix: string = 'doc'): Promise<number> {
   return await uploadCollectionInBatches(colName, items, idPrefix);
 }
+
+// Direct Firestore Course Operations
+export async function fetchCoursesFromFirestore(): Promise<Course[]> {
+  try {
+    const snap = await getDocs(collection(db, 'courses'));
+    if (!snap.empty) {
+      const docs: Course[] = [];
+      snap.forEach(d => {
+        const data = d.data();
+        const nowIso = new Date().toISOString();
+        docs.push({
+          ...data,
+          id: data.id || d.id,
+          createdAt: data.createdAt || nowIso,
+          updatedAt: data.updatedAt || data.createdAt || nowIso
+        } as Course);
+      });
+      return docs;
+    }
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.GET, 'courses'); } catch {}
+    }
+    console.warn('Failed to fetch courses from Firestore:', err);
+  }
+  return [];
+}
+
+export async function addCourseToFirestore(course: Course): Promise<boolean> {
+  try {
+    const docId = String(course.id || `course_${Date.now()}`);
+    const docRef = doc(db, 'courses', docId);
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...course,
+      id: docId,
+      createdAt: course.createdAt || nowIso,
+      updatedAt: course.updatedAt || nowIso
+    }));
+    await setDoc(docRef, cleanItem, { merge: true });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'courses'); } catch {}
+    }
+    console.error('Error adding course to Firestore:', err);
+    return false;
+  }
+}
+
+export async function updateCourseInFirestore(id: string, courseData: Partial<Course>): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'courses', String(id));
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...courseData,
+      updatedAt: courseData.updatedAt || nowIso
+    }));
+    await updateDoc(docRef, cleanItem);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.UPDATE, `courses/${id}`); } catch {}
+    }
+    console.error('Error updating course in Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteCourseFromFirestore(id: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'courses', String(id));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.DELETE, `courses/${id}`); } catch {}
+    }
+    console.error('Error deleting course from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Migration function for existing Firestore course documents that lack an `updatedAt` field.
+ * Scans all documents in the 'courses' collection in Firestore and updates any missing `updatedAt`
+ * using their existing `createdAt` or current timestamp.
+ */
+export async function migrateCoursesMissingUpdatedAt(): Promise<{ updatedCount: number; totalCount: number; success: boolean }> {
+  try {
+    const snap = await getDocs(collection(db, 'courses'));
+    if (snap.empty) {
+      return { updatedCount: 0, totalCount: 0, success: true };
+    }
+
+    const chunkSize = 400;
+    const docsToUpdate: { ref: any; updatedAt: string }[] = [];
+    const nowIso = new Date().toISOString();
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (!data.updatedAt) {
+        const fallbackUpdatedAt = data.createdAt || nowIso;
+        docsToUpdate.push({ ref: docSnap.ref, updatedAt: fallbackUpdatedAt });
+      }
+    });
+
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.update(item.ref, { updatedAt: item.updatedAt });
+      });
+      await batch.commit();
+    }
+
+    return { updatedCount: docsToUpdate.length, totalCount: snap.size, success: true };
+  } catch (err: any) {
+    console.error('Error migrating course documents missing updatedAt:', err);
+    return { updatedCount: 0, totalCount: 0, success: false };
+  }
+}
+
+// ==========================================
+// EXAM & ROUTINE FIRESTORE CRUD & MIGRATIONS
+// ==========================================
+
+export async function fetchLiveExamsFromFirestore(): Promise<LiveExam[]> {
+  try {
+    const snap = await getDocs(collection(db, 'live_exams'));
+    if (!snap.empty) {
+      const docs: LiveExam[] = [];
+      snap.forEach(d => {
+        const data = d.data();
+        const nowIso = new Date().toISOString();
+        docs.push({
+          ...data,
+          id: data.id || d.id,
+          createdAt: data.createdAt || nowIso,
+          updatedAt: data.updatedAt || data.createdAt || nowIso
+        } as LiveExam);
+      });
+      return docs;
+    }
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.GET, 'live_exams'); } catch {}
+    }
+    console.warn('Failed to fetch live exams from Firestore:', err);
+  }
+  return [];
+}
+
+export async function addLiveExamToFirestore(exam: LiveExam): Promise<boolean> {
+  try {
+    const docId = String(exam.id || `exam_${Date.now()}`);
+    const docRef = doc(db, 'live_exams', docId);
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...exam,
+      id: docId,
+      createdAt: exam.createdAt || nowIso,
+      updatedAt: exam.updatedAt || nowIso
+    }));
+    await setDoc(docRef, cleanItem, { merge: true });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'live_exams'); } catch {}
+    }
+    console.error('Error adding live exam to Firestore:', err);
+    return false;
+  }
+}
+
+export async function updateLiveExamInFirestore(id: string, examData: Partial<LiveExam>): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'live_exams', String(id));
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...examData,
+      updatedAt: examData.updatedAt || nowIso
+    }));
+    await updateDoc(docRef, cleanItem);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.UPDATE, `live_exams/${id}`); } catch {}
+    }
+    console.error('Error updating live exam in Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteLiveExamFromFirestore(id: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'live_exams', String(id));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.DELETE, `live_exams/${id}`); } catch {}
+    }
+    console.error('Error deleting live exam from Firestore:', err);
+    return false;
+  }
+}
+
+export async function fetchRoutinesFromFirestore(): Promise<Routine[]> {
+  try {
+    const snap = await getDocs(collection(db, 'routines'));
+    if (!snap.empty) {
+      const docs: Routine[] = [];
+      snap.forEach(d => {
+        const data = d.data();
+        const nowIso = new Date().toISOString();
+        docs.push({
+          ...data,
+          id: data.id || d.id,
+          createdAt: data.createdAt || nowIso,
+          updatedAt: data.updatedAt || data.createdAt || nowIso
+        } as Routine);
+      });
+      return docs;
+    }
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.GET, 'routines'); } catch {}
+    }
+    console.warn('Failed to fetch routines from Firestore:', err);
+  }
+  return [];
+}
+
+export async function addRoutineToFirestore(routine: Routine): Promise<boolean> {
+  try {
+    const docId = String(routine.id || `routine_${Date.now()}`);
+    const docRef = doc(db, 'routines', docId);
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...routine,
+      id: docId,
+      createdAt: routine.createdAt || nowIso,
+      updatedAt: routine.updatedAt || nowIso
+    }));
+    await setDoc(docRef, cleanItem, { merge: true });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'routines'); } catch {}
+    }
+    console.error('Error adding routine to Firestore:', err);
+    return false;
+  }
+}
+
+export async function updateRoutineInFirestore(id: string, routineData: Partial<Routine>): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'routines', String(id));
+    const nowIso = new Date().toISOString();
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...routineData,
+      updatedAt: routineData.updatedAt || nowIso
+    }));
+    await updateDoc(docRef, cleanItem);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.UPDATE, `routines/${id}`); } catch {}
+    }
+    console.error('Error updating routine in Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteRoutineFromFirestore(id: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'routines', String(id));
+    await deleteDoc(docRef);
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.DELETE, `routines/${id}`); } catch {}
+    }
+    console.error('Error deleting routine from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Migration function for existing Firestore live exam documents that lack an `updatedAt` field.
+ * Scans all documents in the 'live_exams' collection in Firestore and updates any missing `updatedAt`
+ * using their existing `createdAt` or current timestamp.
+ */
+export async function migrateLiveExamsMissingUpdatedAt(): Promise<{ updatedCount: number; totalCount: number; success: boolean }> {
+  try {
+    const snap = await getDocs(collection(db, 'live_exams'));
+    if (snap.empty) {
+      return { updatedCount: 0, totalCount: 0, success: true };
+    }
+
+    const chunkSize = 400;
+    const docsToUpdate: { ref: any; updatedAt: string }[] = [];
+    const nowIso = new Date().toISOString();
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (!data.updatedAt) {
+        const fallbackUpdatedAt = data.createdAt || nowIso;
+        docsToUpdate.push({ ref: docSnap.ref, updatedAt: fallbackUpdatedAt });
+      }
+    });
+
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.update(item.ref, { updatedAt: item.updatedAt });
+      });
+      await batch.commit();
+    }
+
+    return { updatedCount: docsToUpdate.length, totalCount: snap.size, success: true };
+  } catch (err: any) {
+    console.error('Error migrating live exam documents missing updatedAt:', err);
+    return { updatedCount: 0, totalCount: 0, success: false };
+  }
+}
+
+/**
+ * Migration function for existing Firestore routine documents that lack an `updatedAt` field.
+ * Scans all documents in the 'routines' collection in Firestore and updates any missing `updatedAt`
+ * using their existing `createdAt` or current timestamp.
+ */
+export async function migrateRoutinesMissingUpdatedAt(): Promise<{ updatedCount: number; totalCount: number; success: boolean }> {
+  try {
+    const snap = await getDocs(collection(db, 'routines'));
+    if (snap.empty) {
+      return { updatedCount: 0, totalCount: 0, success: true };
+    }
+
+    const chunkSize = 400;
+    const docsToUpdate: { ref: any; updatedAt: string }[] = [];
+    const nowIso = new Date().toISOString();
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (!data.updatedAt) {
+        const fallbackUpdatedAt = data.createdAt || nowIso;
+        docsToUpdate.push({ ref: docSnap.ref, updatedAt: fallbackUpdatedAt });
+      }
+    });
+
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.update(item.ref, { updatedAt: item.updatedAt });
+      });
+      await batch.commit();
+    }
+
+    return { updatedCount: docsToUpdate.length, totalCount: snap.size, success: true };
+  } catch (err: any) {
+    console.error('Error migrating routine documents missing updatedAt:', err);
+    return { updatedCount: 0, totalCount: 0, success: false };
+  }
+}
+
+/**
+ * Migration function for existing Firestore attempt documents that lack an `updatedAt` field.
+ * Scans all documents in the 'attempts' collection in Firestore and updates any missing `updatedAt`
+ * using their existing `submittedAt`, `createdAt`, or current timestamp.
+ */
+export async function migrateAttemptsMissingUpdatedAt(): Promise<{ updatedCount: number; totalCount: number; success: boolean }> {
+  try {
+    const snap = await getDocs(collection(db, 'attempts'));
+    if (snap.empty) {
+      return { updatedCount: 0, totalCount: 0, success: true };
+    }
+
+    const chunkSize = 400;
+    const docsToUpdate: { ref: any; updatedAt: string }[] = [];
+    const nowIso = new Date().toISOString();
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (!data.updatedAt) {
+        const fallbackUpdatedAt = data.submittedAt || data.createdAt || nowIso;
+        docsToUpdate.push({ ref: docSnap.ref, updatedAt: fallbackUpdatedAt });
+      }
+    });
+
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.update(item.ref, { updatedAt: item.updatedAt });
+      });
+      await batch.commit();
+    }
+
+    return { updatedCount: docsToUpdate.length, totalCount: snap.size, success: true };
+  } catch (err: any) {
+    console.error('Error migrating attempt documents missing updatedAt:', err);
+    return { updatedCount: 0, totalCount: 0, success: false };
+  }
+}
+
+/**
+ * Unified migration function for all existing exam-related documents (live_exams, routines, attempts) in Firestore.
+ */
+export async function migrateAllExamDocumentsMissingUpdatedAt(): Promise<{
+  liveExams: { updatedCount: number; totalCount: number };
+  routines: { updatedCount: number; totalCount: number };
+  attempts: { updatedCount: number; totalCount: number };
+  success: boolean;
+}> {
+  const [liveExamsRes, routinesRes, attemptsRes] = await Promise.all([
+    migrateLiveExamsMissingUpdatedAt(),
+    migrateRoutinesMissingUpdatedAt(),
+    migrateAttemptsMissingUpdatedAt()
+  ]);
+
+  return {
+    liveExams: { updatedCount: liveExamsRes.updatedCount, totalCount: liveExamsRes.totalCount },
+    routines: { updatedCount: routinesRes.updatedCount, totalCount: routinesRes.totalCount },
+    attempts: { updatedCount: attemptsRes.updatedCount, totalCount: attemptsRes.totalCount },
+    success: liveExamsRes.success && routinesRes.success && attemptsRes.success
+  };
+}
+
 

@@ -431,8 +431,10 @@ export default function UserPortal({
   onFetchQuestionsLazy
 }: UserPortalProps) {
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [recentExamSearchQuery, setRecentExamSearchQuery] = useState('');
+  const [selectedRecentJobMonth, setSelectedRecentJobMonth] = useState<string | null>(null);
 
   // Study & Preparation states
   const [prepCategory, setPrepCategory] = useState('সাধারণ জ্ঞান');
@@ -1193,12 +1195,16 @@ export default function UserPortal({
     return true;
   };
 
-  const handleTabSelect = (tab: 'dashboard' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
+  const handleTabSelect = (tab: 'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
     if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
       checkGuestAccess(
         tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
       );
       return;
+    }
+    if (tab === 'recentJob') {
+      setSelectedRecentJobMonth(null);
+      setRecentExamSearchQuery('');
     }
     if (tab === 'courses') {
       setSelectedCourseFilter(enrolledCourseIds.length > 0 ? 'enrolled' : 'all');
@@ -1924,6 +1930,335 @@ export default function UserPortal({
     }
   });
 
+  // Helper to parse dates in various formats (ISO, YYYY-MM-DD, Bengali text / numbers)
+  const parseAnyDate = (dateStr?: string): Date | null => {
+    if (!dateStr) return null;
+    const trimmed = String(dateStr).trim();
+    if (!trimmed) return null;
+
+    // Direct JS Date parse
+    const nativeParsed = new Date(trimmed);
+    if (!isNaN(nativeParsed.getTime())) {
+      return nativeParsed;
+    }
+
+    // Replace Bengali digits
+    const bnToEnMap: Record<string, string> = {
+      '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+      '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+    };
+    const normalizedStr = trimmed.replace(/[০-৯]/g, d => bnToEnMap[d] || d);
+
+    const bnMonths: Record<string, number> = {
+      'জানুয়ারি': 0, 'জানুয়ারি': 0, 'january': 0, 'jan': 0,
+      'ফেব্রুয়ারি': 1, 'ফেব্রুয়ারি': 1, 'february': 1, 'feb': 1,
+      'মার্চ': 2, 'march': 2, 'mar': 2,
+      'এপ্রিল': 3, 'april': 3, 'apr': 3,
+      'মে': 4, 'may': 4,
+      'জুন': 5, 'june': 5, 'jun': 5,
+      'জুলাই': 6, 'july': 6, 'jul': 6,
+      'আগস্ট': 7, 'august': 7, 'aug': 7,
+      'সেপ্টেম্বর': 8, 'september': 8, 'sep': 8,
+      'অক্টোবর': 9, 'october': 9, 'oct': 9,
+      'নভেম্বর': 10, 'november': 10, 'nov': 10,
+      'ডিসেম্বর': 11, 'december': 11, 'dec': 11
+    };
+
+    for (const [monthName, monthIndex] of Object.entries(bnMonths)) {
+      if (normalizedStr.toLowerCase().includes(monthName)) {
+        const parts = normalizedStr.match(/\d+/g);
+        if (parts && parts.length >= 2) {
+          const day = parseInt(parts[0], 10);
+          const year = parseInt(parts[parts.length - 1], 10);
+          if (day >= 1 && day <= 31 && year >= 2000 && year <= 2100) {
+            return new Date(year, monthIndex, day);
+          }
+        }
+      }
+    }
+
+    const digits = normalizedStr.match(/\d+/g);
+    if (digits && digits.length >= 3) {
+      if (digits[0].length === 4) {
+        return new Date(parseInt(digits[0], 10), parseInt(digits[1], 10) - 1, parseInt(digits[2], 10));
+      } else if (digits[2].length === 4) {
+        return new Date(parseInt(digits[2], 10), parseInt(digits[1], 10) - 1, parseInt(digits[0], 10));
+      }
+    }
+
+    return null;
+  };
+
+  const getBengaliRelativeTime = (dateObj: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - dateObj.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'আসন্ন পরীক্ষা';
+    if (diffDays === 0) return 'আজ অনুষ্ঠিত';
+    if (diffDays === 1) return 'গতকাল';
+    if (diffDays < 7) return `${toBengaliDigits(diffDays)} দিন আগে`;
+    if (diffDays < 30) {
+      const weeks = Math.max(1, Math.floor(diffDays / 7));
+      return `${toBengaliDigits(weeks)} সপ্তাহ আগে`;
+    }
+    const months = Math.max(1, Math.floor(diffDays / 30));
+    if (months <= 12) {
+      return `${toBengaliDigits(months)} মাস আগে`;
+    }
+    const years = Math.max(1, Math.floor(months / 12));
+    return `${toBengaliDigits(years)} বছর আগে`;
+  };
+
+  const BENGALI_MONTH_NAMES = [
+    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
+    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+  ];
+
+  const getMonthYearBengali = (date: Date): string => {
+    const monthName = BENGALI_MONTH_NAMES[date.getMonth()];
+    const yearBn = toBengaliDigits(date.getFullYear());
+    return `${monthName} ${yearBn}`;
+  };
+
+  // Recent Job Solution Exams (Held in the last 6 months, latest on top)
+  const recentJobSolutionExams = useMemo(() => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const curMonthKey = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+    const curMonthName = getMonthYearBengali(now);
+
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsAgoMs = sixMonthsAgo.getTime();
+    const futureBufferMs = now.getTime() + (30 * 24 * 60 * 60 * 1000); // allow near-upcoming exams
+
+    // 1. Identify candidate exam nodes under Job Solution variations
+    const candidateNodesMap = new Map<string, {
+      id: string;
+      name: string;
+      parentCategory: string;
+      subHeading?: string;
+      rawDate?: string;
+      createdAt?: string;
+    }>();
+
+    // Check all subcategories
+    subcategories.forEach(sub => {
+      const name = (sub.name || '').trim();
+      if (!name) return;
+
+      const parentLower = (sub.parentCategory || '').trim().toLowerCase();
+      const isJobParent = isJobSolutionVariation(sub.parentCategory) || 
+                          isYearJobSolutionVariation(sub.parentCategory) ||
+                          parentLower.includes('জব সলিউশন') ||
+                          parentLower.includes('job solution') ||
+                          parentLower.includes('বিসিএস') ||
+                          parentLower.includes('ব্যাংক') ||
+                          parentLower.includes('নিয়োগ');
+
+      // Check if subcategory is leaf or has job questions
+      const isLeaf = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === name.toLowerCase());
+      const hasJobQuestions = questions.some(q => {
+        const qSub = (q.subcategory || '').trim().toLowerCase();
+        const qCat = (q.category || '').trim().toLowerCase();
+        const matchSub = qSub === name.toLowerCase() || (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === name.toLowerCase()));
+        return matchSub && (isJobSolutionVariation(qCat) || isYearJobSolutionVariation(qCat) || qCat.includes('জব সলিউশন') || isJobParent);
+      });
+
+      if (isLeaf && (isJobParent || hasJobQuestions || isJobSolutionVariation(name))) {
+        candidateNodesMap.set(name.toLowerCase(), {
+          id: sub.id,
+          name: name,
+          parentCategory: sub.parentCategory,
+          subHeading: sub.subHeading,
+          rawDate: sub.date,
+          createdAt: sub.createdAt
+        });
+      }
+    });
+
+    // Also check questions that have subcategories belonging to job solutions
+    questions.forEach(q => {
+      const qSub = (q.subcategory || '').trim();
+      const qCat = (q.category || '').trim();
+      if (qSub && (isJobSolutionVariation(qCat) || isYearJobSolutionVariation(qCat) || qCat.includes('জব সলিউশন') || qSub.includes('বিসিএস') || qSub.includes('নিয়োগ') || qSub.includes('ব্যাংক'))) {
+        const key = qSub.toLowerCase();
+        if (!candidateNodesMap.has(key)) {
+          candidateNodesMap.set(key, {
+            id: `sub_auto_${key}`,
+            name: qSub,
+            parentCategory: q.category || 'জব সলিউশন পরীক্ষা',
+            rawDate: q.date,
+            createdAt: q.createdAt
+          });
+        }
+      }
+    });
+
+    // 2. Build full exam metadata including questions, dateObj, progress, month grouping
+    interface ExamMeta {
+      id: string;
+      name: string;
+      parentCategory: string;
+      subHeading?: string;
+      dateObj: Date | null;
+      dateTimestamp: number;
+      formattedDate: string;
+      relativeTime: string;
+      monthKey: string;
+      monthName: string;
+      isCurrentMonth: boolean;
+      questions: Question[];
+      qCount: number;
+      progress: { percentage: number; readCount: number; totalCount: number };
+      isStrictLast6Months: boolean;
+    }
+
+    const compiledExams: ExamMeta[] = [];
+
+    candidateNodesMap.forEach((node) => {
+      const examQuestions = getQuestionsForJobNode(node.name, false);
+      const qCount = examQuestions.length;
+
+      // Extract best date
+      let parsedDate = parseAnyDate(node.rawDate);
+      if (!parsedDate && node.createdAt) {
+        parsedDate = parseAnyDate(node.createdAt);
+      }
+      if (!parsedDate && examQuestions.length > 0) {
+        for (const q of examQuestions) {
+          if (q.date) {
+            const qDate = parseAnyDate(q.date);
+            if (qDate && (!parsedDate || qDate.getTime() > parsedDate.getTime())) {
+              parsedDate = qDate;
+            }
+          } else if (q.createdAt) {
+            const qCreated = parseAnyDate(q.createdAt);
+            if (qCreated && (!parsedDate || qCreated.getTime() > parsedDate.getTime())) {
+              parsedDate = qCreated;
+            }
+          }
+        }
+      }
+
+      // If still no date found, check if exam name has recent year or BCS notation
+      if (!parsedDate) {
+        const normName = node.name.replace(/[০-৯]/g, d => ({'০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9'}[d] || d));
+        if (normName.includes('2026') || normName.includes('৫২তম') || normName.includes('52nd') || normName.includes('৪৭তম') || normName.includes('47th')) {
+          parsedDate = new Date(now.getTime() - (15 * 24 * 60 * 60 * 1000)); // ~15 days ago
+        } else if (normName.includes('2025') || normName.includes('৪৬তম') || normName.includes('46th')) {
+          parsedDate = new Date(now.getTime() - (45 * 24 * 60 * 60 * 1000)); // ~1.5 months ago
+        } else if (normName.includes('2024') || normName.includes('৪৫তম') || normName.includes('45th')) {
+          parsedDate = new Date(now.getTime() - (120 * 24 * 60 * 60 * 1000)); // ~4 months ago
+        }
+      }
+
+      const dateTimestamp = parsedDate ? parsedDate.getTime() : 0;
+      const isStrictLast6Months = Boolean(parsedDate && dateTimestamp >= sixMonthsAgoMs && dateTimestamp <= futureBufferMs);
+
+      const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, examQuestions, userReadSet);
+
+      const monthKey = parsedDate ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}` : curMonthKey;
+      const monthName = parsedDate ? getMonthYearBengali(parsedDate) : curMonthName;
+      const isCurrentMonth = parsedDate ? (parsedDate.getFullYear() === curYear && parsedDate.getMonth() === curMonth) : true;
+
+      compiledExams.push({
+        id: node.id,
+        name: node.name,
+        parentCategory: node.parentCategory,
+        subHeading: node.subHeading,
+        dateObj: parsedDate,
+        dateTimestamp: dateTimestamp,
+        formattedDate: parsedDate ? formatBengaliDate(parsedDate.toISOString().split('T')[0]) : '',
+        relativeTime: parsedDate ? getBengaliRelativeTime(parsedDate) : 'রিসেন্ট',
+        monthKey: monthKey,
+        monthName: monthName,
+        isCurrentMonth: isCurrentMonth,
+        questions: examQuestions,
+        qCount: qCount,
+        progress: progress,
+        isStrictLast6Months: isStrictLast6Months
+      });
+    });
+
+    // 3. Filter for exams held in the last 6 months and sort latest on top (dateTimestamp DESC)
+    const strict6MonthsExams = compiledExams
+      .filter(e => e.isStrictLast6Months)
+      .sort((a, b) => b.dateTimestamp - a.dateTimestamp);
+
+    if (strict6MonthsExams.length >= 1) {
+      return strict6MonthsExams;
+    }
+
+    // Fallback: If no exams strictly match the 6 months window, sort all available job exams with latest on top
+    return compiledExams
+      .sort((a, b) => b.dateTimestamp - a.dateTimestamp)
+      .slice(0, 12);
+  }, [subcategories, questions, userReadSet, user.phone, user.email, user.name]);
+
+  // Running Month Exams (displayed directly with exact dates)
+  const runningMonthExams = useMemo(() => {
+    return recentJobSolutionExams.filter(e => e.isCurrentMonth);
+  }, [recentJobSolutionExams]);
+
+  // Previous Months Groups (displayed in month folder cards)
+  const previousMonthGroups = useMemo(() => {
+    const prevExams = recentJobSolutionExams.filter(e => !e.isCurrentMonth);
+    const groupMap = new Map<string, {
+      monthKey: string;
+      monthName: string;
+      monthDate: Date;
+      exams: typeof recentJobSolutionExams;
+      totalQuestions: number;
+      totalReadCount: number;
+      totalQuestionCount: number;
+    }>();
+
+    prevExams.forEach(exam => {
+      const key = exam.monthKey;
+      if (!groupMap.has(key)) {
+        const examDate = exam.dateObj || new Date();
+        groupMap.set(key, {
+          monthKey: key,
+          monthName: exam.monthName,
+          monthDate: new Date(examDate.getFullYear(), examDate.getMonth(), 1),
+          exams: [],
+          totalQuestions: 0,
+          totalReadCount: 0,
+          totalQuestionCount: 0,
+        });
+      }
+      const group = groupMap.get(key)!;
+      group.exams.push(exam);
+      group.totalQuestions += exam.qCount;
+      group.totalReadCount += exam.progress.readCount;
+      group.totalQuestionCount += exam.progress.totalCount;
+    });
+
+    return Array.from(groupMap.values())
+      .map(g => {
+        const percentage = g.totalQuestionCount > 0 
+          ? Math.round((g.totalReadCount / g.totalQuestionCount) * 100)
+          : 0;
+        return {
+          monthKey: g.monthKey,
+          monthName: g.monthName,
+          monthDate: g.monthDate,
+          exams: g.exams.sort((a, b) => b.dateTimestamp - a.dateTimestamp),
+          totalExams: g.exams.length,
+          totalQuestions: g.totalQuestions,
+          progress: {
+            percentage: percentage,
+            readCount: g.totalReadCount,
+            totalCount: g.totalQuestionCount
+          }
+        };
+      })
+      .sort((a, b) => b.monthDate.getTime() - a.monthDate.getTime());
+  }, [recentJobSolutionExams]);
+
   // Countdown clock effect
   useEffect(() => {
     let interval: any = null;
@@ -2468,6 +2803,7 @@ export default function UserPortal({
       startTime: examConfig?.startTime || routine.examDate || routine.createdAt,
       expiryTime: examConfig?.expiryTime || new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
       createdAt: routine.createdAt,
+      updatedAt: routine.updatedAt || routine.createdAt || new Date().toISOString(),
       questionIds: examConfig?.questionIds,
       routineId: routine.id,
       courseId: routine.courseId,
@@ -3414,6 +3750,8 @@ export default function UserPortal({
                 <div className="flex flex-col gap-1.5">
                   {[
                     { id: 'dashboard', label: '📊 ড্যাশবোর্ড', icon: Home },
+                    { id: 'recentJob', label: '⚡ রিসেন্ট জব সলিউশন', icon: Sparkles },
+                    { id: 'currentAffairs', label: '🌍 সাম্প্রতিক বিষয়াবলী', icon: Globe },
                     { id: 'preparation', label: '📚 বিষয়ভিত্তিক প্রস্তুতি', icon: BookOpen },
                     { id: 'job', label: '💼 জব সলিউশন ব্যাংক', icon: Layers },
                     { id: 'yearJob', label: '📅 সাল ভিত্তিক জব সলিউশন', icon: Calendar },
@@ -4291,6 +4629,18 @@ export default function UserPortal({
                   </div>
 
                   <div 
+                    id="grid-card-recent-job"
+                    onClick={() => handleTabSelect('recentJob')}
+                    className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-emerald-50/60 to-teal-100/40 border-emerald-200/90 hover:border-emerald-300 hover:shadow transition flex flex-col justify-between min-h-[85px] group"
+                  >
+                    <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-950 group-hover:text-emerald-700 transition-colors">রিসেন্ট জব সলিউশন</h4>
+                      <p className="text-[9px] text-emerald-700/80 mt-0.5">সাম্প্রতিক সকল পরীক্ষা</p>
+                    </div>
+                  </div>
+
+                  <div 
                     onClick={() => handleTabSelect('currentAffairs')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-teal-50/50 to-teal-100/30 border-teal-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
@@ -4426,6 +4776,400 @@ export default function UserPortal({
 
             </div>
           )}
+
+          {/* VIEW: RECENT JOB SOLUTIONS (RUNNING MONTH BY DATE + PREVIOUS MONTHS BY MONTH CARDS) */}
+          {activeTab === 'recentJob' && (() => {
+            const currentRunningMonthName = getMonthYearBengali(new Date());
+
+            // If user searched for something
+            const isSearching = Boolean(recentExamSearchQuery.trim());
+            const filteredExams = isSearching
+              ? recentJobSolutionExams.filter(e => 
+                  e.name.toLowerCase().includes(recentExamSearchQuery.toLowerCase()) ||
+                  (e.subHeading && e.subHeading.toLowerCase().includes(recentExamSearchQuery.toLowerCase())) ||
+                  (e.formattedDate && e.formattedDate.toLowerCase().includes(recentExamSearchQuery.toLowerCase())) ||
+                  (e.monthName && e.monthName.toLowerCase().includes(recentExamSearchQuery.toLowerCase())) ||
+                  (e.parentCategory && e.parentCategory.toLowerCase().includes(recentExamSearchQuery.toLowerCase()))
+                )
+              : [];
+
+            // If a specific previous month is selected
+            const selectedMonthGroup = selectedRecentJobMonth 
+              ? previousMonthGroups.find(g => g.monthName === selectedRecentJobMonth || g.monthKey === selectedRecentJobMonth)
+              : null;
+            const monthExams = selectedMonthGroup ? selectedMonthGroup.exams : [];
+
+            // Reusable card renderer
+            const renderRecentExamCard = (exam: typeof recentJobSolutionExams[0], idx: number, prefix: string) => (
+              <div
+                key={`${prefix}-exam-card-${exam.name}-${idx}`}
+                className="group bg-white hover:bg-emerald-50/30 border border-slate-200/90 hover:border-emerald-300 rounded-2xl p-3.5 flex flex-col justify-between gap-3 shadow-2xs hover:shadow-xs transition-all duration-150"
+              >
+                {/* Top: Icon + Relative Time Badge + Progress */}
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-2xs shrink-0 group-hover:scale-105 transition-transform">
+                      {renderSubjectIcon(exam.name, "w-4 h-4")}
+                    </div>
+                    <span className="text-[9px] font-black bg-teal-50 text-teal-800 border border-teal-200/80 px-2 py-0.5 rounded-full truncate shadow-2xs">
+                      {exam.relativeTime}
+                    </span>
+                  </div>
+
+                  <div 
+                    className="shrink-0"
+                    title={`পড়ার অগ্রগতি: ${toBengaliDigits(exam.progress.readCount)}/${toBengaliDigits(exam.progress.totalCount)} (${toBengaliDigits(exam.progress.percentage)}%)`}
+                  >
+                    <CircularProgressBar
+                      percentage={exam.progress.percentage}
+                      size={26}
+                      strokeWidth={2.5}
+                      textSizeClass="text-[7.5px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Center: Title, Subtitle, Date */}
+                <div className="flex flex-col gap-1">
+                  <h3 className="font-extrabold text-[13.5px] text-slate-800 group-hover:text-emerald-700 transition-colors leading-snug">
+                    {exam.name}
+                  </h3>
+                  {exam.subHeading && (
+                    <p className="text-[10.5px] text-slate-500 font-medium line-clamp-1">
+                      {exam.subHeading}
+                    </p>
+                  )}
+                  {exam.formattedDate ? (
+                    <div className="flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 mt-0.5">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>অনুষ্ঠিত: {exam.formattedDate}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 mt-0.5">
+                      <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{exam.monthName}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom: MCQ Count & Direct Actions */}
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                  {showMcqCount ? (
+                    <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded text-[9.5px]">
+                      {exam.qCount.toLocaleString('bn-BD')} MCQ
+                    </span>
+                  ) : <span />}
+
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    {/* Read / Practice button */}
+                    <button
+                      onClick={async () => {
+                        if (user.isGuest) {
+                          checkGuestAccess(`"${exam.name}" - জব সলিউশন MCQ সমাধান`);
+                          return;
+                        }
+                        let examQuestions = exam.questions;
+                        if (examQuestions.length === 0 && onFetchQuestionsLazy) {
+                          const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
+                          examQuestions = fetched.filter(q => 
+                            q.subcategory === exam.name || (q.subcategories && q.subcategories.includes(exam.name))
+                          );
+                        }
+                        setReaderQuestions(examQuestions);
+                        setReaderTitle(`রিসেন্ট জব সলিউশন: ${exam.name}`);
+                        setReaderActiveMode('read');
+                        setReaderSelectedAnswers({});
+                        setReaderPage(1);
+                        setReaderSource('job');
+                        setReaderCategoryFilter('সব প্রশ্ন');
+                        setReaderModeActive(true);
+                      }}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10.5px] rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <BookOpen className="w-3 h-3" />
+                      <span>পড়ুন</span>
+                    </button>
+
+                    {/* Mock Test button */}
+                    <button
+                      onClick={async () => {
+                        if (user.isGuest) {
+                          checkGuestAccess(`"${exam.name}" - কাস্টম মক টেস্ট`);
+                          return;
+                        }
+                        let pool = exam.questions;
+                        if (pool.length === 0 && onFetchQuestionsLazy) {
+                          const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
+                          pool = fetched.filter(q => q.subcategory === exam.name || (q.subcategories && q.subcategories.includes(exam.name)));
+                        }
+                        if (pool.length === 0) {
+                          showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো প্রশ্ন পাওয়া যায়নি!');
+                          return;
+                        }
+                        setCustomExamOverridePool(pool);
+                        setCustomExamTitle(`মক পরীক্ষা: ${exam.name}`);
+                        setSetupModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[10.5px] rounded-lg transition border border-slate-200 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Clock className="w-3 h-3 text-indigo-600" />
+                      <span>পরীক্ষা</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+
+            return (
+              <div className="bg-white border border-slate-200/80 p-3 sm:p-4 rounded-2xl shadow-2xs flex flex-col gap-4 text-xs animate-fade-in">
+                {/* Top Header & Breadcrumbs */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (selectedRecentJobMonth) {
+                          setSelectedRecentJobMonth(null);
+                        } else {
+                          setActiveTab('dashboard');
+                        }
+                      }}
+                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer flex items-center justify-center shrink-0"
+                      title={selectedRecentJobMonth ? "বিগত সকল মাসের তালিকায় ফিরুন" : "ড্যাশবোর্ডে ফিরে যান"}
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {selectedRecentJobMonth ? (
+                          <>
+                            <h2 className="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-1.5">
+                              <span className="text-lg">📅</span> {selectedRecentJobMonth}
+                            </h2>
+                            <span className="bg-emerald-100 text-emerald-800 font-black text-[9.5px] px-2.5 py-0.5 rounded-full border border-emerald-200 shadow-2xs">
+                              {toBengaliDigits(monthExams.length)}টি পরীক্ষা
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <h2 className="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-1.5">
+                              <span className="text-lg">⚡</span> রিসেন্ট জব সলিউশন
+                            </h2>
+                            <span className="bg-emerald-100 text-emerald-800 font-black text-[9.5px] px-2.5 py-0.5 rounded-full border border-emerald-200 shadow-2xs">
+                              বিগত ৬ মাসের পরীক্ষা ({toBengaliDigits(recentJobSolutionExams.length)}টি)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                        {selectedRecentJobMonth 
+                          ? `${selectedRecentJobMonth} মাসে অনুষ্ঠিত সকল সরকারি ও নিয়োগ পরীক্ষার প্রশ্ন সমাধান` 
+                          : 'চলতি মাসের অনুষ্ঠিত পরীক্ষা এবং বিগত মাসভিত্তিক প্রশ্নব্যাংক'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative w-full sm:w-64 shrink-0">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={recentExamSearchQuery}
+                      onChange={(e) => setRecentExamSearchQuery(e.target.value)}
+                      placeholder="পরীক্ষার নাম বা মাস দিয়ে খুঁজুন..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                    />
+                    {recentExamSearchQuery && (
+                      <button
+                        onClick={() => setRecentExamSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* CASE 1: SEARCH ACTIVE */}
+                {isSearching ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-600">
+                        "{recentExamSearchQuery}" দিয়ে প্রাপ্ত ফলাফল ({toBengaliDigits(filteredExams.length)}টি):
+                      </span>
+                      <button
+                        onClick={() => setRecentExamSearchQuery('')}
+                        className="text-xs font-bold text-emerald-600 hover:underline"
+                      >
+                        সার্চ ক্লিয়ার করুন
+                      </button>
+                    </div>
+                    {filteredExams.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-500 flex flex-col items-center gap-2">
+                        <span className="text-2xl">🔍</span>
+                        <p className="font-bold text-xs">কোনো পরীক্ষা পাওয়া যায়নি!</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {filteredExams.map((exam, idx) => renderRecentExamCard(exam, idx, 'search'))}
+                      </div>
+                    )}
+                  </div>
+                ) : selectedRecentJobMonth ? (
+                  /* CASE 2: A SPECIFIC PREVIOUS MONTH IS SELECTED (e.g. জুলাই ২০২৬) */
+                  <div className="flex flex-col gap-3">
+                    {/* Back navigation pill */}
+                    <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedRecentJobMonth(null)}
+                        className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 border border-emerald-200/60 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>বিগত সকল মাসের তালিকায় ফিরুন</span>
+                      </button>
+
+                      {selectedMonthGroup && (
+                        <span className="text-[11px] font-bold text-slate-500">
+                          মোট প্রশ্ন: {selectedMonthGroup.totalQuestions.toLocaleString('bn-BD')} MCQ
+                        </span>
+                      )}
+                    </div>
+
+                    {monthExams.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-500">
+                        এই মাসে কোনো পরীক্ষা পাওয়া যায়নি।
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {monthExams.map((exam, idx) => renderRecentExamCard(exam, idx, 'month'))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* CASE 3: ROOT VIEW (RUNNING MONTH BY DATE + PREVIOUS MONTH CARDS) */
+                  <div className="flex flex-col gap-5">
+                    {/* SECTION 1: RUNNING MONTH (চলতি মাস) - SHOWN DIRECTLY BY DATE */}
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <h3 className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+                            চলতি মাসে অনুষ্ঠিত পরীক্ষা ({currentRunningMonthName})
+                          </h3>
+                        </div>
+                        <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          {toBengaliDigits(runningMonthExams.length)}টি পরীক্ষা
+                        </span>
+                      </div>
+
+                      {runningMonthExams.length === 0 ? (
+                        <div className="p-3.5 bg-emerald-50/40 rounded-xl border border-emerald-100 text-emerald-800 text-[11px] font-semibold flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>চলতি মাসে ({currentRunningMonthName}) এখনো নতুন কোনো পরীক্ষা অনুষ্ঠিত বা যোগ হয়নি।</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {runningMonthExams.map((exam, idx) => renderRecentExamCard(exam, idx, 'running'))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SECTION 2: PREVIOUS MONTHS (বিগত মাসসমূহ) - SHOWN IN MONTH CARDS */}
+                    <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📁</span>
+                          <h3 className="text-xs sm:text-sm font-extrabold text-slate-800">
+                            বিগত মাসভিত্তিক জব সলিউশন
+                          </h3>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          বিগত ৬ মাসের মাসভিত্তিক ফোল্ডার কার্ড
+                        </span>
+                      </div>
+
+                      {previousMonthGroups.length === 0 ? (
+                        <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
+                          বিগত ৫ মাসে অনুষ্ঠিত কোনো পরীক্ষার রেকর্ড পাওয়া যায়নি।
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {previousMonthGroups.map((group, idx) => (
+                            <div
+                              key={`prev-month-card-${group.monthName}-${idx}`}
+                              onClick={() => setSelectedRecentJobMonth(group.monthName)}
+                              className="group cursor-pointer bg-gradient-to-br from-slate-50/80 via-white to-teal-50/30 hover:to-emerald-50/50 border border-slate-200/90 hover:border-emerald-300 rounded-2xl p-3.5 flex flex-col justify-between gap-3 shadow-2xs hover:shadow-xs transition-all duration-150 active:scale-98"
+                            >
+                              {/* Top Row: Month Badge & Total Exams */}
+                              <div className="flex items-center justify-between gap-1.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0 group-hover:scale-105 transition-transform">
+                                    <Calendar className="w-4 h-4" />
+                                  </div>
+                                  <h4 className="font-black text-sm text-slate-800 group-hover:text-emerald-700 transition-colors">
+                                    {group.monthName}
+                                  </h4>
+                                </div>
+
+                                <span className="bg-emerald-100 text-emerald-800 font-extrabold text-[9.5px] px-2 py-0.5 rounded-full border border-emerald-200 shadow-2xs shrink-0">
+                                  {toBengaliDigits(group.totalExams)}টি পরীক্ষা
+                                </span>
+                              </div>
+
+                              {/* Exam Previews List */}
+                              <div className="flex flex-col gap-1 py-1">
+                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                  অনুষ্ঠিত পরীক্ষাসমূহ:
+                                </div>
+                                <div className="space-y-0.5">
+                                  {group.exams.slice(0, 3).map((ex, eIdx) => (
+                                    <div key={`prev-ex-bullet-${eIdx}`} className="text-[11px] font-bold text-slate-700 flex items-center gap-1 truncate">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                      <span className="truncate">{ex.name}</span>
+                                    </div>
+                                  ))}
+                                  {group.exams.length > 3 && (
+                                    <div className="text-[10px] font-bold text-emerald-700 pl-2.5">
+                                      + আরও {toBengaliDigits(group.exams.length - 3)}টি পরীক্ষা...
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Bottom: MCQs, Reading Progress & CTA */}
+                              <div className="pt-2 border-t border-slate-100/90 flex items-center justify-between text-[10px]">
+                                <div className="flex items-center gap-1.5">
+                                  {showMcqCount && (
+                                    <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded text-[9px]">
+                                      {group.totalQuestions.toLocaleString('bn-BD')} MCQ
+                                    </span>
+                                  )}
+                                  <div 
+                                    className="shrink-0"
+                                    title={`পড়ার অগ্রগতি: ${toBengaliDigits(group.progress.readCount)}/${toBengaliDigits(group.progress.totalCount)} (${toBengaliDigits(group.progress.percentage)}%)`}
+                                  >
+                                    <CircularProgressBar
+                                      percentage={group.progress.percentage}
+                                      size={22}
+                                      strokeWidth={2.2}
+                                      textSizeClass="text-[6.5px]"
+                                    />
+                                  </div>
+                                </div>
+
+                                <span className="text-emerald-700 font-extrabold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform text-[11px]">
+                                  পরীক্ষাসমূহ দেখুন <ChevronRight className="w-3.5 h-3.5" />
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* VIEW: PREPARATION / SELF-STUDY */}
           {activeTab === 'preparation' && (() => {

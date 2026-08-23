@@ -77,6 +77,7 @@ export interface Attempt {
   userSelectedAnswers: Record<number, string>; // index -> selected option key or 'Skipped'
   activeQuizQuestions: Question[]; // Snapshots of questions at that exam
   submittedAt: string;
+  updatedAt?: string;
   userEmail?: string;     // Guest or registered user email
   isGuestAttempt?: boolean; // Flag indicating if attempt was taken as a guest
 }
@@ -149,6 +150,7 @@ export interface Course {
   startDate?: string;
   endDate?: string;
   createdAt: string;
+  updatedAt?: string;
   price?: number;          // Course price in BDT (0 or undefined = Free)
   originalPrice?: number;  // Optional regular/original price (for strikethrough comparison)
   coupons?: Coupon[];      // Optional course-specific coupons
@@ -164,6 +166,7 @@ export interface ScheduledExamConfig {
   passMarks: number;
   questionSelection: 'auto' | 'manual';
   questionIds?: string[];
+  updatedAt?: string;
 }
 
 export interface Routine {
@@ -171,6 +174,7 @@ export interface Routine {
   title: string;
   details: string;
   createdAt: string;
+  updatedAt?: string;
   courseId?: string;
   courseName?: string;
   // Syllabus Topics (Cascading)
@@ -191,6 +195,7 @@ export interface LiveExam {
   startTime: string; // ISO datetime
   expiryTime: string; // ISO datetime
   createdAt: string;
+  updatedAt?: string;
   questionIds?: string[];
   // Course/Routine linked fields
   routineId?: string;

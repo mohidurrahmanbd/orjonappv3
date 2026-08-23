@@ -26,8 +26,16 @@ import {
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
-  subscribeQuestionsFromFirestore,
-  fetchQuestionsLazyFromFirestore
+  performIncrementalSyncFromFirestore,
+  fetchQuestionsLazyFromFirestore,
+  getCoursesFromIDB,
+  saveCoursesToIDB,
+  performIncrementalCourseSyncFromFirestore,
+  getLiveExamsFromIDB,
+  saveLiveExamsToIDB,
+  getRoutinesFromIDB,
+  saveRoutinesToIDB,
+  performIncrementalExamSyncFromFirestore
 } from './lib/indexedDB';
 import { 
   createUserWithEmailAndPassword, 
@@ -382,10 +390,8 @@ export default function App() {
     updateAttemptsDB(updatedAttempts);
   };
 
-  // 1. Load database on mount with IndexedDB for instant startup & Firestore Real-Time Sync
+  // 1. Load database on mount with IndexedDB for instant startup & Timestamp-Based Incremental Sync
   useEffect(() => {
-    let activeUnsubscribe: (() => void) | null = null;
-
     // Fast initial fallback setup
     const storedQ = localStorage.getItem('orjon_questions') || localStorage.getItem('medha_questions');
     let loadedQ: Question[] = [];
@@ -414,10 +420,12 @@ export default function App() {
 
     setQuestions(normalizedQ);
 
-    // Instant startup load from IndexedDB (Cache-First)
+    // ==========================================
+    // 1. LOCAL QUESTIONS LOADING (Cache-First)
+    // ==========================================
     getQuestionsFromIDB().then((idbQuestions) => {
       if (idbQuestions && idbQuestions.length > 0) {
-        normalizedQ = idbQuestions.map(q => {
+        const loadedFromIDB = idbQuestions.map(q => {
           let cat = q.category || '';
           if (isJobSolutionVariation(cat)) {
             cat = 'জব সলিউশন পরীক্ষা';
@@ -429,34 +437,15 @@ export default function App() {
             category: cat
           };
         });
-        const dedupedQ = dedupeQuestions(normalizedQ);
+        const dedupedQ = dedupeQuestions(loadedFromIDB);
         setQuestions(dedupedQ);
+        syncSubcategoriesWithFirestoreQuestions(dedupedQ);
       } else {
         saveQuestionsToIDB(normalizedQ);
       }
     }).catch(err => {
-      console.warn("IndexedDB initialization notice:", err);
+      console.warn("IndexedDB questions initialization notice:", err);
     });
-
-    // Real-Time & Incremental Firestore Questions Sync
-    activeUnsubscribe = subscribeQuestionsFromFirestore(
-      (firestoreQuestions) => {
-        if (firestoreQuestions && firestoreQuestions.length > 0) {
-          const dedupedQ = dedupeQuestions(firestoreQuestions);
-          setQuestions(dedupedQ);
-          saveQuestionsToIDB(dedupedQ);
-          try {
-            localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
-          } catch (e) {
-            console.warn("localStorage quota notice for questions stringify:", e);
-          }
-          syncSubcategoriesWithFirestoreQuestions(dedupedQ);
-        }
-      },
-      (err) => {
-        console.warn('Real-time questions sync error (using local cache):', err);
-      }
-    );
 
     // Notices seed (Cache-First)
     const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
@@ -473,27 +462,9 @@ export default function App() {
       }).catch(() => {});
     }
 
-    // Routines seed (Cache-First)
-    const storedR = localStorage.getItem('orjon_routines') || localStorage.getItem('medha_routines');
-    if (storedR) {
-      try {
-        setRoutines(dedupeRoutines(JSON.parse(storedR)));
-      } catch {
-        setRoutines(dedupeRoutines(INITIAL_ROUTINES));
-      }
-    } else {
-      localStorage.setItem('orjon_routines', JSON.stringify(dedupeRoutines(INITIAL_ROUTINES)));
-      setRoutines(dedupeRoutines(INITIAL_ROUTINES));
-      fetchCollectionFromFirestore<Routine>('routines').then(fsR => {
-        if (fsR && fsR.length > 0) {
-          const deduped = dedupeRoutines(fsR);
-          setRoutines(deduped);
-          localStorage.setItem('orjon_routines', JSON.stringify(deduped));
-        }
-      }).catch(() => {});
-    }
-
-    // Courses seed (Cache-First)
+    // ==========================================
+    // 2. LOCAL COURSES LOADING (Cache-First)
+    // ==========================================
     const storedCourses = localStorage.getItem('orjon_courses') || localStorage.getItem('medha_courses');
     if (storedCourses) {
       try {
@@ -504,16 +475,23 @@ export default function App() {
     } else {
       localStorage.setItem('orjon_courses', JSON.stringify(dedupeCourses(INITIAL_COURSES)));
       setCourses(dedupeCourses(INITIAL_COURSES));
-      fetchCollectionFromFirestore<Course>('courses').then(fsCourses => {
-        if (fsCourses && fsCourses.length > 0) {
-          const deduped = dedupeCourses(fsCourses);
-          setCourses(deduped);
-          localStorage.setItem('orjon_courses', JSON.stringify(deduped));
-        }
-      }).catch(() => {});
     }
 
-    // Live exams seed (Cache-First)
+    getCoursesFromIDB().then((idbCourses) => {
+      if (idbCourses && idbCourses.length > 0) {
+        const dedupedC = dedupeCourses(idbCourses);
+        setCourses(dedupedC);
+      } else {
+        const localC = storedCourses ? JSON.parse(storedCourses) : INITIAL_COURSES;
+        saveCoursesToIDB(dedupeCourses(localC));
+      }
+    }).catch(err => {
+      console.warn("IndexedDB courses initialization notice:", err);
+    });
+
+    // ==========================================
+    // 3. LOCAL EXAMS & ROUTINES LOADING (Cache-First)
+    // ==========================================
     const storedLE = localStorage.getItem('orjon_live_exams') || localStorage.getItem('medha_live_exams');
     if (storedLE) {
       try {
@@ -524,14 +502,95 @@ export default function App() {
     } else {
       localStorage.setItem('orjon_live_exams', JSON.stringify(dedupeLiveExams(INITIAL_LIVE_EXAMS)));
       setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
-      fetchCollectionFromFirestore<LiveExam>('live_exams').then(fsLE => {
-        if (fsLE && fsLE.length > 0) {
-          const deduped = dedupeLiveExams(fsLE);
-          setLiveExams(deduped);
-          localStorage.setItem('orjon_live_exams', JSON.stringify(deduped));
-        }
-      }).catch(() => {});
     }
+
+    const storedR = localStorage.getItem('orjon_routines') || localStorage.getItem('medha_routines');
+    if (storedR) {
+      try {
+        setRoutines(dedupeRoutines(JSON.parse(storedR)));
+      } catch {
+        setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+      }
+    } else {
+      localStorage.setItem('orjon_routines', JSON.stringify(dedupeRoutines(INITIAL_ROUTINES)));
+      setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+    }
+
+    Promise.all([getLiveExamsFromIDB(), getRoutinesFromIDB()]).then(([idbLE, idbR]) => {
+      if (idbLE && idbLE.length > 0) {
+        setLiveExams(dedupeLiveExams(idbLE));
+      } else {
+        const localLE = storedLE ? JSON.parse(storedLE) : INITIAL_LIVE_EXAMS;
+        saveLiveExamsToIDB(dedupeLiveExams(localLE));
+      }
+
+      if (idbR && idbR.length > 0) {
+        setRoutines(dedupeRoutines(idbR));
+      } else {
+        const localR = storedR ? JSON.parse(storedR) : INITIAL_ROUTINES;
+        saveRoutinesToIDB(dedupeRoutines(localR));
+      }
+    }).catch(err => {
+      console.warn("IndexedDB exams initialization notice:", err);
+    });
+
+    // ==========================================
+    // 4. BACKGROUND INCREMENTAL SYNC
+    // - Questions: updatedAt > lastSyncedAt
+    // - Courses: updatedAt > lastCourseSyncedAt
+    // - Exams: updatedAt > lastExamSyncedAt
+    // ==========================================
+    performIncrementalSyncFromFirestore((updatedQuestions) => {
+      if (updatedQuestions && updatedQuestions.length > 0) {
+        const dedupedQ = dedupeQuestions(updatedQuestions);
+        setQuestions(dedupedQ);
+        try {
+          localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
+        } catch (e) {
+          console.warn("localStorage quota notice for questions stringify:", e);
+        }
+        syncSubcategoriesWithFirestoreQuestions(dedupedQ);
+      }
+    }).catch(err => {
+      console.warn("Background questions incremental sync notice:", err);
+    });
+
+    performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+      if (updatedCourses && updatedCourses.length > 0) {
+        const dedupedC = dedupeCourses(updatedCourses);
+        setCourses(dedupedC);
+        try {
+          localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
+        } catch (e) {
+          console.warn("localStorage quota notice for courses:", e);
+        }
+      }
+    }).catch(err => {
+      console.warn("Background courses incremental sync notice:", err);
+    });
+
+    performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
+      if (updatedLE && updatedLE.length > 0) {
+        const dedupedLE = dedupeLiveExams(updatedLE);
+        setLiveExams(dedupedLE);
+        try {
+          localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
+        } catch (e) {
+          console.warn("localStorage quota notice for live exams:", e);
+        }
+      }
+      if (updatedR && updatedR.length > 0) {
+        const dedupedR = dedupeRoutines(updatedR);
+        setRoutines(dedupedR);
+        try {
+          localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
+        } catch (e) {
+          console.warn("localStorage quota notice for routines:", e);
+        }
+      }
+    }).catch(err => {
+      console.warn("Background exams incremental sync notice:", err);
+    });
 
     // Audit logs initial seed (Local Cache)
     const storedAudit = localStorage.getItem('orjon_audit_logs');
@@ -927,12 +986,6 @@ export default function App() {
         localStorage.setItem('orjon_last_activity', nowMs.toString());
       }
     }
-
-    return () => {
-      if (activeUnsubscribe) {
-        activeUnsubscribe();
-      }
-    };
   }, []);
 
   // Synchronize Firebase Auth State & Strictly Enforce Server-Side Custom Claims for Admin
@@ -1223,7 +1276,13 @@ export default function App() {
     const map = new Map<string, Routine>();
     (rList || []).forEach(item => {
       if (item && item.id) {
-        map.set(item.id, item);
+        const nowIso = new Date().toISOString();
+        const normalizedRoutine: Routine = {
+          ...item,
+          createdAt: item.createdAt || nowIso,
+          updatedAt: item.updatedAt || item.createdAt || nowIso
+        };
+        map.set(item.id, normalizedRoutine);
       }
     });
     return Array.from(map.values());
@@ -1233,6 +1292,7 @@ export default function App() {
     const deduped = dedupeRoutines(newR);
     setRoutines(deduped);
     localStorage.setItem('orjon_routines', JSON.stringify(deduped));
+    saveRoutinesToIDB(deduped);
     syncCollectionToFirestore('routines', deduped, 'rt');
   };
 
@@ -1240,7 +1300,13 @@ export default function App() {
     const map = new Map<string, Course>();
     (cList || []).forEach(item => {
       if (item && item.id) {
-        map.set(item.id, item);
+        const nowIso = new Date().toISOString();
+        const normalizedCourse: Course = {
+          ...item,
+          createdAt: item.createdAt || nowIso,
+          updatedAt: item.updatedAt || item.createdAt || nowIso
+        };
+        map.set(item.id, normalizedCourse);
       }
     });
     return Array.from(map.values());
@@ -1250,6 +1316,7 @@ export default function App() {
     const deduped = dedupeCourses(newC);
     setCourses(deduped);
     localStorage.setItem('orjon_courses', JSON.stringify(deduped));
+    saveCoursesToIDB(deduped);
     syncCollectionToFirestore('courses', deduped, 'course');
   };
 
@@ -1257,7 +1324,13 @@ export default function App() {
     const map = new Map<string, LiveExam>();
     (exams || []).forEach(item => {
       if (item && item.id) {
-        map.set(item.id, item);
+        const nowIso = new Date().toISOString();
+        const normalizedExam: LiveExam = {
+          ...item,
+          createdAt: item.createdAt || nowIso,
+          updatedAt: item.updatedAt || item.createdAt || nowIso
+        };
+        map.set(item.id, normalizedExam);
       }
     });
     return Array.from(map.values());
@@ -1267,6 +1340,7 @@ export default function App() {
     const deduped = dedupeLiveExams(newLE);
     setLiveExams(deduped);
     localStorage.setItem('orjon_live_exams', JSON.stringify(deduped));
+    saveLiveExamsToIDB(deduped);
     syncCollectionToFirestore('live_exams', deduped, 'le');
   };
 
@@ -2216,14 +2290,23 @@ export default function App() {
     addAuditLog('নোটিশ প্রকাশ (Notice)', `নতুন এডমিন নোটিশ প্রকাশ করা হয়েছে: "${text.slice(0, 45)}..."`, 'create');
   };
 
-  const handleCreateLiveExam = (exam: Omit<LiveExam, 'id' | 'createdAt'>) => {
+  const handleCreateLiveExam = (exam: Omit<LiveExam, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const nowIso = new Date().toISOString();
     const newExam: LiveExam = {
+      ...exam,
       id: `exam_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      ...exam
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
     updateLiveExamsDB([newExam, ...liveExams]);
     addAuditLog('লাইভ পরীক্ষা তৈরি (Exam)', `নতুন লাইভ পরীক্ষা তৈরি করা হয়েছে: "${exam.title}"`, 'exam');
+  };
+
+  const handleUpdateLiveExam = (id: string, updatedExam: Partial<LiveExam>) => {
+    const nowIso = new Date().toISOString();
+    const updated = liveExams.map(e => e.id === id ? { ...e, ...updatedExam, updatedAt: nowIso } : e);
+    updateLiveExamsDB(updated);
+    addAuditLog('লাইভ পরীক্ষা আপডেট (Update Exam)', `লাইভ পরীক্ষা আপডেট করা হয়েছে (ID: ${id})`, 'exam');
   };
 
   const handleDeleteLiveExam = (id: string) => {
@@ -2232,18 +2315,21 @@ export default function App() {
     addAuditLog('লাইভ পরীক্ষা মুছে ফেলা (Delete Exam)', `লাইভ পরীক্ষা মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'exam');
   };
 
-  const handleSaveCourse = (cData: Omit<Course, 'id' | 'createdAt'>) => {
+  const handleSaveCourse = (cData: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const nowIso = new Date().toISOString();
     const newCourse: Course = {
       ...cData,
       id: `course_${Date.now()}`,
-      createdAt: new Date().toISOString()
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
     updateCoursesDB([newCourse, ...courses]);
     addAuditLog('কোর্স তৈরি (Course)', `নতুন কোর্স তৈরি করা হয়েছে: "${cData.title}"`, 'other');
   };
 
   const handleUpdateCourse = (id: string, updatedCourse: Partial<Course>) => {
-    const updated = courses.map(c => c.id === id ? { ...c, ...updatedCourse } : c);
+    const nowIso = new Date().toISOString();
+    const updated = courses.map(c => c.id === id ? { ...c, ...updatedCourse, updatedAt: nowIso } : c);
     updateCoursesDB(updated);
     addAuditLog('কোর্স আপডেট (Update Course)', `কোর্স আপডেট করা হয়েছে (ID: ${id})`, 'other');
   };
@@ -2344,11 +2430,13 @@ export default function App() {
     examConfig?: ScheduledExamConfig
   ) => {
     const routineId = `routine_${Date.now()}`;
+    const nowIso = new Date().toISOString();
     const newRoutine: Routine = {
       id: routineId,
       title,
       details,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
       courseId,
       courseName,
       selectedCategories,
@@ -2372,7 +2460,8 @@ export default function App() {
         category: selectedCategories && selectedCategories.length > 0 ? selectedCategories[0] : 'ALL',
         startTime: examConfig.startTime,
         expiryTime: examConfig.expiryTime || new Date(new Date(examConfig.startTime).getTime() + 24 * 60 * 60 * 1000).toISOString(),
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
         questionIds: examConfig.questionIds || [],
         selectedCategories: selectedCategories || [],
         selectedSubcategories: selectedSubcategories || [],
@@ -2385,6 +2474,13 @@ export default function App() {
     }
 
     addAuditLog('রুটিন প্রকাশ (Routine)', `নতুন সিলেবাস রুটিন প্রকাশ করা হয়েছে: "${title}"${courseName ? ` (কোর্স: ${courseName})` : ''}`, 'routine');
+  };
+
+  const handleUpdateRoutine = (id: string, updatedRoutine: Partial<Routine>) => {
+    const nowIso = new Date().toISOString();
+    const updated = routines.map(r => r.id === id ? { ...r, ...updatedRoutine, updatedAt: nowIso } : r);
+    updateRoutinesDB(updated);
+    addAuditLog('রুটিন আপডেট (Update Routine)', `রুটিন আপডেট করা হয়েছে (ID: ${id})`, 'routine');
   };
 
   const handleDeleteRoutine = (id: string) => {
@@ -2785,10 +2881,12 @@ export default function App() {
 
   const handleSaveAttempt = (attempt: Omit<Attempt, 'id' | 'submittedAt'>) => {
     if (!currentUser) return;
+    const nowIso = new Date().toISOString();
     const fullAttempt: Attempt = {
+      ...attempt,
       id: `attempt_${Date.now()}`,
-      submittedAt: new Date().toISOString(),
-      ...attempt
+      submittedAt: nowIso,
+      updatedAt: nowIso
     };
 
     const cutoff = Date.now() - 72 * 60 * 60 * 1000;
@@ -2935,8 +3033,10 @@ export default function App() {
             onBulkUploadQuestions={handleBulkUploadQuestions}
             onSaveNotice={handleSaveNotice}
             onCreateLiveExam={handleCreateLiveExam}
+            onUpdateLiveExam={handleUpdateLiveExam}
             onDeleteLiveExam={handleDeleteLiveExam}
             onSaveRoutine={handleSaveRoutine}
+            onUpdateRoutine={handleUpdateRoutine}
             onDeleteRoutine={handleDeleteRoutine}
             onSaveCourse={handleSaveCourse}
             onUpdateCourse={handleUpdateCourse}

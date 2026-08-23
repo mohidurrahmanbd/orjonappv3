@@ -53,7 +53,8 @@ interface AdminPanelProps {
   onBulkMoveQuestions: (ids: string[], targetCategory: string, targetSubcategory?: string, mode?: 'move' | 'link') => void;
   onBulkUploadQuestions: (questionsList: Omit<Question, 'id'>[]) => void;
   onSaveNotice: (text: string) => void;
-  onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt'>) => void;
+  onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onUpdateLiveExam?: (id: string, updatedExam: Partial<LiveExam>) => void;
   onDeleteLiveExam: (id: string) => void;
   onSaveRoutine: (
     title: string, 
@@ -65,8 +66,9 @@ interface AdminPanelProps {
     selectedLeafCategories?: string[], 
     examConfig?: ScheduledExamConfig
   ) => void;
+  onUpdateRoutine?: (id: string, updatedRoutine: Partial<Routine>) => void;
   onDeleteRoutine: (id: string) => void;
-  onSaveCourse?: (course: Omit<Course, 'id' | 'createdAt'>) => void;
+  onSaveCourse?: (course: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateCourse?: (id: string, updatedCourse: Partial<Course>) => void;
   onDeleteCourse?: (id: string) => void;
   coupons?: Coupon[];
@@ -198,8 +200,10 @@ export default function AdminPanel({
   onBulkUploadQuestions,
   onSaveNotice,
   onCreateLiveExam,
+  onUpdateLiveExam,
   onDeleteLiveExam,
   onSaveRoutine,
+  onUpdateRoutine,
   onDeleteRoutine,
   onSaveCourse,
   onUpdateCourse,
