@@ -31,6 +31,13 @@ export interface Question {
   categories?: string[];
   subcategories?: string[];
   csvCategory?: string;
+  csvSubcategory?: string;
+  examCategory?: string;
+  examSubcategory?: string;
+  examPath?: string[];
+  subjectCategory?: string;
+  subjectSubcategory?: string;
+  subjectPath?: string[];
   comments?: QuestionComment[];
   userExplanations?: UserExplanation[];
   createdAt?: string;

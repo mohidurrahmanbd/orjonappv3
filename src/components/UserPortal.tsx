@@ -1778,14 +1778,26 @@ export default function UserPortal({
     const descendants = getDescendants(nodeName).map(d => d.toLowerCase());
 
     return questions.filter(q => {
-      // 1. Check primary single fields
+      // 1. Check primary single fields and subject fields
       const qCat = q.category ? q.category.trim().toLowerCase() : '';
       const qSub = q.subcategory ? q.subcategory.trim().toLowerCase() : '';
       const qCsv = q.csvCategory ? q.csvCategory.trim().toLowerCase() : '';
+      const qCsvSub = q.csvSubcategory ? q.csvSubcategory.trim().toLowerCase() : '';
+      const qSubjCat = q.subjectCategory ? q.subjectCategory.trim().toLowerCase() : '';
+      const qSubjSub = q.subjectSubcategory ? q.subjectSubcategory.trim().toLowerCase() : '';
 
       if (qCat === normalizedNode || descendants.includes(qCat)) return true;
       if (qSub && (qSub === normalizedNode || descendants.includes(qSub))) return true;
       if (qCsv && (qCsv === normalizedNode || descendants.includes(qCsv))) return true;
+      if (qCsvSub && (qCsvSub === normalizedNode || descendants.includes(qCsvSub))) return true;
+      if (qSubjCat && (qSubjCat === normalizedNode || descendants.includes(qSubjCat))) return true;
+      if (qSubjSub && (qSubjSub === normalizedNode || descendants.includes(qSubjSub))) return true;
+
+      // Check subject path
+      if (q.subjectPath && q.subjectPath.some(p => {
+        const normP = p.trim().toLowerCase();
+        return normP === normalizedNode || descendants.includes(normP);
+      })) return true;
 
       // 2. Check multiple categories array
       if (q.categories && q.categories.some(c => {
@@ -1809,20 +1821,32 @@ export default function UserPortal({
 
   const getQuestionsForJobNode = (nodeName: string, isRoot: boolean): Question[] => {
     if (isRoot) {
-      return questions.filter(q => q.subcategory || (q.subcategories && q.subcategories.length > 0));
+      return questions.filter(q => q.subcategory || q.examSubcategory || (q.subcategories && q.subcategories.length > 0) || (q.examPath && q.examPath.length > 0));
     }
     const normalizedNode = nodeName.trim().toLowerCase();
     const descendants = getDescendants(nodeName).map(d => d.toLowerCase());
 
     return questions.filter(q => {
-      // 1. Check primary single fields
+      // 1. Check primary single fields and exam fields
       const qCat = q.category ? q.category.trim().toLowerCase() : '';
       const qSub = q.subcategory ? q.subcategory.trim().toLowerCase() : '';
+      const qExamCat = q.examCategory ? q.examCategory.trim().toLowerCase() : '';
+      const qExamSub = q.examSubcategory ? q.examSubcategory.trim().toLowerCase() : '';
       const qCsv = q.csvCategory ? q.csvCategory.trim().toLowerCase() : '';
+      const qCsvSub = q.csvSubcategory ? q.csvSubcategory.trim().toLowerCase() : '';
 
       if (qCat === normalizedNode || descendants.includes(qCat)) return true;
       if (qSub && (qSub === normalizedNode || descendants.includes(qSub))) return true;
+      if (qExamCat && (qExamCat === normalizedNode || descendants.includes(qExamCat))) return true;
+      if (qExamSub && (qExamSub === normalizedNode || descendants.includes(qExamSub))) return true;
       if (qCsv && (qCsv === normalizedNode || descendants.includes(qCsv))) return true;
+      if (qCsvSub && (qCsvSub === normalizedNode || descendants.includes(qCsvSub))) return true;
+
+      // Check exam path
+      if (q.examPath && q.examPath.some(p => {
+        const normP = p.trim().toLowerCase();
+        return normP === normalizedNode || descendants.includes(normP);
+      })) return true;
 
       // 2. Check multiple categories array
       if (q.categories && q.categories.some(c => {
@@ -1846,20 +1870,32 @@ export default function UserPortal({
 
   const getQuestionsForYearJobNode = (nodeName: string, isRoot: boolean): Question[] => {
     if (isRoot) {
-      return questions.filter(q => isYearJobSolutionVariation(q.category) || (q.subcategory || (q.subcategories && q.subcategories.length > 0)));
+      return questions.filter(q => isYearJobSolutionVariation(q.category) || (q.subcategory || q.examSubcategory || (q.subcategories && q.subcategories.length > 0) || (q.examPath && q.examPath.length > 0)));
     }
     const normalizedNode = nodeName.trim().toLowerCase();
     const descendants = getDescendants(nodeName).map(d => d.toLowerCase());
 
     return questions.filter(q => {
-      // 1. Check primary single fields
+      // 1. Check primary single fields and exam fields
       const qCat = q.category ? q.category.trim().toLowerCase() : '';
       const qSub = q.subcategory ? q.subcategory.trim().toLowerCase() : '';
+      const qExamCat = q.examCategory ? q.examCategory.trim().toLowerCase() : '';
+      const qExamSub = q.examSubcategory ? q.examSubcategory.trim().toLowerCase() : '';
       const qCsv = q.csvCategory ? q.csvCategory.trim().toLowerCase() : '';
+      const qCsvSub = q.csvSubcategory ? q.csvSubcategory.trim().toLowerCase() : '';
 
       if (qCat === normalizedNode || descendants.includes(qCat)) return true;
       if (qSub && (qSub === normalizedNode || descendants.includes(qSub))) return true;
+      if (qExamCat && (qExamCat === normalizedNode || descendants.includes(qExamCat))) return true;
+      if (qExamSub && (qExamSub === normalizedNode || descendants.includes(qExamSub))) return true;
       if (qCsv && (qCsv === normalizedNode || descendants.includes(qCsv))) return true;
+      if (qCsvSub && (qCsvSub === normalizedNode || descendants.includes(qCsvSub))) return true;
+
+      // Check exam path
+      if (q.examPath && q.examPath.some(p => {
+        const normP = p.trim().toLowerCase();
+        return normP === normalizedNode || descendants.includes(normP);
+      })) return true;
 
       // 2. Check multiple categories array
       if (q.categories && q.categories.some(c => {

@@ -3141,6 +3141,9 @@ export default function AdminPanel({
       }
 
       if (!enableCsvValidation || errors.length === 0) {
+        const rawCat = rowData.category || rowData.subject || rowData['ক্যাটাগরি'] || rowData['বিষয়'] || 'সাধারণ জ্ঞান';
+        const rawSub = rowData.subcategory || rowData.topic || rowData['সাব-ক্যাটাগরি'] || rowData['উপ-বিষয়'] || rowData['টপিক'] || '';
+
         results.push({
           text: textVal || `প্রশ্নহীন কুইজ ${rowNum}`,
           optionA: optA || 'অপশন ক',
@@ -3149,8 +3152,12 @@ export default function AdminPanel({
           optionD: optD || 'অপশন ঘ',
           correct: correctKey || 'Option A',
           explanation: rowData.explanation || '',
-          category: rowData.category || rowData.subject || rowData['ক্যাটাগরি'] || rowData['বিষয়'] || 'সাধারণ জ্ঞান',
-          subcategory: rowData.subcategory || rowData.topic || rowData['সাব-ক্যাটাগরি'] || rowData['উপ-বিষয়'] || rowData['টপিক'] || ''
+          category: rawCat,
+          subcategory: rawSub,
+          csvCategory: rawCat,
+          csvSubcategory: rawSub,
+          subjectCategory: rawCat,
+          subjectSubcategory: rawSub
         });
       }
     }
@@ -3284,12 +3291,12 @@ export default function AdminPanel({
   const prepareMappingReview = () => {
     if (pendingQuestions.length === 0) return;
 
-    // Group pending questions by subcategory and category
+    // Group pending questions strictly by CSV subject fields
     const subcatGroupMap = new Map<string, { rawSubcat: string; rawCat: string; count: number }>();
 
     pendingQuestions.forEach(q => {
-      const rawSub = (q.subcategory && q.subcategory.trim()) ? q.subcategory.trim() : 'সাধারণ কুইজ';
-      const rawCat = (q.category && q.category.trim()) ? q.category.trim() : 'সাধারণ জ্ঞান';
+      const rawSub = (q.csvSubcategory || q.subcategory || '').trim() || 'সাধারণ কুইজ';
+      const rawCat = (q.csvCategory || q.category || '').trim() || 'সাধারণ জ্ঞান';
       const key = `${rawCat}::${rawSub}`;
 
       if (!subcatGroupMap.has(key)) {
@@ -3304,9 +3311,9 @@ export default function AdminPanel({
     subcatGroupMap.forEach((val) => {
       const dbCat = findCategoryInDatabase(val.rawCat);
 
-      // Determine target category dynamically
+      // Determine target category dynamically (must be a subject category, not job/year root)
       let targetCat = val.rawCat;
-      if (dbCat) {
+      if (dbCat && !isJobSolutionVariation(dbCat) && !isYearJobSolutionVariation(dbCat) && dbCat !== 'বিষয়ভিত্তিক প্রস্তুতি') {
         targetCat = dbCat;
       } else {
         targetCat = mapToStandardSubjectCategory(val.rawCat, val.rawSubcat);
@@ -3369,12 +3376,13 @@ export default function AdminPanel({
     });
 
     // 2. Process mismatch mappings & create required subcategories with strict hierarchy integrity validation
+    // ONLY creates categories/subcategories under subject hierarchy, NEVER under exam / job solution hierarchy
     mismatchMappings.forEach(m => {
       if (m.action === 'create') {
         const subName = m.correctedSubcategory.trim();
         const parentCat = m.targetCategory.trim();
 
-        if (subName && parentCat) {
+        if (subName && parentCat && !isJobSolutionVariation(parentCat) && !isYearJobSolutionVariation(parentCat)) {
           const validation = validateSubcategoryIntegrity(subName, parentCat, currentSubcatList);
           if (validation.valid) {
             const newSubItem: SubcategoryItem = {
@@ -3392,8 +3400,8 @@ export default function AdminPanel({
 
     // 3. Map final questions
     const finalQuestions = pendingQuestions.map(q => {
-      const rawSub = (q.subcategory && q.subcategory.trim()) ? q.subcategory.trim() : 'সাধারণ কুইজ';
-      const rawCat = (q.category && q.category.trim()) ? q.category.trim() : 'সাধারণ জ্ঞান';
+      const rawSub = (q.csvSubcategory || q.subcategory || '').trim() || 'সাধারণ কুইজ';
+      const rawCat = (q.csvCategory || q.category || '').trim() || 'সাধারণ জ্ঞান';
 
       const mappingRule = mismatchMappings.find(m => normalizeName(m.rawSubcategory) === normalizeName(rawSub));
 
@@ -3402,25 +3410,45 @@ export default function AdminPanel({
         ? (mappingRule.action === 'map_existing' ? mappingRule.existingSubcategoryChoice : mappingRule.correctedSubcategory)
         : rawSub;
 
-      const cats: string[] = [uploadDestCat || 'সাধারণ জ্ঞান'];
+      // Destination hierarchy (Exam / Job Solution)
+      const examCat = uploadDestCat || 'সাধারণ জ্ঞান';
+      const examSub = destSub || '';
+      const examPathArray = [uploadDestCat, ...activeDestSubcats].filter(Boolean);
+
+      // Subject hierarchy
+      const subjCat = finalTargetCat || 'সাধারণ জ্ঞান';
+      const subjSub = finalTargetSubcat || '';
+      const subjPathArray = ['বিষয়ভিত্তিক প্রস্তুতি', finalTargetCat, finalTargetSubcat].filter(Boolean);
+
+      const cats: string[] = [examCat];
       const subs: string[] = [...activeDestSubcats];
 
       if (enableSubjectAutoMap) {
-        if (finalTargetCat && !cats.includes(finalTargetCat)) {
-          cats.push(finalTargetCat);
+        if (subjCat && !cats.includes(subjCat)) {
+          cats.push(subjCat);
         }
-        if (finalTargetSubcat && !subs.includes(finalTargetSubcat)) {
-          subs.push(finalTargetSubcat);
+        if (subjSub && !subs.includes(subjSub)) {
+          subs.push(subjSub);
         }
       }
 
       return {
         ...q,
-        category: uploadDestCat || 'সাধারণ জ্ঞান',
-        subcategory: destSub,
+        // Primary fields for backward compatibility and direct match
+        category: examCat,
+        subcategory: examSub,
         categories: Array.from(new Set(cats.filter(Boolean))),
         subcategories: Array.from(new Set(subs.filter(Boolean))),
-        csvCategory: finalTargetCat
+        // Separated Exam Hierarchy fields
+        examCategory: examCat,
+        examSubcategory: examSub,
+        examPath: examPathArray,
+        // Separated CSV Subject Hierarchy fields
+        csvCategory: rawCat,
+        csvSubcategory: rawSub,
+        subjectCategory: subjCat,
+        subjectSubcategory: subjSub,
+        subjectPath: subjPathArray
       };
     });
 
@@ -6557,19 +6585,25 @@ export default function AdminPanel({
 
           questions.forEach(q => {
             const candidates: Array<{ name: string; parentHint?: string }> = [];
-            if (q.category) candidates.push({ name: q.category.trim() });
-            if (q.subcategory) candidates.push({ name: q.subcategory.trim(), parentHint: q.category || q.csvCategory });
-            if (q.csvCategory) candidates.push({ name: q.csvCategory.trim() });
-            if (q.categories && Array.isArray(q.categories)) {
-              q.categories.forEach(c => c && candidates.push({ name: c.trim() }));
+            const subjCat = (q.subjectCategory || q.csvCategory || '').trim();
+            const subjSub = (q.subjectSubcategory || q.csvSubcategory || '').trim();
+
+            if (subjCat && !isJobSolutionVariation(subjCat) && !isYearJobSolutionVariation(subjCat) && subjCat !== 'বিষয়ভিত্তিক প্রস্তুতি' && subjCat !== 'সাধারণ জ্ঞান') {
+              candidates.push({ name: subjCat, parentHint: 'বিষয়ভিত্তিক প্রস্তুতি' });
             }
-            if (q.subcategories && Array.isArray(q.subcategories)) {
-              q.subcategories.forEach((s, idx) => {
-                if (s) {
-                  const parent = idx > 0 ? q.subcategories![idx - 1] : (q.category || 'বিষয়ভিত্তিক প্রস্তুতি');
-                  candidates.push({ name: s.trim(), parentHint: parent });
-                }
-              });
+
+            if (subjSub && !isJobSolutionVariation(subjSub) && !isYearJobSolutionVariation(subjSub)) {
+              candidates.push({ name: subjSub, parentHint: subjCat || 'সাধারণ জ্ঞান' });
+            }
+
+            // Also check non-exam legacy fields if subject fields were empty
+            if (!subjCat && !subjSub) {
+              if (q.category && !isJobSolutionVariation(q.category) && !isYearJobSolutionVariation(q.category) && q.category !== 'বিষয়ভিত্তিক প্রস্তুতি') {
+                candidates.push({ name: q.category.trim(), parentHint: 'বিষয়ভিত্তিক প্রস্তুতি' });
+              }
+              if (q.subcategory && !isJobSolutionVariation(q.subcategory) && !isYearJobSolutionVariation(q.subcategory)) {
+                candidates.push({ name: q.subcategory.trim(), parentHint: q.category || 'সাধারণ জ্ঞান' });
+              }
             }
 
             candidates.forEach(({ name, parentHint }) => {

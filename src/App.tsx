@@ -1127,32 +1127,34 @@ export default function App() {
       combinedSubcats.map(s => `${s.name.trim().toLowerCase()}|${(s.parentCategory || '').trim().toLowerCase()}`)
     );
 
+    // Only sync SUBJECT hierarchy categories/subcategories from question records.
+    // NEVER auto-create categories from upload destination or exam hierarchy.
     questionsList.forEach((q, idx) => {
-      let cat = (q.category || '').trim();
-      let sub = (q.subcategory || '').trim();
+      const subjCat = (q.subjectCategory || q.csvCategory || '').trim();
+      const subjSub = (q.subjectSubcategory || q.csvSubcategory || '').trim();
 
-      if (isJobSolutionVariation(cat)) cat = 'জব সলিউশন পরীক্ষা';
-      else if (isYearJobSolutionVariation(cat)) cat = 'সাল ভিত্তিক জব সলিউশন';
-
-      if (cat && sub) {
-        const key = `${sub.toLowerCase()}|${cat.toLowerCase()}`;
-        if (!addedKeys.has(key)) {
-          addedKeys.add(key);
-          combinedSubcats.push({
-            id: `fs-subcat-${idx}-${Math.random().toString(36).substr(2, 5)}`,
-            name: sub,
-            parentCategory: cat,
-            date: q.date || undefined
-          });
-        }
-      } else if (cat && !sub && cat !== 'বিষয়ভিত্তিক প্রস্তুতি' && cat !== 'জব সলিউশন পরীক্ষা' && cat !== 'সাল ভিত্তিক জব সলিউশন') {
-        const key = `${cat.toLowerCase()}|বিষয়ভিত্তিক প্রস্তুতি`;
+      if (subjCat && !isJobSolutionVariation(subjCat) && !isYearJobSolutionVariation(subjCat) && subjCat !== 'বিষয়ভিত্তিক প্রস্তুতি' && subjCat !== 'সাধারণ জ্ঞান') {
+        const key = `${subjCat.toLowerCase()}|বিষয়ভিত্তিক প্রস্তুতি`;
         if (!addedKeys.has(key)) {
           addedKeys.add(key);
           combinedSubcats.push({
             id: `fs-subcat-cat-${idx}-${Math.random().toString(36).substr(2, 5)}`,
-            name: cat,
+            name: subjCat,
             parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
+          });
+        }
+      }
+
+      if (subjCat && subjSub && subjSub.toLowerCase() !== subjCat.toLowerCase() && !isJobSolutionVariation(subjSub) && !isYearJobSolutionVariation(subjSub) && !isJobSolutionVariation(subjCat) && !isYearJobSolutionVariation(subjCat)) {
+        const targetParent = subjCat || 'সাধারণ জ্ঞান';
+        const key = `${subjSub.toLowerCase()}|${targetParent.toLowerCase()}`;
+        if (!addedKeys.has(key)) {
+          addedKeys.add(key);
+          combinedSubcats.push({
+            id: `fs-subcat-sub-${idx}-${Math.random().toString(36).substr(2, 5)}`,
+            name: subjSub,
+            parentCategory: targetParent,
+            date: q.date || undefined
           });
         }
       }
@@ -1194,6 +1196,23 @@ export default function App() {
     const seenNameParent = new Set<string>();
     const result: SubcategoryItem[] = [];
 
+    // Collect all subcategories that exist under a specific non-root intermediate parent (e.g. "৫২তম বিসিএস" under "বিসিএস পরীক্ষা")
+    const namesWithSpecificParent = new Set<string>();
+    for (const s of (subs || [])) {
+      if (!s || !s.name || !s.parentCategory) continue;
+      const pNorm = s.parentCategory.trim().toLowerCase();
+      const isRootP = pNorm === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() ||
+                      pNorm === 'জব সলিউশন পরীক্ষা'.toLowerCase() ||
+                      pNorm === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() ||
+                      pNorm === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() ||
+                      isJobSolutionVariation(pNorm) ||
+                      isYearJobSolutionVariation(pNorm) ||
+                      isCurrentAffairVariation(pNorm);
+      if (!isRootP) {
+        namesWithSpecificParent.add(s.name.trim().toLowerCase());
+      }
+    }
+
     for (const sub of (subs || [])) {
       if (!sub) continue;
       const id = sub.id;
@@ -1209,6 +1228,12 @@ export default function App() {
         continue;
       }
       if (parentNorm && nameNorm === parentNorm) {
+        continue;
+      }
+
+      // CRITICAL RULE: If a subcategory already exists under a specific child parent (e.g., "৫২তম বিসিএস" under "বিসিএস পরীক্ষা"),
+      // NEVER allow a duplicate to exist directly attached to the root "জব সলিউশন পরীক্ষা" / "জব সলিউশন ব্যাংক".
+      if (namesWithSpecificParent.has(nameNorm) && (isJobSolutionVariation(parentNorm) || isYearJobSolutionVariation(parentNorm))) {
         continue;
       }
 
@@ -2006,30 +2031,47 @@ export default function App() {
       return norm === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() ||
              norm === 'জব সলিউশন পরীক্ষা'.toLowerCase() ||
              norm === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() ||
+             norm === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() ||
              isJobSolutionVariation(norm) ||
              isYearJobSolutionVariation(norm);
     };
 
-    if (trimmedCat && !isRoot(trimmedCat) && !updatedSubcats.some(s => s.name.toLowerCase() === trimmedCat.toLowerCase())) {
-      const newSub: SubcategoryItem = {
-        id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        name: trimmedCat,
-        parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
-      };
-      updatedSubcats.push(newSub);
-      saveItemToFirestore('subcategories', newSub, 'subcat');
-      changed = true;
+    // If a subject category is given, ensure it exists under 'বিষয়ভিত্তিক প্রস্তুতি'
+    if (trimmedCat && !isRoot(trimmedCat)) {
+      const catExists = updatedSubcats.some(s => 
+        s.parentCategory && 
+        s.parentCategory.trim().toLowerCase() === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() &&
+        s.name.trim().toLowerCase() === trimmedCat.toLowerCase()
+      );
+      if (!catExists) {
+        const newSub: SubcategoryItem = {
+          id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          name: trimmedCat,
+          parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
+        };
+        updatedSubcats.push(newSub);
+        saveItemToFirestore('subcategories', newSub, 'subcat');
+        changed = true;
+      }
     }
 
-    if (trimmedSubcat && !isRoot(trimmedSubcat) && !updatedSubcats.some(s => s.name.toLowerCase() === trimmedSubcat.toLowerCase())) {
-      const newSub: SubcategoryItem = {
-        id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        name: trimmedSubcat,
-        parentCategory: 'জব সলিউশন পরীক্ষা'
-      };
-      updatedSubcats.push(newSub);
-      saveItemToFirestore('subcategories', newSub, 'subcat');
-      changed = true;
+    // Only create subcategory under a valid non-root parent category (subject parent), never under Job Solution root!
+    if (trimmedSubcat && !isRoot(trimmedSubcat) && trimmedCat && !isRoot(trimmedCat) && trimmedSubcat.toLowerCase() !== trimmedCat.toLowerCase()) {
+      const subcatExists = updatedSubcats.some(s => 
+        s.parentCategory && 
+        s.parentCategory.trim().toLowerCase() === trimmedCat.toLowerCase() &&
+        s.name.trim().toLowerCase() === trimmedSubcat.toLowerCase()
+      );
+      if (!subcatExists) {
+        const newSub: SubcategoryItem = {
+          id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          name: trimmedSubcat,
+          parentCategory: trimmedCat
+        };
+        updatedSubcats.push(newSub);
+        saveItemToFirestore('subcategories', newSub, 'subcat');
+        changed = true;
+      }
     }
 
     if (changed) {
@@ -2237,7 +2279,8 @@ export default function App() {
     updateQuestionsDB([...questions, ...newQuestions]);
     bulkUploadQuestionsToFirestore(newQuestions);
 
-    // Also batch process the categories and subcategories with strict hierarchy integrity
+    // Also batch process the categories and subcategories strictly from CSV subject data
+    // NEVER auto-create categories from upload destination, exam hierarchy, or job solution hierarchy.
     let updatedSubcats = [...subcategories];
     let changed = false;
 
@@ -2253,40 +2296,41 @@ export default function App() {
     };
 
     normalizedList.forEach(q => {
-      const trimmedCat = q.category ? q.category.trim() : '';
-      const trimmedSubcat = q.subcategory ? q.subcategory.trim() : '';
+      // ONLY use CSV Subject fields (subjectCategory / csvCategory and subjectSubcategory / csvSubcategory)
+      const subjCat = (q.subjectCategory || q.csvCategory || '').trim();
+      const subjSubcat = (q.subjectSubcategory || q.csvSubcategory || '').trim();
 
-      // If primary category is non-root, ensure it exists under 'বিষয়ভিত্তিক প্রস্তুতি'
-      if (trimmedCat && !isRoot(trimmedCat)) {
+      // If subject category is valid and non-root, ensure it exists under 'বিষয়ভিত্তিক প্রস্তুতি'
+      if (subjCat && !isRoot(subjCat) && subjCat !== 'সাধারণ জ্ঞান') {
         const catExists = updatedSubcats.some(
           s => s.parentCategory && 
                s.parentCategory.trim().toLowerCase() === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() &&
-               s.name.trim().toLowerCase() === trimmedCat.toLowerCase()
+               s.name.trim().toLowerCase() === subjCat.toLowerCase()
         );
         if (!catExists) {
           updatedSubcats.push({
             id: `subcat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            name: trimmedCat,
+            name: subjCat,
             parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
           });
           changed = true;
         }
       }
 
-      // If subcategory exists, check uniqueness by (parentCategory + name)
-      if (trimmedSubcat && !isRoot(trimmedSubcat)) {
-        const parentForSubcat = trimmedCat || 'বিষয়ভিত্তিক প্রস্তুতি';
-        if (trimmedSubcat.toLowerCase() !== parentForSubcat.toLowerCase()) {
+      // If subject subcategory is valid, ensure it exists under the subject category
+      if (subjSubcat && !isRoot(subjSubcat)) {
+        const targetParent = subjCat || 'সাধারণ জ্ঞান';
+        if (subjSubcat.toLowerCase() !== targetParent.toLowerCase() && !isRoot(targetParent)) {
           const subcatExists = updatedSubcats.some(
             s => s.parentCategory && 
-                 s.parentCategory.trim().toLowerCase() === parentForSubcat.toLowerCase() &&
-                 s.name.trim().toLowerCase() === trimmedSubcat.toLowerCase()
+                 s.parentCategory.trim().toLowerCase() === targetParent.toLowerCase() &&
+                 s.name.trim().toLowerCase() === subjSubcat.toLowerCase()
           );
           if (!subcatExists) {
             updatedSubcats.push({
               id: `subcat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              name: trimmedSubcat,
-              parentCategory: parentForSubcat
+              name: subjSubcat,
+              parentCategory: targetParent
             });
             changed = true;
           }
