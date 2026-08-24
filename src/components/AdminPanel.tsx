@@ -1074,6 +1074,8 @@ export default function AdminPanel({
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeNewName, setEditingNodeNewName] = useState('');
   const [editingNodeNewParent, setEditingNodeNewParent] = useState('');
+  const [editingNodeRootCat, setEditingNodeRootCat] = useState<string>('বিষয়ভিত্তিক প্রস্তুতি');
+  const [editingNodeParentChain, setEditingNodeParentChain] = useState<string[]>([]);
   const [editingNodeSubHeading, setEditingNodeSubHeading] = useState('');
   const [editingNodeDate, setEditingNodeDate] = useState('');
   const [editingNodeType, setEditingNodeType] = useState<'category' | 'subcategory' | null>(null);
@@ -1181,7 +1183,8 @@ export default function AdminPanel({
 
   // Subcategories Multiple Selection & Bulk Move/Delete State
   const [selectedSubcatIds, setSelectedSubcatIds] = useState<string[]>([]);
-  const [bulkSubcatMoveParent, setBulkSubcatMoveParent] = useState<string>('বিষয়ভিত্তিক প্রস্তুতি');
+  const [bulkMoveDestCat, setBulkMoveDestCat] = useState<string>('বিষয়ভিত্তিক প্রস্তুতি');
+  const [bulkMoveDestSubcatChain, setBulkMoveDestSubcatChain] = useState<string[]>([]);
 
   // Category View Mode and Filter
   const [categoryViewTab, setCategoryViewTab] = useState<'tree' | 'leaf_nodes' | 'all_table' | 'hidden_nodes'>('tree');
@@ -1366,18 +1369,113 @@ export default function AdminPanel({
     return Array.from(catSet).filter(Boolean);
   }, [categories, subcategories, questions]);
 
-  // Helper to find existing subcategory item in database dynamically
-  const findSubcategoryInDatabase = (subName: string) => {
+  // Helper to find existing subcategory item in database dynamically by (parentCategory + name)
+  const findSubcategoryInDatabase = (subName: string, parentCat?: string) => {
     if (!subName) return null;
-    const norm = normalizeName(subName);
-    const found = subcategories.find(s => normalizeName(s.name) === norm);
-    if (found) return found;
-    // Check in questions subcategories
-    const qFound = questions.find(q => q.subcategory && normalizeName(q.subcategory) === norm);
-    if (qFound && qFound.subcategory) {
-      return { id: `q-sub-${qFound.subcategory}`, name: qFound.subcategory, parentCategory: qFound.category || 'সাধারণ জ্ঞান' };
+    const normSub = normalizeName(subName);
+    const normParent = parentCat ? normalizeName(parentCat) : '';
+
+    // Primary: Check for exact (parentCategory + name) match
+    if (normParent) {
+      const exactMatch = subcategories.find(s => 
+        s.parentCategory && 
+        normalizeName(s.parentCategory) === normParent &&
+        normalizeName(s.name) === normSub
+      );
+      if (exactMatch) return exactMatch;
+    } else {
+      const found = subcategories.find(s => normalizeName(s.name) === normSub);
+      if (found) return found;
+    }
+
+    // Secondary: Check in questions subcategories
+    if (normParent) {
+      const qExact = questions.find(q => 
+        q.subcategory && 
+        normalizeName(q.subcategory) === normSub && 
+        q.category && 
+        normalizeName(q.category) === normParent
+      );
+      if (qExact && qExact.subcategory) {
+        return { 
+          id: `q-sub-${qExact.category}-${qExact.subcategory}`, 
+          name: qExact.subcategory, 
+          parentCategory: qExact.category 
+        };
+      }
+    } else {
+      const qFound = questions.find(q => q.subcategory && normalizeName(q.subcategory) === normSub);
+      if (qFound && qFound.subcategory) {
+        return { 
+          id: `q-sub-${qFound.category || 'সাধারণ জ্ঞান'}-${qFound.subcategory}`, 
+          name: qFound.subcategory, 
+          parentCategory: qFound.category || 'সাধারণ জ্ঞান' 
+        };
+      }
     }
     return null;
+  };
+
+  // Hierarchy integrity validation before creating any subcategory
+  const validateSubcategoryIntegrity = (
+    subName: string, 
+    parentCat: string, 
+    existingList: SubcategoryItem[] = subcategories
+  ): { valid: boolean; reason?: string } => {
+    const trimmedSub = (subName || '').trim();
+    const trimmedParent = (parentCat || '').trim();
+
+    if (!trimmedSub) {
+      return { valid: false, reason: 'সাব-ক্যাটাগরির নাম খালি রাখা যাবে না।' };
+    }
+    if (!trimmedParent) {
+      return { valid: false, reason: 'প্যারেন্ট ক্যাটাগরি খালি রাখা যাবে না।' };
+    }
+
+    const normSub = normalizeName(trimmedSub);
+    const normParent = normalizeName(trimmedParent);
+
+    // 1. Self-parenting check
+    if (normSub === normParent) {
+      return { valid: false, reason: `সাব-ক্যাটাগরি "${trimmedSub}" নিজের প্যারেন্ট হতে পারে না।` };
+    }
+
+    // 2. Reserved root categories check
+    const reservedRoots = ['বিষয়ভিত্তিক প্রস্তুতি', 'জব সলিউশন পরীক্ষা', 'সাল ভিত্তিক জব সলিউশন', 'সাম্প্রতিক বিষয়াবলী'];
+    if (reservedRoots.some(r => normalizeName(r) === normSub)) {
+      return { valid: false, reason: `মূল রুট ক্যাটাগরি "${trimmedSub}" এর নামে কোনো সাব-ক্যাটাগরি তৈরি করা সম্ভব নয়।` };
+    }
+
+    // 3. Uniqueness check by parentCategory + name (NOT name alone)
+    const alreadyExists = existingList.some(
+      s => s.parentCategory && 
+           normalizeName(s.parentCategory) === normParent &&
+           normalizeName(s.name) === normSub
+    );
+    if (alreadyExists) {
+      return { valid: false, reason: `"${trimmedParent}" এর অধীনে "${trimmedSub}" সাব-ক্যাটাগরি ইতিমধ্যে বিদ্যমান।` };
+    }
+
+    // 4. Cycle prevention: parent must not be a descendant of subName
+    let curr = trimmedParent;
+    const visited = new Set<string>([normSub]);
+    let limit = 20;
+    while (curr && limit > 0) {
+      const currNorm = normalizeName(curr);
+      if (visited.has(currNorm)) {
+        return { valid: false, reason: `চক্র সনাক্ত হয়েছে: "${trimmedSub}" এবং "${trimmedParent}" এর মধ্যে চক্রাকার হায়ারার্কি তৈরি হবে।` };
+      }
+      visited.add(currNorm);
+      const parentObj = existingList.find(s => normalizeName(s.name) === currNorm);
+      if (parentObj && parentObj.parentCategory) {
+        curr = parentObj.parentCategory;
+      } else {
+        break;
+      }
+      limit--;
+    }
+
+    return { valid: true };
   };
 
   // Helper to find existing category name in database dynamically
@@ -1960,6 +2058,315 @@ export default function AdminPanel({
     });
   };
 
+  // Helper to initialize editing of a subcategory node with cascading parent path
+  const startEditSubcategory = (sub: SubcategoryItem) => {
+    setEditingNodeId(sub.id);
+    setEditingNodeNewName(sub.name);
+    setEditingNodeSubHeading(sub.subHeading || '');
+    setEditingNodeDate(sub.date || '');
+    setEditingNodeType('subcategory');
+    setAddingChildUnderNodeId(null);
+
+    const parentName = sub.parentCategory ? sub.parentCategory.trim() : '';
+    if (parentName) {
+      if (
+        parentName === 'বিষয়ভিত্তিক প্রস্তুতি' ||
+        parentName === 'জব সলিউশন পরীক্ষা' ||
+        parentName === 'সাল ভিত্তিক জব সলিউশন' ||
+        parentName === 'সাম্প্রতিক বিষয়াবলী' ||
+        isJobSolutionVariation(parentName) ||
+        isYearJobSolutionVariation(parentName) ||
+        isCurrentAffairVariation(parentName)
+      ) {
+        setEditingNodeRootCat(parentName);
+        setEditingNodeParentChain([]);
+      } else {
+        const path = findSubcategoryPath(parentName);
+        const rootZ = getRootZoneForSubcategory(parentName);
+        let rCat = 'বিষয়ভিত্তিক প্রস্তুতি';
+        if (rootZ === 'job') rCat = 'জব সলিউশন পরীক্ষা';
+        else if (rootZ === 'year') rCat = 'সাল ভিত্তিক জব সলিউশন';
+        setEditingNodeRootCat(rCat);
+        setEditingNodeParentChain(path);
+      }
+    } else {
+      setEditingNodeRootCat('বিষয়ভিত্তিক প্রস্তুতি');
+      setEditingNodeParentChain([]);
+    }
+  };
+
+  // Execute single subcategory merge into an existing destination folder
+  const executeSingleMergeAndMove = (
+    sourceId: string,
+    sourceSub: SubcategoryItem,
+    destSub: SubcategoryItem,
+    destParent: string,
+    newName: string,
+    newSubHeading?: string,
+    newDate?: string
+  ) => {
+    const oldName = sourceSub.name;
+    const targetName = destSub.name;
+
+    // 1. Move/Repoint all questions belonging to sourceSub to destSub & destParent
+    questions.forEach(q => {
+      let updatedQ: Partial<Question> = {};
+      let changed = false;
+
+      if (q.subcategory === oldName) {
+        updatedQ.subcategory = targetName;
+        changed = true;
+      }
+      if (q.subcategories && q.subcategories.includes(oldName)) {
+        updatedQ.subcategories = q.subcategories.map(s => s === oldName ? targetName : s);
+        changed = true;
+      }
+      if (q.category === oldName) {
+        updatedQ.category = destParent;
+        changed = true;
+      }
+      if (q.categories && q.categories.includes(oldName)) {
+        updatedQ.categories = q.categories.map(c => c === oldName ? destParent : c);
+        changed = true;
+      }
+
+      if (changed && onUpdateQuestion) {
+        onUpdateQuestion(q.id, updatedQ);
+      }
+    });
+
+    // 2. Repoint any child subcategories whose parentCategory was oldName to targetName
+    if (oldName !== targetName) {
+      subcategories.forEach(s => {
+        if (s.parentCategory === oldName && onUpdateSubcategory) {
+          onUpdateSubcategory(s.id, s.name, targetName, s.date, s.subHeading, s.text);
+        }
+      });
+    }
+
+    // 3. Update targetSub metadata if needed
+    if ((newSubHeading && !destSub.subHeading) || (newDate && !destSub.date)) {
+      if (onUpdateSubcategory) {
+        onUpdateSubcategory(
+          destSub.id,
+          destSub.name,
+          destSub.parentCategory,
+          destSub.date || newDate,
+          destSub.subHeading || newSubHeading,
+          destSub.text
+        );
+      }
+    }
+
+    // 4. Delete source duplicate subcategory
+    if (onDeleteSubcategory) {
+      onDeleteSubcategory(sourceId);
+    }
+
+    showCustomAlert(
+      'মার্জ সম্পন্ন হয়েছে!',
+      `"${oldName}" সাব-ক্যাটাগরি সফলভাবে "${destParent}" এর বিদ্যমান "${targetName}" ফোল্ডারের সাথে মার্জ করা হয়েছে এবং এর আওতাধীন সকল MCQ যুক্ত হয়েছে।`,
+      'success'
+    );
+  };
+
+  // Execute bulk merge and move
+  const executeBulkMergeAndMove = (
+    duplicates: { sourceSub: SubcategoryItem; targetSub: SubcategoryItem }[],
+    nonDuplicates: SubcategoryItem[],
+    destParent: string
+  ) => {
+    // 1. Process each duplicate merge
+    duplicates.forEach(({ sourceSub, targetSub }) => {
+      const oldName = sourceSub.name;
+      const targetName = targetSub.name;
+
+      // Repoint questions
+      questions.forEach(q => {
+        let updatedQ: Partial<Question> = {};
+        let changed = false;
+
+        if (q.subcategory === oldName) {
+          updatedQ.subcategory = targetName;
+          changed = true;
+        }
+        if (q.subcategories && q.subcategories.includes(oldName)) {
+          updatedQ.subcategories = q.subcategories.map(s => s === oldName ? targetName : s);
+          changed = true;
+        }
+        if (q.category === oldName) {
+          updatedQ.category = destParent;
+          changed = true;
+        }
+        if (q.categories && q.categories.includes(oldName)) {
+          updatedQ.categories = q.categories.map(c => c === oldName ? destParent : c);
+          changed = true;
+        }
+
+        if (changed && onUpdateQuestion) {
+          onUpdateQuestion(q.id, updatedQ);
+        }
+      });
+
+      // Repoint children if oldName was different
+      if (oldName !== targetName) {
+        subcategories.forEach(s => {
+          if (s.parentCategory === oldName && onUpdateSubcategory) {
+            onUpdateSubcategory(s.id, s.name, targetName, s.date, s.subHeading, s.text);
+          }
+        });
+      }
+
+      // Delete duplicate source subcategory
+      if (onDeleteSubcategory) {
+        onDeleteSubcategory(sourceSub.id);
+      }
+    });
+
+    // 2. Move non-duplicates
+    if (nonDuplicates.length > 0 && onBulkMoveSubcategories) {
+      onBulkMoveSubcategories(nonDuplicates.map(s => s.id), destParent);
+    }
+
+    // 3. Clear selections & notify
+    setSelectedSubcatIds([]);
+    const totalCount = duplicates.length + nonDuplicates.length;
+    showCustomAlert(
+      'সম্পন্ন!',
+      `মোট ${totalCount}টি সাব-ক্যাটাগরি (${duplicates.length}টি মার্জকৃত, ${nonDuplicates.length}টি স্থানান্তরিত) সফলভাবে "${destParent}" এ আপডেট করা হয়েছে!`,
+      'success'
+    );
+  };
+
+  // Reusable Cascading Hierarchy Selector for Move operations
+  const renderCascadingMoveSelector = (
+    currentRootCat: string,
+    onRootCatChange: (newRoot: string) => void,
+    currentChain: string[],
+    onChainChange: (newChain: string[]) => void,
+    excludedIds: string[] = [],
+    excludedNames: string[] = [],
+    compactLayout = false
+  ) => {
+    const rootOptions = [
+      'বিষয়ভিত্তিক প্রস্তুতি',
+      'জব সলিউশন পরীক্ষা',
+      'সাল ভিত্তিক জব সলিউশন',
+      'সাম্প্রতিক বিষয়াবলী',
+      ...(categories || []).map(c => c?.name).filter(Boolean)
+    ].filter((name, idx, arr) => arr.indexOf(name) === idx);
+
+    // Compute excluded normalized names (self + all recursive descendants)
+    const excludedSet = new Set<string>();
+    excludedNames.forEach(n => {
+      if (n) {
+        excludedSet.add(n.trim().toLowerCase());
+        getSubcategoryDescendants(n).forEach(d => excludedSet.add(d.trim().toLowerCase()));
+      }
+    });
+
+    const selectBoxes: React.ReactNode[] = [];
+    const maxDepth = currentChain.length;
+
+    for (let i = 0; i <= maxDepth; i++) {
+      let options: SubcategoryItem[] = [];
+
+      if (i === 0) {
+        if (isJobSolutionVariation(currentRootCat)) {
+          options = subcategories.filter(s => isJobSolutionVariation(s.parentCategory));
+        } else if (isYearJobSolutionVariation(currentRootCat)) {
+          options = subcategories.filter(s => isYearJobSolutionVariation(s.parentCategory));
+        } else if (isCurrentAffairVariation(currentRootCat)) {
+          options = subcategories.filter(s => isCurrentAffairVariation(s.parentCategory));
+        } else {
+          options = subcategories.filter(s => s.parentCategory === currentRootCat);
+        }
+      } else {
+        const parentVal = currentChain[i - 1];
+        if (parentVal && parentVal !== 'ALL') {
+          options = subcategories.filter(s => s.parentCategory === parentVal);
+        }
+      }
+
+      // Filter out excluded nodes and their descendants to prevent circular movement
+      options = options.filter(s => 
+        !excludedIds.includes(s.id) && 
+        !excludedSet.has(s.name.trim().toLowerCase())
+      );
+
+      if (options.length === 0) continue;
+
+      const currentSelection = currentChain[i] || 'ALL';
+
+      selectBoxes.push(
+        <div key={`cascade-move-level-${i}`} className="flex flex-col gap-0.5 min-w-[130px]">
+          <label className="block text-[9px] text-slate-500 font-bold">
+            {i === 0 ? 'উপ-ক্যাটাগরি (ধাপ ১):' : `সাব-ক্যাটাগরি ধাপ ${i + 1}:`}
+          </label>
+          <select
+            value={currentSelection}
+            onChange={e => {
+              const val = e.target.value;
+              const newChain = [...currentChain];
+              if (val === 'ALL') {
+                newChain.splice(i);
+              } else {
+                newChain[i] = val;
+                newChain.splice(i + 1);
+              }
+              onChainChange(newChain);
+            }}
+            className={`px-2 py-1.5 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 ${compactLayout ? 'w-full' : 'w-full'}`}
+          >
+            <option value="ALL">--- সিলেক্ট করুন (ঐচ্ছিক) ---</option>
+            {options.map(s => (
+              <option key={s.id} value={s.name}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    const activeChain = currentChain.filter(s => s && s !== 'ALL');
+    const destinationParent = activeChain.length > 0 ? activeChain[activeChain.length - 1] : currentRootCat;
+
+    return (
+      <div className={`space-y-2 ${compactLayout ? 'bg-amber-50/60 p-2.5 rounded-xl border border-amber-200/90' : ''}`}>
+        <div className={`flex ${compactLayout ? 'flex-wrap items-end' : 'flex-col'} gap-2`}>
+          <div className="flex flex-col gap-0.5 min-w-[140px]">
+            <label className="block text-[9px] text-slate-500 font-bold">মূল ক্যাটাগরি (রুট জোন):</label>
+            <select
+              value={currentRootCat}
+              onChange={e => {
+                onRootCatChange(e.target.value);
+                onChainChange([]);
+              }}
+              className="px-2 py-1.5 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 w-full"
+            >
+              {rootOptions.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectBoxes}
+        </div>
+
+        <div className="flex items-center gap-1.5 text-[10px] text-amber-950 font-bold bg-amber-100/70 px-2 py-1 rounded-md border border-amber-250">
+          <span className="text-amber-800 shrink-0">🎯 নির্বাচিত নতুন প্যারেন্ট:</span>
+          <span className="text-indigo-900 font-extrabold bg-white px-1.5 py-0.5 rounded shadow-2xs">
+            {destinationParent}
+          </span>
+          {activeChain.length > 0 && (
+            <span className="text-[9px] text-gray-500 truncate max-w-[240px]">
+              ({currentRootCat} ➔ {activeChain.join(' ➔ ')})
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Recursive Tree Node Renderer for Hierarchy Tab
   const renderTreeNode = (
     name: string, 
@@ -1968,21 +2375,20 @@ export default function AdminPanel({
     depth: number,
     visitedIds: Set<string> = new Set()
   ): React.ReactNode => {
-    // Resolve true subcategory/category entity ID if id contains render suffix
-    const targetSub = subcategories.find(s => s.id === id || s.name.trim().toLowerCase() === name.trim().toLowerCase());
-    const targetCat = categories.find(c => c.id === id || c.name.trim().toLowerCase() === name.trim().toLowerCase());
-    const realEntityId = targetSub ? targetSub.id : targetCat ? targetCat.id : id;
+    // Resolve true subcategory/category entity strictly using unique ID first
+    const targetSub = type === 'subcategory' 
+      ? (id ? subcategories.find(s => s.id === id) : subcategories.find(s => s.name.trim().toLowerCase() === name.trim().toLowerCase()))
+      : undefined;
+    const targetCat = type === 'category' 
+      ? (id ? categories.find(c => c.id === id) : categories.find(c => c.name.trim().toLowerCase() === name.trim().toLowerCase()))
+      : undefined;
+    const realEntityId = id || (targetSub ? targetSub.id : targetCat ? targetCat.id : `node-${name}`);
 
-    // Avoid circular loops / stack overflows
-    if (visitedIds.has(realEntityId) || Array.from(visitedIds).some(vId => {
-      const existingSub = subcategories.find(s => s.id === vId);
-      const existingCat = categories.find(c => c.id === vId);
-      const existingName = (existingSub?.name || existingCat?.name || '').trim().toLowerCase();
-      return existingName === name.trim().toLowerCase();
-    })) {
+    // Avoid circular loops / stack overflows by tracking unique IDs
+    if (visitedIds.has(realEntityId)) {
       return (
         <div 
-          key={`loop-${id}`}
+          key={`loop-${id || realEntityId}`}
           style={{ paddingLeft: `${Math.max(12, depth * 16)}px` }}
           className="p-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold"
         >
@@ -2000,6 +2406,7 @@ export default function AdminPanel({
 
     // Direct child subcategories (excluding self-referential loops)
     const children = subcategories.filter(s => 
+      s.id !== realEntityId &&
       s.parentCategory && 
       s.parentCategory.trim().toLowerCase() === name.trim().toLowerCase() &&
       s.name.trim().toLowerCase() !== name.trim().toLowerCase()
@@ -2209,15 +2616,24 @@ export default function AdminPanel({
             <button
               type="button"
               onClick={() => {
-                setEditingNodeId(realEntityId);
-                setEditingNodeNewName(name);
-                const sub = targetSub || subcategories.find(s => s.id === realEntityId);
-                const cat = targetCat || categories.find(c => c.id === realEntityId);
-                setEditingNodeSubHeading(sub?.subHeading || cat?.subHeading || '');
-                setEditingNodeDate(sub?.date || '');
-                setEditingNodeNewParent(sub ? sub.parentCategory : (type === 'subcategory' ? 'বিষয়ভিত্তিক প্রস্তুতি' : ''));
-                setEditingNodeType(type);
-                setAddingChildUnderNodeId(null);
+                if (type === 'subcategory') {
+                  const sub = targetSub || subcategories.find(s => s.id === realEntityId);
+                  if (sub) {
+                    startEditSubcategory(sub);
+                  } else {
+                    setEditingNodeId(realEntityId);
+                    setEditingNodeNewName(name);
+                    setEditingNodeType('subcategory');
+                    setEditingNodeRootCat('বিষয়ভিত্তিক প্রস্তুতি');
+                    setEditingNodeParentChain([]);
+                  }
+                } else {
+                  setEditingNodeId(realEntityId);
+                  setEditingNodeNewName(name);
+                  const cat = targetCat || categories.find(c => c.id === realEntityId);
+                  setEditingNodeSubHeading(cat?.subHeading || '');
+                  setEditingNodeType('category');
+                }
               }}
               className="text-amber-600 hover:text-amber-850 hover:bg-amber-50 px-1.5 py-1 rounded-md transition text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
               title="সম্পাদনা বা মুভ করুন"
@@ -2241,10 +2657,10 @@ export default function AdminPanel({
         {isEditing && (
           <div 
             style={{ marginLeft: `${Math.max(12, depth * 16 + 12)}px` }} 
-            className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 shadow-sm flex flex-col gap-3 animate-fade-in text-xs max-w-md w-full"
+            className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 shadow-sm flex flex-col gap-3 animate-fade-in text-xs max-w-lg w-full"
           >
             <h5 className="font-extrabold text-amber-900 text-[10px] uppercase tracking-wider flex items-center gap-1">
-              ✏️ "{name}" এডিট ও পজিশন পরিবর্তন (Move Node)
+              ✏️ "{name}" এডিট ও পজিশন স্থানান্তর (Move Node)
             </h5>
             
             <div className="flex flex-col gap-2.5">
@@ -2283,31 +2699,22 @@ export default function AdminPanel({
 
               {type === 'subcategory' && (
                 <div>
-                  <label className="block text-[10px] text-amber-950 font-bold mb-1">প্যারেন্ট পরিবর্তন করুন (Move to other place):</label>
-                  <select
-                    value={editingNodeNewParent}
-                    onChange={e => setEditingNodeNewParent(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-amber-300 rounded-lg bg-white text-gray-700 font-semibold focus:outline-none text-[11px]"
-                  >
-                    <optgroup label="মূল ক্যাটাগরি (Root Zones)">
-                      <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
-                      <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
-                      <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                    </optgroup>
-                    <optgroup label="অন্যান্য সাব-ক্যাটাগরি সমূহ">
-                      {subcategories
-                        // Filter out self and its direct descendants to avoid loops
-                        .filter(s => s.id !== realEntityId && s.parentCategory !== name && s.name !== name && s.name !== 'বিষয়ভিত্তিক প্রস্তুতি' && !isJobSolutionVariation(s.name) && !isYearJobSolutionVariation(s.name))
-                        .map((s, idx) => (
-                          <option key={`opt-sub-${s.id}-${idx}`} value={s.name}>{s.name}</option>
-                        ))
-                      }
-                    </optgroup>
-                  </select>
+                  <label className="block text-[10px] text-amber-950 font-bold mb-1">
+                    প্যারেন্ট নির্বাচন ও স্থানান্তর (Hierarchical Cascading Selector):
+                  </label>
+                  {renderCascadingMoveSelector(
+                    editingNodeRootCat,
+                    setEditingNodeRootCat,
+                    editingNodeParentChain,
+                    setEditingNodeParentChain,
+                    [realEntityId],
+                    [name, ...(targetSub ? getSubcategoryDescendants(targetSub.name) : getSubcategoryDescendants(name))],
+                    false
+                  )}
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -2315,16 +2722,68 @@ export default function AdminPanel({
                       if (onUpdateCategory) {
                         onUpdateCategory(realEntityId, editingNodeNewName, editingNodeSubHeading);
                       }
+                      setEditingNodeId(null);
                     } else {
-                      if (onUpdateSubcategory) {
-                        onUpdateSubcategory(realEntityId, editingNodeNewName, editingNodeNewParent, editingNodeDate || undefined, editingNodeSubHeading);
+                      const activeChain = editingNodeParentChain.filter(s => s && s !== 'ALL');
+                      const destinationParent = activeChain.length > 0 ? activeChain[activeChain.length - 1] : editingNodeRootCat;
+                      const trimmedNewName = editingNodeNewName.trim();
+
+                      if (!trimmedNewName) {
+                        showCustomAlert('ত্রুটি', 'সাব-ক্যাটাগরির নাম খালি হতে পারে না!', 'warning');
+                        return;
+                      }
+
+                      const sub = targetSub || subcategories.find(s => s.id === realEntityId);
+                      const excludedNames = new Set([
+                        trimmedNewName.toLowerCase(),
+                        name.toLowerCase(),
+                        ...(sub ? getSubcategoryDescendants(sub.name).map(d => d.toLowerCase()) : [])
+                      ]);
+
+                      if (excludedNames.has(destinationParent.toLowerCase())) {
+                        showCustomAlert('ত্রুটি', 'কোনো সাব-ক্যাটাগরি নিজের ভেতর বা নিজের চাইল্ড নোডের ভেতর স্থানান্তর করা সম্ভব নয়!', 'warning');
+                        return;
+                      }
+
+                      // Check if destination already has a subcategory with this name
+                      const existingDestSub = subcategories.find(
+                        s => s.id !== realEntityId &&
+                             s.parentCategory &&
+                             s.parentCategory.trim().toLowerCase() === destinationParent.trim().toLowerCase() &&
+                             s.name.trim().toLowerCase() === trimmedNewName.toLowerCase()
+                      );
+
+                      if (existingDestSub) {
+                        showCustomConfirm(
+                          'সাব-ক্যাটাগরি মার্জ নিশ্চিতকরণ (Merge Confirmation)',
+                          `গন্তব্য প্যারেন্ট "${destinationParent}" এ "${trimmedNewName}" সাব-ক্যাটাগরি ইতিমধ্যে বিদ্যমান আছে।\n\nআপনি কি এই সাব-ক্যাটাগরিকে বিদ্যমান ফোল্ডারের সাথে মার্জ (Merge) করতে চান? মার্জ করলে এর আওতাধীন সকল MCQ প্রশ্ন ও চাইল্ড নোড গন্তব্যের বিদ্যমান ফোল্ডারে যুক্ত হবে এবং ডুপ্লিকেট নোডটি মার্জ হয়ে যাবে।`,
+                          () => {
+                            executeSingleMergeAndMove(
+                              realEntityId,
+                              sub || { id: realEntityId, name, parentCategory: destinationParent },
+                              existingDestSub,
+                              destinationParent,
+                              trimmedNewName,
+                              editingNodeSubHeading,
+                              editingNodeDate
+                            );
+                            setEditingNodeId(null);
+                          },
+                          'warning',
+                          'মার্জ করুন',
+                          'বাতিল'
+                        );
+                      } else {
+                        if (onUpdateSubcategory) {
+                          onUpdateSubcategory(realEntityId, trimmedNewName, destinationParent, editingNodeDate || undefined, editingNodeSubHeading);
+                        }
+                        setEditingNodeId(null);
                       }
                     }
-                    setEditingNodeId(null);
                   }}
-                  className="bg-amber-600 hover:bg-amber-750 text-white font-extrabold px-3 py-1.5 rounded-lg transition text-[10px] cursor-pointer"
+                  className="bg-amber-600 hover:bg-amber-750 text-white font-extrabold px-3 py-1.5 rounded-lg transition text-[10px] cursor-pointer shadow-xs"
                 >
-                  সংরক্ষণ করুন
+                  সংরক্ষণ ও মুভ করুন
                 </button>
                 <button
                   type="button"
@@ -2843,25 +3302,22 @@ export default function AdminPanel({
     let index = 0;
 
     subcatGroupMap.forEach((val) => {
-      const dbSub = findSubcategoryInDatabase(val.rawSubcat);
       const dbCat = findCategoryInDatabase(val.rawCat);
 
       // Determine target category dynamically
       let targetCat = val.rawCat;
       if (dbCat) {
         targetCat = dbCat;
-      } else if (dbSub && dbSub.parentCategory) {
-        targetCat = dbSub.parentCategory;
       } else {
         targetCat = mapToStandardSubjectCategory(val.rawCat, val.rawSubcat);
       }
 
-      // Check if subcategory or category already exists in database dynamically
-      const subExistsInDb = !!dbSub;
-      const catExistsInDb = !!dbCat;
+      // Check if subcategory already exists under this target parentCategory (parentCategory + name)
+      const dbSub = findSubcategoryInDatabase(val.rawSubcat, targetCat);
 
-      // It's a match if the subcategory or category exists dynamically in the system
-      const isMatched = subExistsInDb || catExistsInDb;
+      // Subcategory exists specifically under this parentCategory
+      const subExistsInDb = !!dbSub;
+      const isMatched = subExistsInDb;
       const isMismatch = !isMatched;
 
       // Existing subcategories under targetCat
@@ -2897,13 +3353,10 @@ export default function AdminPanel({
     let currentSubcatList = [...subcategories];
     let createdSubcatsCount = 0;
 
-    // 1. Ensure all 9 standard subject categories exist under parent 'বিষয়ভিত্তিক প্রস্তুতি'
+    // 1. Ensure all 9 standard subject categories exist under parent 'বিষয়ভিত্তিক প্রস্তুতি' with integrity validation
     STANDARD_SUBJECT_CATEGORIES.forEach(stdCat => {
-      const exists = currentSubcatList.some(
-        s => normalizeName(s.name) === normalizeName(stdCat) &&
-             s.parentCategory && normalizeName(s.parentCategory) === normalizeName('বিষয়ভিত্তিক প্রস্তুতি')
-      );
-      if (!exists) {
+      const validation = validateSubcategoryIntegrity(stdCat, 'বিষয়ভিত্তিক প্রস্তুতি', currentSubcatList);
+      if (validation.valid) {
         const newSub: SubcategoryItem = {
           id: `subcat-std-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           name: stdCat,
@@ -2915,18 +3368,15 @@ export default function AdminPanel({
       }
     });
 
-    // 2. Process mismatch mappings & create required subcategories
+    // 2. Process mismatch mappings & create required subcategories with strict hierarchy integrity validation
     mismatchMappings.forEach(m => {
       if (m.action === 'create') {
         const subName = m.correctedSubcategory.trim();
         const parentCat = m.targetCategory.trim();
 
-        if (subName) {
-          const subExists = currentSubcatList.some(
-            s => normalizeName(s.name) === normalizeName(subName) &&
-                 s.parentCategory && normalizeName(s.parentCategory) === normalizeName(parentCat)
-          );
-          if (!subExists) {
+        if (subName && parentCat) {
+          const validation = validateSubcategoryIntegrity(subName, parentCat, currentSubcatList);
+          if (validation.valid) {
             const newSubItem: SubcategoryItem = {
               id: `subcat-map-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
               name: subName,
@@ -3396,23 +3846,69 @@ export default function AdminPanel({
       showCustomAlert('ত্রুটি', 'প্রথমে এক বা একাধিক সাব-ক্যাটাগরি নির্বাচন করুন!', 'warning');
       return;
     }
-    if (!bulkSubcatMoveParent) {
+    const activeChain = bulkMoveDestSubcatChain.filter(s => s && s !== 'ALL');
+    const destinationParent = activeChain.length > 0 ? activeChain[activeChain.length - 1] : bulkMoveDestCat;
+
+    if (!destinationParent) {
       showCustomAlert('ত্রুটি', 'নতুন প্যারেন্ট ক্যাটাগরি নির্বাচন করুন!', 'warning');
       return;
     }
-    showCustomConfirm(
-      'প্যারেন্ট ক্যাটাগরি পরিবর্তন নিশ্চিতকরণ',
-      `আপনি কি নিশ্চিতভাবে নির্বাচিত ${selectedSubcatIds.length}টি সাব-ক্যাটাগরিকে নতুন প্যারেন্ট "${bulkSubcatMoveParent}" এ স্থানান্তরিত করতে চান?`,
-      () => {
-        const count = selectedSubcatIds.length;
-        if (onBulkMoveSubcategories) {
-          onBulkMoveSubcategories(selectedSubcatIds, bulkSubcatMoveParent);
-        }
-        setSelectedSubcatIds([]);
-        showCustomAlert('সম্পন্ন!', `নির্বাচিত ${count}টি সাব-ক্যাটাগরি সফলভাবে "${bulkSubcatMoveParent}" এ স্থানান্তরিত করা হয়েছে!`, 'success');
-      },
-      'info'
-    );
+
+    const selectedSubs = subcategories.filter(s => selectedSubcatIds.includes(s.id));
+    
+    // Check if any selected node is being moved into itself or its descendants
+    for (const sub of selectedSubs) {
+      const descendants = getSubcategoryDescendants(sub.name).map(d => d.toLowerCase());
+      if (destinationParent.toLowerCase() === sub.name.toLowerCase() || descendants.includes(destinationParent.toLowerCase())) {
+        showCustomAlert('ত্রুটি', `"${sub.name}" কে নিজের ভেতর বা নিজের চাইল্ড নোডের ভেতর স্থানান্তর করা সম্ভব নয়!`, 'warning');
+        return;
+      }
+    }
+
+    const duplicates: { sourceSub: SubcategoryItem; targetSub: SubcategoryItem }[] = [];
+    const nonDuplicates: SubcategoryItem[] = [];
+
+    selectedSubs.forEach(s => {
+      const existing = subcategories.find(
+        other => !selectedSubcatIds.includes(other.id) &&
+                 other.parentCategory &&
+                 other.parentCategory.trim().toLowerCase() === destinationParent.trim().toLowerCase() &&
+                 other.name.trim().toLowerCase() === s.name.trim().toLowerCase()
+      );
+      if (existing) {
+        duplicates.push({ sourceSub: s, targetSub: existing });
+      } else {
+        nonDuplicates.push(s);
+      }
+    });
+
+    if (duplicates.length > 0) {
+      const dupNames = duplicates.map(d => `"${d.sourceSub.name}"`).join(', ');
+      showCustomConfirm(
+        'সাব-ক্যাটাগরি মার্জ ও স্থানান্তর নিশ্চিতকরণ (Merge Confirmation)',
+        `গন্তব্য প্যারেন্ট "${destinationParent}" এ ইতিমধ্যে কিছু নির্বাচিত সাব-ক্যাটাগরি (${dupNames}) বিদ্যমান আছে।\n\nআপনি কি এদেরকে মার্জ (Merge) করতে চান? মার্জ করলে এদের সংশ্লিষ্ট সকল MCQ প্রশ্ন ও চাইল্ড নোড গন্তব্যের বিদ্যমান ফোল্ডারে যুক্ত হবে এবং ডুপ্লিকেট নোডগুলো মার্জ হয়ে যাবে।${nonDuplicates.length > 0 ? `\n\n(বাকি ${nonDuplicates.length}টি সাব-ক্যাটাগরি স্বাভাবিকভাবে স্থানান্তরিত হবে)` : ''}`,
+        () => {
+          executeBulkMergeAndMove(duplicates, nonDuplicates, destinationParent);
+        },
+        'warning',
+        'মার্জ ও মুভ করুন',
+        'বাতিল'
+      );
+    } else {
+      showCustomConfirm(
+        'প্যারেন্ট ক্যাটাগরি পরিবর্তন নিশ্চিতকরণ',
+        `আপনি কি নিশ্চিতভাবে নির্বাচিত ${selectedSubcatIds.length}টি সাব-ক্যাটাগরিকে নতুন প্যারেন্ট "${destinationParent}" এ স্থানান্তরিত করতে চান?`,
+        () => {
+          if (onBulkMoveSubcategories) {
+            onBulkMoveSubcategories(selectedSubcatIds, destinationParent);
+          }
+          const count = selectedSubcatIds.length;
+          setSelectedSubcatIds([]);
+          showCustomAlert('সম্পন্ন!', `নির্বাচিত ${count}টি সাব-ক্যাটাগরি সফলভাবে "${destinationParent}" এ স্থানান্তরিত করা হয়েছে!`, 'success');
+        },
+        'info'
+      );
+    }
   };
 
   // Notice & Exam publish handlers
@@ -6360,55 +6856,50 @@ export default function AdminPanel({
                 <div className="border border-slate-100 rounded-2xl bg-slate-50/50 p-4 max-h-[80vh] overflow-y-auto space-y-4">
                   {/* Tree View Subcategory Bulk Action Bar */}
                   {selectedSubcatIds.length > 0 && (
-                    <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-scale-up sticky top-0 z-20">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
-                          {selectedSubcatIds.length} টি ক্যাটাগরি/সাব-ক্যাটাগরি নির্বাচিত
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSubcatIds([])}
-                          className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
-                        >
-                          ক্লিয়ার
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-700">নতুন প্যারেন্ট:</label>
-                          <select
-                            value={bulkSubcatMoveParent}
-                            onChange={e => setBulkSubcatMoveParent(e.target.value)}
-                            className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
-                          >
-                            <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
-                            <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
-                            <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                            {(categories || []).map(c => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                            {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
-                              <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
+                    <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-col gap-2.5 shadow-xs animate-scale-up sticky top-0 z-20">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
+                            {selectedSubcatIds.length} টি ক্যাটাগরি/সাব-ক্যাটাগরি নির্বাচিত
+                          </span>
                           <button
                             type="button"
-                            onClick={handleBulkMoveSubcatAction}
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                            onClick={() => setSelectedSubcatIds([])}
+                            className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
                           >
-                            🚚 স্থানান্তরিত করুন
+                            ক্লিয়ার
                           </button>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={handleBulkDeleteSubcatAction}
-                          className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          একসাথে মুছুন ({selectedSubcatIds.length}টি)
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleBulkMoveSubcatAction}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                          >
+                            🚚 স্থানান্তরিত করুন
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleBulkDeleteSubcatAction}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            একসাথে মুছুন ({selectedSubcatIds.length}টি)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="w-full">
+                        {renderCascadingMoveSelector(
+                          bulkMoveDestCat,
+                          setBulkMoveDestCat,
+                          bulkMoveDestSubcatChain,
+                          setBulkMoveDestSubcatChain,
+                          selectedSubcatIds,
+                          subcategories.filter(s => selectedSubcatIds.includes(s.id)).flatMap(s => [s.name, ...getSubcategoryDescendants(s.name)]),
+                          true
+                        )}
                       </div>
                     </div>
                   )}
@@ -6489,55 +6980,50 @@ export default function AdminPanel({
 
                 {/* Leaf Nodes Bulk Action Bar */}
                 {selectedSubcatIds.length > 0 && (
-                  <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-scale-up">
-                    <div className="flex items-center gap-2">
-                      <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
-                        {selectedSubcatIds.length} টি নোড নির্বাচিত
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSubcatIds([])}
-                        className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
-                      >
-                        ক্লিয়ার
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-700">নতুন প্যারেন্ট:</label>
-                        <select
-                          value={bulkSubcatMoveParent}
-                          onChange={e => setBulkSubcatMoveParent(e.target.value)}
-                          className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
-                        >
-                          <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
-                          <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
-                          <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                          {(categories || []).map(c => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
-                          ))}
-                          {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
-                            <option key={s.id} value={s.name}>{s.name}</option>
-                          ))}
-                        </select>
+                  <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-col gap-2.5 shadow-xs animate-scale-up">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
+                          {selectedSubcatIds.length} টি নোড নির্বাচিত
+                        </span>
                         <button
                           type="button"
-                          onClick={handleBulkMoveSubcatAction}
-                          className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                          onClick={() => setSelectedSubcatIds([])}
+                          className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
                         >
-                          🚚 স্থানান্তরিত করুন
+                          ক্লিয়ার
                         </button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleBulkDeleteSubcatAction}
-                        className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        একসাথে মুছুন ({selectedSubcatIds.length}টি)
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleBulkMoveSubcatAction}
+                          className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                        >
+                          🚚 স্থানান্তরিত করুন
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBulkDeleteSubcatAction}
+                          className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          একসাথে মুছুন ({selectedSubcatIds.length}টি)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="w-full">
+                      {renderCascadingMoveSelector(
+                        bulkMoveDestCat,
+                        setBulkMoveDestCat,
+                        bulkMoveDestSubcatChain,
+                        setBulkMoveDestSubcatChain,
+                        selectedSubcatIds,
+                        subcategories.filter(s => selectedSubcatIds.includes(s.id)).flatMap(s => [s.name, ...getSubcategoryDescendants(s.name)]),
+                        true
+                      )}
                     </div>
                   </div>
                 )}
@@ -6659,12 +7145,7 @@ export default function AdminPanel({
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            setEditingNodeId(leaf.id);
-                                            setEditingNodeNewName(leaf.name);
-                                            setEditingNodeSubHeading(leaf.subHeading || '');
-                                            setEditingNodeDate(leaf.date || '');
-                                            setEditingNodeNewParent(leaf.parentCategory);
-                                            setEditingNodeType('subcategory');
+                                            startEditSubcategory(leaf);
                                             expandNodeAndParents(leaf.name);
                                             setCategoryViewTab('tree');
                                           }}
@@ -6803,55 +7284,50 @@ export default function AdminPanel({
 
                   {/* Subcategory Bulk Action Bar */}
                   {selectedSubcatIds.length > 0 && (
-                    <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-scale-up">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
-                          {selectedSubcatIds.length} টি সাব-ক্যাটাগরি নির্বাচিত
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSubcatIds([])}
-                          className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
-                        >
-                          ক্লিয়ার
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-700">নতুন প্যারেন্ট:</label>
-                          <select
-                            value={bulkSubcatMoveParent}
-                            onChange={e => setBulkSubcatMoveParent(e.target.value)}
-                            className="px-2 py-1 text-[11px] border border-slate-300 rounded-lg bg-white font-semibold text-slate-800"
-                          >
-                            <option value="বিষয়ভিত্তিক প্রস্তুতি">বিষয়ভিত্তিক প্রস্তুতি</option>
-                            <option value="জব সলিউশন পরীক্ষা">জব সলিউশন পরীক্ষা</option>
-                            <option value="সাল ভিত্তিক জব সলিউশন">সাল ভিত্তিক জব সলিউশন</option>
-                            {(categories || []).map(c => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                            {subcategories.filter(s => !selectedSubcatIds.includes(s.id)).map(s => (
-                              <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
+                    <div className="bg-gradient-to-r from-amber-50 to-indigo-50 border border-amber-200 p-3 rounded-2xl flex flex-col gap-2.5 shadow-xs animate-scale-up">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-amber-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-2xs">
+                            {selectedSubcatIds.length} টি সাব-ক্যাটাগরি নির্বাচিত
+                          </span>
                           <button
                             type="button"
-                            onClick={handleBulkMoveSubcatAction}
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                            onClick={() => setSelectedSubcatIds([])}
+                            className="text-[11px] text-slate-600 hover:text-slate-800 font-bold underline cursor-pointer"
                           >
-                            🚚 স্থানান্তরিত করুন
+                            ক্লিয়ার
                           </button>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={handleBulkDeleteSubcatAction}
-                          className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          একসাথে মুছুন ({selectedSubcatIds.length}টি)
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleBulkMoveSubcatAction}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                          >
+                            🚚 স্থানান্তরিত করুন
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleBulkDeleteSubcatAction}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-3.5 py-1.5 rounded-lg text-[11px] shadow-2xs flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            একসাথে মুছুন ({selectedSubcatIds.length}টি)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="w-full">
+                        {renderCascadingMoveSelector(
+                          bulkMoveDestCat,
+                          setBulkMoveDestCat,
+                          bulkMoveDestSubcatChain,
+                          setBulkMoveDestSubcatChain,
+                          selectedSubcatIds,
+                          subcategories.filter(s => selectedSubcatIds.includes(s.id)).flatMap(s => [s.name, ...getSubcategoryDescendants(s.name)]),
+                          true
+                        )}
                       </div>
                     </div>
                   )}
@@ -6969,12 +7445,7 @@ export default function AdminPanel({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setEditingNodeId(sub.id);
-                                      setEditingNodeNewName(sub.name);
-                                      setEditingNodeSubHeading(sub.subHeading || '');
-                                      setEditingNodeDate(sub.date || '');
-                                      setEditingNodeNewParent(sub.parentCategory);
-                                      setEditingNodeType('subcategory');
+                                      startEditSubcategory(sub);
                                       expandNodeAndParents(sub.name);
                                       setCategoryViewTab('tree');
                                     }}
@@ -11253,7 +11724,7 @@ export default function AdminPanel({
                     type="button"
                     onClick={() => {
                       setMismatchMappings(prev => prev.map(m => {
-                        const dbSub = findSubcategoryInDatabase(m.rawSubcategory);
+                        const dbSub = findSubcategoryInDatabase(m.rawSubcategory, m.targetCategory);
                         return {
                           ...m,
                           action: dbSub ? 'map_existing' : 'create',

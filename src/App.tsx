@@ -2237,7 +2237,7 @@ export default function App() {
     updateQuestionsDB([...questions, ...newQuestions]);
     bulkUploadQuestionsToFirestore(newQuestions);
 
-    // Also batch process the categories and subcategories
+    // Also batch process the categories and subcategories with strict hierarchy integrity
     let updatedSubcats = [...subcategories];
     let changed = false;
 
@@ -2246,30 +2246,51 @@ export default function App() {
       return norm === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() ||
              norm === 'জব সলিউশন পরীক্ষা'.toLowerCase() ||
              norm === 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() ||
+             norm === 'সাম্প্রতিক বিষয়াবলী'.toLowerCase() ||
              isJobSolutionVariation(norm) ||
-             isYearJobSolutionVariation(norm);
+             isYearJobSolutionVariation(norm) ||
+             isCurrentAffairVariation(norm);
     };
 
     normalizedList.forEach(q => {
       const trimmedCat = q.category ? q.category.trim() : '';
       const trimmedSubcat = q.subcategory ? q.subcategory.trim() : '';
 
-      if (trimmedCat && !isRoot(trimmedCat) && !updatedSubcats.some(s => s.name.toLowerCase() === trimmedCat.toLowerCase())) {
-        updatedSubcats.push({
-          id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          name: trimmedCat,
-          parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
-        });
-        changed = true;
+      // If primary category is non-root, ensure it exists under 'বিষয়ভিত্তিক প্রস্তুতি'
+      if (trimmedCat && !isRoot(trimmedCat)) {
+        const catExists = updatedSubcats.some(
+          s => s.parentCategory && 
+               s.parentCategory.trim().toLowerCase() === 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() &&
+               s.name.trim().toLowerCase() === trimmedCat.toLowerCase()
+        );
+        if (!catExists) {
+          updatedSubcats.push({
+            id: `subcat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            name: trimmedCat,
+            parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
+          });
+          changed = true;
+        }
       }
 
-      if (trimmedSubcat && !isRoot(trimmedSubcat) && !updatedSubcats.some(s => s.name.toLowerCase() === trimmedSubcat.toLowerCase())) {
-        updatedSubcats.push({
-          id: `subcat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          name: trimmedSubcat,
-          parentCategory: 'জব সলিউশন পরীক্ষা'
-        });
-        changed = true;
+      // If subcategory exists, check uniqueness by (parentCategory + name)
+      if (trimmedSubcat && !isRoot(trimmedSubcat)) {
+        const parentForSubcat = trimmedCat || 'বিষয়ভিত্তিক প্রস্তুতি';
+        if (trimmedSubcat.toLowerCase() !== parentForSubcat.toLowerCase()) {
+          const subcatExists = updatedSubcats.some(
+            s => s.parentCategory && 
+                 s.parentCategory.trim().toLowerCase() === parentForSubcat.toLowerCase() &&
+                 s.name.trim().toLowerCase() === trimmedSubcat.toLowerCase()
+          );
+          if (!subcatExists) {
+            updatedSubcats.push({
+              id: `subcat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              name: trimmedSubcat,
+              parentCategory: parentForSubcat
+            });
+            changed = true;
+          }
+        }
       }
     });
 
@@ -2539,10 +2560,10 @@ export default function App() {
 
     let currentSubcats = [...subcategories];
     
-    if (currentSubcats.some(s => s.name.toLowerCase() === trimmed.toLowerCase() && s.parentCategory === normalizedParent)) {
+    if (currentSubcats.some(s => s.name.trim().toLowerCase() === trimmed.toLowerCase() && s.parentCategory && s.parentCategory.trim().toLowerCase() === normalizedParent.toLowerCase())) {
       // If already exists, update its text / date / subHeading if provided
       const updated = currentSubcats.map(s => {
-        if (s.name.toLowerCase() === trimmed.toLowerCase() && s.parentCategory === normalizedParent) {
+        if (s.name.trim().toLowerCase() === trimmed.toLowerCase() && s.parentCategory && s.parentCategory.trim().toLowerCase() === normalizedParent.toLowerCase()) {
           const u: SubcategoryItem = {
             ...s,
             date: date !== undefined ? date : s.date,
