@@ -12,19 +12,27 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Firebase Admin SDK if configured
+// Initialize Firebase Admin SDK lazily when requested
 let adminAuth: Auth | null = null;
-try {
-  if (process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    if (getApps().length === 0) {
-      initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID || "orjonapp",
-      });
+let adminInitialized = false;
+
+function getAdminAuth(): Auth | null {
+  if (adminInitialized) return adminAuth;
+  adminInitialized = true;
+  try {
+    if (process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      if (getApps().length === 0) {
+        initializeApp({
+          projectId: process.env.FIREBASE_PROJECT_ID || "orjonapp",
+        });
+      }
+      adminAuth = getAuth();
     }
-    adminAuth = getAuth();
+  } catch (e) {
+    console.warn("Firebase Admin SDK lazy initialization notice:", e);
+    adminAuth = null;
   }
-} catch {
-  adminAuth = null;
+  return adminAuth;
 }
 
 // Helper to safely parse JWT payload
@@ -82,6 +90,7 @@ app.post("/api/admin/set-admin-claims", async (req, res) => {
     let userUid: string | undefined;
 
     // 1. Try verifying with Firebase Admin SDK if available
+    const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
         const decoded = await adminAuth.verifyIdToken(idToken);
@@ -165,6 +174,7 @@ app.post("/api/admin/verify-admin-claim", async (req, res) => {
     let userUid: string | undefined;
     let hasAdminClaim = false;
 
+    const adminAuth = getAdminAuth();
     if (adminAuth) {
       try {
         const decoded = await adminAuth.verifyIdToken(idToken);
@@ -224,7 +234,7 @@ const otpRateLimitByEmail = new Map<string, OtpRequestRecord>();
 const otpRateLimitByIp = new Map<string, OtpRequestRecord>();
 
 // Cleanup stale entries every 15 minutes to prevent memory leaks
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   const TEN_MINUTES = 10 * 60 * 1000;
   
@@ -241,6 +251,9 @@ setInterval(() => {
     }
   }
 }, 15 * 60 * 1000);
+if (cleanupTimer.unref) {
+  cleanupTimer.unref();
+}
 
 // Helper function to extract client IP address
 function getClientIp(req: express.Request): string {
@@ -415,7 +428,7 @@ app.post("/api/send-otp", async (req, res) => {
   }
 });
 
-// Vite middleware setup for development
+// Server startup and static serving
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
@@ -428,12 +441,37 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      res.sendFile(indexPath, (err) => {
+        if (err && !res.headersSent) {
+          res.status(200).send("<!DOCTYPE html><html><head><title>Orjon</title></head><body><div id=\"root\"></div></body></html>");
+        }
+      });
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
+
+  server.on("error", (err) => {
+    console.error("Server listen error:", err);
+  });
+
+  process.on("SIGTERM", () => {
+    console.log("Received SIGTERM signal, shutting down gracefully...");
+    server.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => {
+      process.exit(0);
+    }, 5000).unref();
+  });
+
+  process.on("SIGINT", () => {
+    server.close(() => {
+      process.exit(0);
+    });
   });
 }
 

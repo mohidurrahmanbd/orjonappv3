@@ -26,7 +26,7 @@ import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 import CurrentAffairsAdmin from './CurrentAffairsAdmin';
 
-const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || ReactWindow;
+const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || (ReactWindow as any).default || ReactWindow;
 
 interface AdminPanelProps {
   questions: Question[];
