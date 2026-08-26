@@ -3,9 +3,22 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({mode}) => {
+  const isMobile = mode === 'mobile' || process.env.BUILD_TARGET === 'mobile';
+  const outDir = isMobile ? 'dist-mobile' : 'dist';
+
   return {
     plugins: [react(), tailwindcss()],
+    base: isMobile ? './' : '/',
+    build: {
+      outDir,
+      emptyOutDir: true,
+      rollupOptions: isMobile ? {
+        input: {
+          main: path.resolve(__dirname, 'index-mobile.html'),
+        },
+      } : undefined,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
