@@ -8,9 +8,27 @@ import { auth } from './firebase';
 export async function verifyAdminClaim(user: FirebaseUser | null = auth.currentUser): Promise<boolean> {
   if (!user) return false;
   try {
-    // Force refresh token to ensure newest custom claims are evaluated
+    // 1. Force refresh token to ensure newest custom claims are evaluated
     const tokenResult = await user.getIdTokenResult(true);
-    return tokenResult.claims.admin === true;
+    if (tokenResult.claims.admin === true) {
+      return true;
+    }
+
+    // 2. If claim not yet set on token, call backend /api/admin/set-admin-claims
+    const idToken = await user.getIdToken();
+    const res = await fetch('/api/admin/set-admin-claims', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.admin === true) {
+        const refreshedToken = await user.getIdTokenResult(true);
+        return refreshedToken.claims.admin === true || data.admin === true;
+      }
+    }
+    return false;
   } catch (err) {
     console.error('Error verifying admin custom claims:', err);
     return false;

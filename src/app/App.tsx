@@ -173,7 +173,16 @@ export default function App() {
   // Auth / Active Session States
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'admin-login' | 'forgot-password'>('login');
+  const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'admin-login' | 'forgot-password'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const adminParam = params.get('admin') || params.get('panel') || params.get('login');
+      if (adminParam === 'true' || adminParam === '1' || adminParam === 'admin') {
+        return 'admin-login';
+      }
+    }
+    return 'login';
+  });
 
   // Input states for Login / Register
   const [phoneInput, setPhoneInput] = useState('');
@@ -317,11 +326,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const examParam = params.get('examId') || params.get('liveExam');
-    if (examParam) {
-      setDirectExamId(examParam);
-    }
+    const handleUrlParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const adminParam = params.get('admin') || params.get('panel') || params.get('login');
+      if (adminParam === 'true' || adminParam === '1' || adminParam === 'admin') {
+        setAuthScreen('admin-login');
+      }
+      const examParam = params.get('examId') || params.get('liveExam');
+      if (examParam) {
+        setDirectExamId(examParam);
+      }
+    };
+
+    handleUrlParams();
+    window.addEventListener('popstate', handleUrlParams);
+    return () => window.removeEventListener('popstate', handleUrlParams);
   }, []);
 
   useEffect(() => {
@@ -3173,6 +3192,19 @@ export default function App() {
                   >
                     <LogIn className="w-4 h-4" /> Sign In
                   </button>
+
+                  <div className="text-center pt-2 border-t border-gray-100 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthScreen('admin-login');
+                        setLoginErrorMessage(null);
+                      }}
+                      className="text-[11px] font-semibold text-gray-400 hover:text-red-600 transition inline-flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                    >
+                      <Lock className="w-3 h-3" /> এডমিন লগইন
+                    </button>
+                  </div>
                 </form>
               )}
 
@@ -3551,6 +3583,17 @@ export default function App() {
                         className="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-red-100 flex items-center justify-center gap-1.5 mt-1"
                       >
                         🛡️ এডমিন প্যানেলে প্রবেশ করুন
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthScreen('login');
+                          setLoginErrorMessage(null);
+                        }}
+                        className="text-gray-500 hover:text-gray-800 font-bold text-center text-[11px] flex items-center justify-center gap-1 pt-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" /> স্টুডেন্ট লগইনে ফিরে যান
                       </button>
                     </form>
                   )}
