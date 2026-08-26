@@ -1128,11 +1128,6 @@ export default function AdminPanel({
 
   // User explanation admin editing state
   const [editingExpl, setEditingExpl] = useState<{ qId: string, explId: string, text: string } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    id: string;
-    name: string;
-    type: 'category' | 'subcategory';
-  } | null>(null);
 
   // User list search/filter/sort states
   const [userSearch, setUserSearch] = useState('');
@@ -2643,7 +2638,20 @@ export default function AdminPanel({
             <button
               type="button"
               onClick={() => {
-                setDeleteConfirm({ id: realEntityId, name, type });
+                showCustomConfirm(
+                  'ডিলিট নিশ্চিতকরণ',
+                  `আপনি কি নিশ্চিতভাবে "${name}" ${type === 'category' ? 'ক্যাটাগরি' : 'সাব-ক্যাটাগরি'} এবং এর আওতাধীন নোড মুছে ফেলতে চান?`,
+                  () => {
+                    if (type === 'category' && onDeleteCategory) {
+                      onDeleteCategory(realEntityId);
+                    } else if (type === 'subcategory' && onDeleteSubcategory) {
+                      onDeleteSubcategory(realEntityId);
+                    }
+                  },
+                  'warning',
+                  'মুছে ফেলুন',
+                  'বাতিল'
+                );
               }}
               className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-1.5 py-1 rounded-md transition text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
               title="মুছে ফেলুন"
@@ -3775,11 +3783,11 @@ export default function AdminPanel({
   }, [subcategories, categorySearchQuery]);
 
   const handleToggleSelectQ = (id: string) => {
-    if (selectedQIds.includes(id)) {
-      setSelectedQIds(selectedQIds.filter(item => item !== id));
-    } else {
-      setSelectedQIds([...selectedQIds, id]);
-    }
+    setSelectedQIds(prev =>
+      prev.includes(id)
+        ? prev.filter(item => item !== id)
+        : [...prev, id]
+    );
   };
 
   const handleBulkDelete = () => {
@@ -3832,19 +3840,19 @@ export default function AdminPanel({
 
   // Subcategories Multiple Selection & Bulk Action Handlers
   const handleToggleSelectSubcat = (id: string) => {
-    if (selectedSubcatIds.includes(id)) {
-      setSelectedSubcatIds(selectedSubcatIds.filter(item => item !== id));
-    } else {
-      setSelectedSubcatIds([...selectedSubcatIds, id]);
-    }
+    setSelectedSubcatIds(prev =>
+      prev.includes(id)
+        ? prev.filter(item => item !== id)
+        : [...prev, id]
+    );
   };
 
   const handleSelectAllSubcats = (subcatList: SubcategoryItem[]) => {
-    if (selectedSubcatIds.length === subcatList.length && subcatList.length > 0) {
-      setSelectedSubcatIds([]);
-    } else {
-      setSelectedSubcatIds(subcatList.map(s => s.id));
-    }
+    setSelectedSubcatIds(prev =>
+      prev.length === subcatList.length && subcatList.length > 0
+        ? []
+        : subcatList.map(s => s.id)
+    );
   };
 
   const handleBulkDeleteSubcatAction = () => {
@@ -7191,7 +7199,18 @@ export default function AdminPanel({
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            setDeleteConfirm({ id: leaf.id, name: leaf.name, type: 'subcategory' });
+                                            showCustomConfirm(
+                                              'ডিলিট নিশ্চিতকরণ',
+                                              `আপনি কি নিশ্চিতভাবে "${leaf.name}" সাব-ক্যাটাগরি/টপিক মুছে ফেলতে চান?`,
+                                              () => {
+                                                if (onDeleteSubcategory) {
+                                                  onDeleteSubcategory(leaf.id);
+                                                }
+                                              },
+                                              'warning',
+                                              'মুছে ফেলুন',
+                                              'বাতিল'
+                                            );
                                           }}
                                           className="text-rose-600 hover:bg-rose-100 px-2 py-1 rounded-md text-[10px] font-bold transition cursor-pointer"
                                           title="মুছুন"
@@ -7289,7 +7308,20 @@ export default function AdminPanel({
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => setDeleteConfirm({ id: catObj.id, name: catObj.name, type: 'category' })}
+                                        onClick={() => {
+                                          showCustomConfirm(
+                                            'ডিলিট নিশ্চিতকরণ',
+                                            `আপনি কি নিশ্চিতভাবে "${catObj.name}" ক্যাটাগরি এবং এর আওতাধীন নোড মুছে ফেলতে চান?`,
+                                            () => {
+                                              if (onDeleteCategory) {
+                                                onDeleteCategory(catObj.id);
+                                              }
+                                            },
+                                            'warning',
+                                            'মুছে ফেলুন',
+                                            'বাতিল'
+                                          );
+                                        }}
                                         className="text-rose-600 hover:underline font-bold text-[10px] px-1.5 py-1 cursor-pointer"
                                       >
                                         ❌ মুছুন
@@ -7489,7 +7521,20 @@ export default function AdminPanel({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, type: 'subcategory' })}
+                                    onClick={() => {
+                                      showCustomConfirm(
+                                        'ডিলিট নিশ্চিতকরণ',
+                                        `আপনি কি নিশ্চিতভাবে "${sub.name}" সাব-ক্যাটাগরি মুছে ফেলতে চান?`,
+                                        () => {
+                                          if (onDeleteSubcategory) {
+                                            onDeleteSubcategory(sub.id);
+                                          }
+                                        },
+                                        'warning',
+                                        'মুছে ফেলুন',
+                                        'বাতিল'
+                                      );
+                                    }}
                                     className="text-rose-600 hover:underline font-bold text-[10px] px-1 cursor-pointer"
                                   >
                                     ❌ মুছুন
@@ -11576,55 +11621,6 @@ export default function AdminPanel({
             )}
           </div>
 
-        </div>
-      )}
-
-      {/* Custom Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 p-6 flex flex-col gap-4 animate-scale-up">
-            <div className="flex items-start gap-3">
-              <div className="p-3 bg-rose-50 rounded-2xl shrink-0">
-                <Trash2 className="w-6 h-6 text-rose-600 animate-pulse" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">ধাপটি মুছতে চান?</h3>
-                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                  আপনি কি নিশ্চিতভাবে <span className="font-bold text-slate-800">"{deleteConfirm.name}"</span> {deleteConfirm.type === 'category' ? 'বিষয়ভিত্তিক ক্যাটাগরি' : 'সাব-ক্যাটাগরি'} ডিলিট করতে চান?
-                </p>
-                <div className="bg-rose-50 border border-rose-100/70 p-3 rounded-xl text-[11px] text-rose-700 font-semibold mt-3 leading-relaxed">
-                  ⚠️ সতর্কবার্তা: এর ফলে এই ক্যাটাগরি এবং এর অধীনে থাকা সমস্ত সাব-ক্যাটাগরি স্থায়ীভাবে মুছে যাবে!
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5 mt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirm(null)}
-                className="flex-grow px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-              >
-                বাতিল করুন
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const name = deleteConfirm.name;
-                  const isCat = deleteConfirm.type === 'category';
-                  if (isCat) {
-                    onDeleteCategory(deleteConfirm.id);
-                  } else {
-                    onDeleteSubcategory(deleteConfirm.id);
-                  }
-                  setDeleteConfirm(null);
-                  showCustomAlert('সম্পন্ন হয়েছে!', `"${name}" নামক ${isCat ? 'বিষয়ভিত্তিক ক্যাটাগরি' : 'সাব-ক্যাটাগরি'} সফলভাবে ডিলিট করা হয়েছে!`, 'success');
-                }}
-                className="flex-grow px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-rose-600/15"
-              >
-                হ্যাঁ, নিশ্চিত মুছুন
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

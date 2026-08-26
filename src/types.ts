@@ -234,6 +234,7 @@ export interface SubcategoryItem {
   id: string;
   name: string;
   parentCategory: string;
+  parentCategoryId?: string;
   date?: string; // e.g. YYYY-MM-DD
   subHeading?: string;
   text?: string; // Text bullet points for current affairs & notes

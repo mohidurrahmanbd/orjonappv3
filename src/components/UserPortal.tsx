@@ -37,9 +37,12 @@ const isJobSolutionVariation = (name: string): boolean => {
     normalized === 'জব সলউশন পরিক্ষা' ||
     normalized === 'জব সলউশন পরীক্ষা' ||
     normalized === 'জব সলিউশন ব্যাংক' ||
+    normalized === 'জব সলউশন ব্যাংক' ||
+    normalized === 'জব সলিউশন ব্যাঙ্ক' ||
     normalized === 'জব সリューション ব্যাংক' ||
     normalized === 'job solution' ||
     normalized === 'job solutions' ||
+    normalized === 'job solution bank' ||
     normalized === 'জব সলিউশন' ||
     normalized === 'জব সলউশন' ||
     normalized === 'জব সリューション'
@@ -52,15 +55,102 @@ const isYearJobSolutionVariation = (name: string): boolean => {
   const normalized = name.trim().toLowerCase();
   return (
     normalized === 'সাল ভিত্তিক জব সলিউশন' ||
+    normalized === 'সালভিত্তিক জব সলিউশন' ||
     normalized === 'সাল ভিক্তিক জব সলউশন' ||
+    normalized === 'সালভিত্তিক জব সলউশন' ||
     normalized === 'সাল ভিত্তিক জব সল্যুশন' ||
+    normalized === 'সালভিত্তিক জব সল্যুশন' ||
     normalized === 'সাল ভিত্তিক জব সলিউশন ব্যাংক' ||
+    normalized === 'সালভিত্তিক জব সলিউশন ব্যাংক' ||
     normalized === 'সাল ভিত্তিক জব সলিউশন পরীক্ষা' ||
+    normalized === 'সালভিত্তিক জব সলিউশন পরীক্ষা' ||
     normalized === 'year-based job solution' ||
+    normalized === 'year-wise job solution' ||
     normalized === 'year job solution' ||
     normalized === 'সাল ভিত্তিক' ||
+    normalized === 'সালভিত্তিক' ||
     normalized === 'সাল ভিক্তিক'
   );
+};
+
+// Helper to detect if a category name is a known Subject Preparation root or subject
+const isSubjectPrepRootOrSubject = (name: string): boolean => {
+  if (!name) return false;
+  const norm = name.trim().toLowerCase();
+  return (
+    norm === 'বিষয়ভিত্তিক প্রস্তুতি' ||
+    norm === 'বিষয় ভিক্তিক প্রস্তুতি' ||
+    norm === 'বিষয়ভিত্তিক' ||
+    norm === 'বিষয় ভিত্তিক' ||
+    norm === 'subject' ||
+    norm === 'preparation' ||
+    norm === 'বাংলা' ||
+    norm === 'বাংলা সাহিত্য' ||
+    norm === 'বাংলা ব্যাকরণ' ||
+    norm === 'ইংরেজি' ||
+    norm === 'ইংরেজি ভাষা ও সাহিত্য' ||
+    norm === 'গণিত' ||
+    norm === 'গাণিতিক যুক্তি' ||
+    norm === 'মানসিক দক্ষতা' ||
+    norm === 'সাধারণ জ্ঞান' ||
+    norm === 'বাংলাদেশ বিষয়াবলী' ||
+    norm === 'আন্তর্জাতিক বিষয়াবলী' ||
+    norm === 'সাধারণ বিজ্ঞান' ||
+    norm === 'বিজ্ঞান' ||
+    norm === 'জীববিজ্ঞান' ||
+    norm === 'পদার্থবিজ্ঞান' ||
+    norm === 'রসায়ন' ||
+    norm === 'কম্পিউটার ও তথ্যপ্রযুক্তি' ||
+    norm === 'কম্পিউটার' ||
+    norm === 'তথ্যপ্রযুক্তি' ||
+    norm === 'ভূগোল ও পরিবেশ' ||
+    norm === 'ভূগোল' ||
+    norm === 'ভূগোল (বাংলাদেশ ও বিশ্ব)' ||
+    norm === 'নৈতিকতা ও মূল্যবোধ' ||
+    norm === 'নৈতিকতা ও মুল্যবোধ' ||
+    norm === 'নৈতিকতা, মূল্যবোধ ও সুশাসন' ||
+    norm === 'সুশাসন'
+  );
+};
+
+// Single Source of Truth: Check if a subcategory strictly belongs to "জব সলিউশন ব্যাংক" by traversing its ancestor lineage
+const isSubcategoryInJobSolutionTree = (sub: SubcategoryItem, allSubcats: SubcategoryItem[]): boolean => {
+  let currentParent = (sub.parentCategory || '').trim();
+  const visited = new Set<string>();
+  let depth = 0;
+
+  while (currentParent && depth < 20) {
+    const parentNorm = currentParent.toLowerCase();
+    if (visited.has(parentNorm)) break;
+    visited.add(parentNorm);
+    depth++;
+
+    // 1. Direct Subject Prep root check (Strict rejection)
+    if (isSubjectPrepRootOrSubject(currentParent)) {
+      return false;
+    }
+
+    // 2. Direct Job Solution root check (Acceptance)
+    if (isJobSolutionVariation(currentParent) || isYearJobSolutionVariation(currentParent)) {
+      return true;
+    }
+
+    // 3. Other non-job root categories (rejection)
+    if (parentNorm === 'মডেল টেস্ট' || parentNorm === 'সাম্প্রতিক বিষয়াবলী' || parentNorm === 'ডেইলি এক্সাম') {
+      return false;
+    }
+
+    // 4. Look up parent's parent in subcategories
+    const parentObj = allSubcats.find(s => s.name && s.name.trim().toLowerCase() === parentNorm);
+    if (!parentObj) {
+      // Parent is not in subcategories, check if it's a job solution variation
+      return isJobSolutionVariation(currentParent) || isYearJobSolutionVariation(currentParent);
+    }
+
+    currentParent = (parentObj.parentCategory || '').trim();
+  }
+
+  return false;
 };
 
 // Helper to return representative icon based on subject/category title
@@ -753,8 +843,11 @@ export default function UserPortal({
   const [jobMode, setJobMode] = useState<'verify' | 'read' | 'exam'>('verify');
   const [jobExamLimit, setJobExamLimit] = useState(10);
 
-  // Year Job Solution states
+  // Year Job Solution states (Purely in-memory UI state, non-persistent)
   const [yearJobPath, setYearJobPath] = useState<string[]>([]);
+  const [expandedYearKeys, setExpandedYearKeys] = useState<Set<number>>(new Set());
+  const [expandedMonthKeys, setExpandedMonthKeys] = useState<Set<string>>(new Set());
+  const [yearJobSearchQuery, setYearJobSearchQuery] = useState('');
 
   // Hierarchical navigation states
   const [prepPath, setPrepPath] = useState<string[]>([]); // path of Category/Subcategory names
@@ -1972,9 +2065,20 @@ export default function UserPortal({
     const trimmed = String(dateStr).trim();
     if (!trimmed) return null;
 
+    // Direct ISO / YYYY-MM-DD parsing
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      const parts = trimmed.split('T')[0].split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(y, m, d);
+      }
+    }
+
     // Direct JS Date parse
     const nativeParsed = new Date(trimmed);
-    if (!isNaN(nativeParsed.getTime())) {
+    if (!isNaN(nativeParsed.getTime()) && !/^\d{4}$/.test(trimmed)) {
       return nativeParsed;
     }
 
@@ -2006,8 +2110,13 @@ export default function UserPortal({
         if (parts && parts.length >= 2) {
           const day = parseInt(parts[0], 10);
           const year = parseInt(parts[parts.length - 1], 10);
-          if (day >= 1 && day <= 31 && year >= 2000 && year <= 2100) {
+          if (day >= 1 && day <= 31 && year >= 1970 && year <= 2100) {
             return new Date(year, monthIndex, day);
+          }
+        } else if (parts && parts.length === 1) {
+          const year = parseInt(parts[0], 10);
+          if (year >= 1970 && year <= 2100) {
+            return new Date(year, monthIndex, 1);
           }
         }
       }
@@ -2019,6 +2128,15 @@ export default function UserPortal({
         return new Date(parseInt(digits[0], 10), parseInt(digits[1], 10) - 1, parseInt(digits[2], 10));
       } else if (digits[2].length === 4) {
         return new Date(parseInt(digits[2], 10), parseInt(digits[1], 10) - 1, parseInt(digits[0], 10));
+      }
+    } else if (digits && digits.length >= 1) {
+      for (const d of digits) {
+        if (d.length === 4) {
+          const yr = parseInt(d, 10);
+          if (yr >= 1970 && yr <= 2100) {
+            return new Date(yr, 0, 1);
+          }
+        }
       }
     }
 
@@ -2070,7 +2188,7 @@ export default function UserPortal({
     const sixMonthsAgoMs = sixMonthsAgo.getTime();
     const futureBufferMs = now.getTime() + (30 * 24 * 60 * 60 * 1000); // allow near-upcoming exams
 
-    // 1. Identify candidate exam nodes under Job Solution variations
+    // 1. Identify candidate exam nodes strictly from Job Solution Bank (Single Source of Truth)
     const candidateNodesMap = new Map<string, {
       id: string;
       name: string;
@@ -2080,34 +2198,25 @@ export default function UserPortal({
       createdAt?: string;
     }>();
 
-    // Check all subcategories
-    subcategories.forEach(sub => {
+    // Filter subcategories that strictly belong to Job Solution Bank
+    const jobSolutionSubcats = subcategories.filter(sub => isSubcategoryInJobSolutionTree(sub, subcategories));
+
+    jobSolutionSubcats.forEach(sub => {
       const name = (sub.name || '').trim();
       if (!name) return;
 
-      const parentLower = (sub.parentCategory || '').trim().toLowerCase();
-      const isJobParent = isJobSolutionVariation(sub.parentCategory) || 
-                          isYearJobSolutionVariation(sub.parentCategory) ||
-                          parentLower.includes('জব সলিউশন') ||
-                          parentLower.includes('job solution') ||
-                          parentLower.includes('বিসিএস') ||
-                          parentLower.includes('ব্যাংক') ||
-                          parentLower.includes('নিয়োগ');
-
-      // Check if subcategory is leaf or has job questions
-      const isLeaf = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === name.toLowerCase());
-      const hasJobQuestions = questions.some(q => {
+      // An exam is a leaf subcategory (has no child subcategories in subcategories) or directly has questions
+      const hasChildren = subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === name.toLowerCase());
+      const hasDirectQuestions = questions.some(q => {
         const qSub = (q.subcategory || '').trim().toLowerCase();
-        const qCat = (q.category || '').trim().toLowerCase();
-        const matchSub = qSub === name.toLowerCase() || (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === name.toLowerCase()));
-        return matchSub && (isJobSolutionVariation(qCat) || isYearJobSolutionVariation(qCat) || qCat.includes('জব সলিউশন') || isJobParent);
+        return qSub === name.toLowerCase() || (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === name.toLowerCase()));
       });
 
-      if (isLeaf && (isJobParent || hasJobQuestions || isJobSolutionVariation(name))) {
+      if (!hasChildren || hasDirectQuestions) {
         candidateNodesMap.set(name.toLowerCase(), {
           id: sub.id,
           name: name,
-          parentCategory: sub.parentCategory,
+          parentCategory: sub.parentCategory || 'জব সলিউশন পরীক্ষা',
           subHeading: sub.subHeading,
           rawDate: sub.date,
           createdAt: sub.createdAt
@@ -2115,13 +2224,20 @@ export default function UserPortal({
       }
     });
 
-    // Also check questions that have subcategories belonging to job solutions
+    // Also check questions whose category/examCategory is explicitly Job Solution, if any standalone exam isn't in subcategories
     questions.forEach(q => {
       const qSub = (q.subcategory || '').trim();
       const qCat = (q.category || '').trim();
-      if (qSub && (isJobSolutionVariation(qCat) || isYearJobSolutionVariation(qCat) || qCat.includes('জব সলিউশন') || qSub.includes('বিসিএস') || qSub.includes('নিয়োগ') || qSub.includes('ব্যাংক'))) {
+      const qExamCat = (q.examCategory || '').trim();
+      
+      const isExplicitJobQuestion = isJobSolutionVariation(qCat) || isJobSolutionVariation(qExamCat) || isYearJobSolutionVariation(qCat) || isYearJobSolutionVariation(qExamCat);
+
+      if (qSub && isExplicitJobQuestion) {
         const key = qSub.toLowerCase();
-        if (!candidateNodesMap.has(key)) {
+        const existingSub = subcategories.find(s => s.name && s.name.trim().toLowerCase() === key);
+        const isSubjectTopic = existingSub ? !isSubcategoryInJobSolutionTree(existingSub, subcategories) : isSubjectPrepRootOrSubject(qSub);
+
+        if (!isSubjectTopic && !candidateNodesMap.has(key)) {
           candidateNodesMap.set(key, {
             id: `sub_auto_${key}`,
             name: qSub,
@@ -2294,6 +2410,284 @@ export default function UserPortal({
       })
       .sort((a, b) => b.monthDate.getTime() - a.monthDate.getTime());
   }, [recentJobSolutionExams]);
+
+  // ─── YEAR-WISE JOB SOLUTION DYNAMIC AUTO-MAPPING (UI-ONLY HIERARCHY) ───
+  // Automatically generates Year -> Month -> Exam structure from existing Job Solution Bank exams
+  // Sorted descending: Year DESC -> Month DESC -> Exam Date DESC (Newest first)
+  const yearWiseJobSolutionTree = useMemo(() => {
+    // 1. Identify all candidate exam nodes from Job Solution Bank (Single Source of Truth)
+    const candidateExamNodesMap = new Map<string, {
+      id: string;
+      name: string;
+      parentCategory: string;
+      subHeading?: string;
+      rawDate?: string;
+      createdAt?: string;
+    }>();
+
+    // Filter subcategories that strictly belong to Job Solution Bank
+    const jobSolutionSubcats = subcategories.filter(sub => isSubcategoryInJobSolutionTree(sub, subcategories));
+
+    jobSolutionSubcats.forEach(sub => {
+      const name = (sub.name || '').trim();
+      if (!name) return;
+
+      // An exam is a leaf subcategory (has no child subcategories in subcategories) or directly has questions
+      const hasChildren = subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === name.toLowerCase());
+      const hasDirectQuestions = questions.some(q => {
+        const qSub = (q.subcategory || '').trim().toLowerCase();
+        return qSub === name.toLowerCase() || (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === name.toLowerCase()));
+      });
+
+      if (!hasChildren || hasDirectQuestions) {
+        candidateExamNodesMap.set(name.toLowerCase(), {
+          id: sub.id,
+          name: name,
+          parentCategory: sub.parentCategory || 'জব সলিউশন পরীক্ষা',
+          subHeading: sub.subHeading,
+          rawDate: sub.date,
+          createdAt: sub.createdAt
+        });
+      }
+    });
+
+    // Also check questions whose category/examCategory is explicitly Job Solution, if any standalone exam isn't in subcategories
+    questions.forEach(q => {
+      const qSub = (q.subcategory || '').trim();
+      const qCat = (q.category || '').trim();
+      const qExamCat = (q.examCategory || '').trim();
+
+      const isExplicitJobQuestion = isJobSolutionVariation(qCat) || isJobSolutionVariation(qExamCat) || isYearJobSolutionVariation(qCat) || isYearJobSolutionVariation(qExamCat);
+
+      if (qSub && isExplicitJobQuestion) {
+        const key = qSub.toLowerCase();
+        const existingSub = subcategories.find(s => s.name && s.name.trim().toLowerCase() === key);
+        const isSubjectTopic = existingSub ? !isSubcategoryInJobSolutionTree(existingSub, subcategories) : isSubjectPrepRootOrSubject(qSub);
+
+        if (!isSubjectTopic && !candidateExamNodesMap.has(key)) {
+          candidateExamNodesMap.set(key, {
+            id: `sub_auto_${key}`,
+            name: qSub,
+            parentCategory: q.category || 'জব সলিউশন পরীক্ষা',
+            rawDate: q.date,
+            createdAt: q.createdAt
+          });
+        }
+      }
+    });
+
+    // 2. Process each exam to determine exact date, reading progress, and questions
+    interface YearWiseCompiledExam {
+      id: string;
+      name: string;
+      cleanName: string;
+      parentCategory: string;
+      subHeading?: string;
+      rawDate?: string;
+      dateObj: Date;
+      dateTimestamp: number;
+      year: number;
+      month: number; // 0 to 11
+      monthKey: string; // e.g. "2026-08"
+      monthName: string; // e.g. "আগস্ট ২০২৬"
+      formattedDate: string;
+      questions: Question[];
+      qCount: number;
+      progress: { percentage: number; readCount: number; totalCount: number };
+    }
+
+    const compiledExams: YearWiseCompiledExam[] = [];
+
+    candidateExamNodesMap.forEach(node => {
+      const examQuestions = getQuestionsForJobNode(node.name, false);
+      const qCount = examQuestions.length;
+
+      // Extract best date
+      let parsedDate = parseAnyDate(node.rawDate);
+      if (!parsedDate && node.name) {
+        parsedDate = parseAnyDate(node.name);
+      }
+      if (!parsedDate && examQuestions.length > 0) {
+        for (const q of examQuestions) {
+          if (q.date) {
+            const qDate = parseAnyDate(q.date);
+            if (qDate && (!parsedDate || qDate.getTime() > parsedDate.getTime())) {
+              parsedDate = qDate;
+            }
+          } else if (q.createdAt) {
+            const qCreated = parseAnyDate(q.createdAt);
+            if (qCreated && (!parsedDate || qCreated.getTime() > parsedDate.getTime())) {
+              parsedDate = qCreated;
+            }
+          }
+        }
+      }
+      if (!parsedDate && node.createdAt) {
+        parsedDate = parseAnyDate(node.createdAt);
+      }
+
+      // Check for 4-digit year in name if date still not found
+      if (!parsedDate) {
+        const normName = node.name.replace(/[০-৯]/g, d => ({'০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9'}[d] || d));
+        const yearMatch = normName.match(/\b(19\d\d|20\d\d)\b/);
+        if (yearMatch) {
+          const yr = parseInt(yearMatch[1], 10);
+          parsedDate = new Date(yr, 0, 1);
+        } else if (normName.includes('৫২তম') || normName.includes('52nd') || normName.includes('৪৭তম') || normName.includes('47th')) {
+          parsedDate = new Date(2026, 7, 1);
+        } else if (normName.includes('৪৬তম') || normName.includes('46th')) {
+          parsedDate = new Date(2025, 5, 1);
+        } else if (normName.includes('৪৫তম') || normName.includes('45th')) {
+          parsedDate = new Date(2024, 7, 1);
+        }
+      }
+
+      if (!parsedDate) {
+        parsedDate = new Date();
+      }
+
+      const year = parsedDate.getFullYear();
+      const month = parsedDate.getMonth();
+      const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+      const monthName = `${BENGALI_MONTH_NAMES[month]} ${toBengaliDigits(year)}`;
+      const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, examQuestions, userReadSet);
+
+      const cleanName = node.name.replace(/\s*\([\d\s\u09E6-\u09EF\u0980-\u09FF\w\/\.-]+(?:\s*(?:জানুয়ারি|ফেব্রুয়ারি|মার্চ|এপ্রিল|মে|জুন|জুলাই|আগস্ট|সেপ্টেম্বর|অক্টোবর|নভেম্বর|ডিসেম্বর|january|february|march|april|may|june|july|august|september|october|november|december)\s*)?[\d\s\u09E6-\u09EF\w]*\)\s*$/i, '').trim() || node.name;
+
+      compiledExams.push({
+        id: node.id,
+        name: node.name,
+        cleanName: cleanName,
+        parentCategory: node.parentCategory,
+        subHeading: node.subHeading,
+        rawDate: node.rawDate,
+        dateObj: parsedDate,
+        dateTimestamp: parsedDate.getTime(),
+        year: year,
+        month: month,
+        monthKey: monthKey,
+        monthName: monthName,
+        formattedDate: `${toBengaliDigits(parsedDate.getDate())} ${BENGALI_MONTH_NAMES[parsedDate.getMonth()]} ${toBengaliDigits(parsedDate.getFullYear())}`,
+        questions: examQuestions,
+        qCount: qCount,
+        progress: progress
+      });
+    });
+
+    // 3. Group by Year -> Month -> Exams
+    const yearGroupsMap = new Map<number, Map<string, {
+      monthKey: string;
+      monthNumber: number;
+      monthName: string;
+      monthLabel: string;
+      year: number;
+      exams: YearWiseCompiledExam[];
+      totalExams: number;
+      totalQuestions: number;
+      latestTimestamp: number;
+      progress: { percentage: number; readCount: number; totalCount: number };
+    }>>();
+
+    compiledExams.forEach(exam => {
+      if (!yearGroupsMap.has(exam.year)) {
+        yearGroupsMap.set(exam.year, new Map());
+      }
+      const monthMap = yearGroupsMap.get(exam.year)!;
+      if (!monthMap.has(exam.monthKey)) {
+        monthMap.set(exam.monthKey, {
+          monthKey: exam.monthKey,
+          monthNumber: exam.month,
+          monthName: BENGALI_MONTH_NAMES[exam.month],
+          monthLabel: exam.monthName,
+          year: exam.year,
+          exams: [],
+          totalExams: 0,
+          totalQuestions: 0,
+          latestTimestamp: 0,
+          progress: { percentage: 0, readCount: 0, totalCount: 0 }
+        });
+      }
+      const mGroup = monthMap.get(exam.monthKey)!;
+      mGroup.exams.push(exam);
+      mGroup.totalExams += 1;
+      mGroup.totalQuestions += exam.qCount;
+      if (exam.dateTimestamp > mGroup.latestTimestamp) {
+        mGroup.latestTimestamp = exam.dateTimestamp;
+      }
+    });
+
+    // 4. Assemble and Sort:
+    // - Year descending (2026, 2025, 2024...)
+    // - Month descending (Month 11 -> Month 0)
+    // - Exam descending (Latest dateTimestamp first)
+    const sortedYears = Array.from(yearGroupsMap.keys()).sort((a, b) => b - a);
+
+    return sortedYears.map(year => {
+      const monthMap = yearGroupsMap.get(year)!;
+      const sortedMonths = Array.from(monthMap.values())
+        .map(mGroup => {
+          // Sort exams descending by dateTimestamp (Newest first)
+          const sortedExams = mGroup.exams.sort((a, b) => {
+            if (b.dateTimestamp !== a.dateTimestamp) {
+              return b.dateTimestamp - a.dateTimestamp;
+            }
+            return a.name.localeCompare(b.name, 'bn');
+          });
+
+          // Calculate month progress
+          let totalRead = 0;
+          let totalQ = 0;
+          sortedExams.forEach(e => {
+            totalRead += e.progress.readCount;
+            totalQ += e.progress.totalCount;
+          });
+          const monthPct = totalQ > 0 ? Math.round((totalRead / totalQ) * 100) : 0;
+
+          return {
+            ...mGroup,
+            exams: sortedExams,
+            progress: {
+              percentage: monthPct,
+              readCount: totalRead,
+              totalCount: totalQ
+            }
+          };
+        })
+        .sort((a, b) => b.monthNumber - a.monthNumber); // Sort months descending
+
+      let yearTotalExams = 0;
+      let yearTotalQuestions = 0;
+      let yearTotalRead = 0;
+      let yearTotalQCount = 0;
+      let yearLatestTimestamp = 0;
+
+      sortedMonths.forEach(m => {
+        yearTotalExams += m.totalExams;
+        yearTotalQuestions += m.totalQuestions;
+        yearTotalRead += m.progress.readCount;
+        yearTotalQCount += m.progress.totalCount;
+        if (m.latestTimestamp > yearLatestTimestamp) {
+          yearLatestTimestamp = m.latestTimestamp;
+        }
+      });
+
+      const yearPct = yearTotalQCount > 0 ? Math.round((yearTotalRead / yearTotalQCount) * 100) : 0;
+
+      return {
+        year: year,
+        yearLabel: `${toBengaliDigits(year)} সালের পরীক্ষা সমূহ`,
+        months: sortedMonths,
+        totalExams: yearTotalExams,
+        totalQuestions: yearTotalQuestions,
+        latestTimestamp: yearLatestTimestamp,
+        progress: {
+          percentage: yearPct,
+          readCount: yearTotalRead,
+          totalCount: yearTotalQCount
+        }
+      };
+    });
+  }, [subcategories, questions, userReadSet, user.phone, user.email, user.name]);
 
   // Countdown clock effect
   useEffect(() => {
@@ -4646,7 +5040,7 @@ export default function UserPortal({
                     <span className="text-xl">⏱️</span>
                     <div>
                       <h4 className="text-xs font-bold text-indigo-950">কাস্টম পরীক্ষা</h4>
-                      <p className="text-[9px] text-indigo-700/80 mt-0.5">টাইমার সহ মক টেস্ট</p>
+                      <p className="text-[9px] text-indigo-700/80 mt-0.5">ইচ্ছামত পরিক্ষা তৈরি করুন</p>
                     </div>
                   </div>
 
@@ -4704,7 +5098,7 @@ export default function UserPortal({
                   >
                     <span className="text-xl">💼</span>
                     <div>
-                      <h4 className="text-xs font-bold text-emerald-950">জব সলিউশন ব্যাংক</h4>
+                      <h4 className="text-xs font-bold text-emerald-950">জব সলিউশন</h4>
                       <p className="text-[9px] text-emerald-700/80 mt-0.5">বিগত বছরের প্রশ্নসমূহ</p>
                     </div>
                   </div>
@@ -4716,7 +5110,7 @@ export default function UserPortal({
                     <span className="text-xl">📅</span>
                     <div>
                       <h4 className="text-xs font-bold text-amber-950">সাল ভিত্তিক জব সলিউশন</h4>
-                      <p className="text-[9px] text-amber-700/80 mt-0.5">বছর অনুযায়ী সরকারি পরীক্ষা</p>
+                      <p className="text-[9px] text-amber-700/80 mt-0.5">বছর অনুযায়ী পরিক্ষা সমূহ</p>
                     </div>
                   </div>
 
@@ -4726,8 +5120,8 @@ export default function UserPortal({
                   >
                     <span className="text-xl">🔖</span>
                     <div>
-                      <h4 className="text-xs font-bold text-rose-950">বুকমার্ক কালেকশন</h4>
-                      <p className="text-[9px] text-rose-700/80 mt-0.5">সংরক্ষিত গুরুত্বপূর্ণ প্রশ্ন</p>
+                      <h4 className="text-xs font-bold text-rose-950">বুকমার্ক</h4>
+                      <p className="text-[9px] text-rose-700/80 mt-0.5">নিজের সংরক্ষিত প্রশ্ন সমূহ</p>
                     </div>
                   </div>
                 </div>
@@ -5761,266 +6155,399 @@ export default function UserPortal({
             );
           })()}
 
-          {/* VIEW: YEAR-BASED JOB SOLUTION (সাল ভিত্তিক জব সলিউশন) */}
+          {/* VIEW: YEAR-BASED JOB SOLUTION (সালভিত্তিক জব সলিউশন) */}
           {activeTab === 'yearJob' && (() => {
-            const isYearJobRoot = yearJobPath.length === 0;
-            const currentYearJobNode = isYearJobRoot ? '' : yearJobPath[yearJobPath.length - 1];
-            const yearJobQuestions = getQuestionsForYearJobNode(currentYearJobNode, isYearJobRoot);
+            // Search filter across the dynamically generated tree
+            const query = yearJobSearchQuery.trim().toLowerCase();
 
-            // Get items to display at current level
-            const yearJobRawItems = isYearJobRoot
-              ? subcategories.filter(s => isYearJobSolutionVariation(s.parentCategory)).map(s => s.name.trim())
-              : subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentYearJobNode.trim().toLowerCase()).map(s => s.name.trim());
+            // Filter years, months, and exams if search query is present
+            const filteredYears = yearWiseJobSolutionTree.map(yearGroup => {
+              if (!query) return yearGroup;
 
-            const yearJobItems = Array.from(new Set(yearJobRawItems)).sort((aName, bName) => {
-              const subA = subcategories.find(s => s.name.trim().toLowerCase() === aName.trim().toLowerCase());
-              const subB = subcategories.find(s => s.name.trim().toLowerCase() === bName.trim().toLowerCase());
-              
-              const isLeafA = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === aName.trim().toLowerCase());
-              const isLeafB = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === bName.trim().toLowerCase());
+              const yearMatches = yearGroup.yearLabel.toLowerCase().includes(query) ||
+                                  String(yearGroup.year).includes(query) ||
+                                  toBengaliDigits(yearGroup.year).includes(query);
 
-              if (isLeafA && isLeafB) {
-                const timeA = subA?.date ? new Date(subA.date).getTime() : 0;
-                const timeB = subB?.date ? new Date(subB.date).getTime() : 0;
-                return timeB - timeA; // latest date first
+              const filteredMonths = yearGroup.months.map(mGroup => {
+                const monthMatches = mGroup.monthLabel.toLowerCase().includes(query) ||
+                                     mGroup.monthName.toLowerCase().includes(query);
+
+                const filteredExams = mGroup.exams.filter(exam => {
+                  return exam.name.toLowerCase().includes(query) ||
+                         exam.cleanName.toLowerCase().includes(query) ||
+                         (exam.subHeading && exam.subHeading.toLowerCase().includes(query)) ||
+                         exam.formattedDate.toLowerCase().includes(query) ||
+                         (exam.rawDate && exam.rawDate.toLowerCase().includes(query));
+                });
+
+                if (yearMatches || monthMatches) {
+                  return mGroup;
+                }
+
+                if (filteredExams.length > 0) {
+                  return {
+                    ...mGroup,
+                    exams: filteredExams,
+                    totalExams: filteredExams.length
+                  };
+                }
+
+                return null;
+              }).filter(Boolean) as typeof yearGroup.months;
+
+              if (yearMatches || filteredMonths.length > 0) {
+                const totalExamsInYear = filteredMonths.reduce((acc, m) => acc + m.exams.length, 0);
+                const totalQInYear = filteredMonths.reduce((acc, m) => acc + m.exams.reduce((qa, ex) => qa + ex.qCount, 0), 0);
+                return {
+                  ...yearGroup,
+                  months: filteredMonths,
+                  totalExams: totalExamsInYear,
+                  totalQuestions: totalQInYear
+                };
               }
-              return 0;
-            });
+
+              return null;
+            }).filter(Boolean) as typeof yearWiseJobSolutionTree;
+
+            const totalYearsCount = yearWiseJobSolutionTree.length;
+            const totalExamsCount = yearWiseJobSolutionTree.reduce((acc, y) => acc + y.totalExams, 0);
+            const totalQuestionsCount = yearWiseJobSolutionTree.reduce((acc, y) => acc + y.totalQuestions, 0);
+
+            // Handler to toggle year expansion
+            const toggleYear = (year: number) => {
+              setExpandedYearKeys(prev => {
+                const next = new Set(prev);
+                if (next.has(year)) {
+                  next.delete(year);
+                } else {
+                  next.add(year);
+                }
+                return next;
+              });
+            };
+
+            // Handler to toggle month expansion
+            const toggleMonth = (monthKey: string) => {
+              setExpandedMonthKeys(prev => {
+                const next = new Set(prev);
+                if (next.has(monthKey)) {
+                  next.delete(monthKey);
+                } else {
+                  next.add(monthKey);
+                }
+                return next;
+              });
+            };
+
+            const toggleAll = () => {
+              if (expandedYearKeys.size > 0 || expandedMonthKeys.size > 0) {
+                setExpandedYearKeys(new Set());
+                setExpandedMonthKeys(new Set());
+              } else {
+                const allYears = new Set(yearWiseJobSolutionTree.map(y => y.year));
+                const allMonths = new Set<string>();
+                yearWiseJobSolutionTree.forEach(y => y.months.forEach(m => allMonths.add(m.monthKey)));
+                setExpandedYearKeys(allYears);
+                setExpandedMonthKeys(allMonths);
+              }
+            };
 
             return (
-              <div className="bg-white border border-slate-200/60 p-2 sm:p-3.5 rounded-xl shadow-2xs flex flex-col gap-3 text-xs animate-fade-in">
-                {/* Interactive Breadcrumbs */}
-                {!isYearJobRoot && (
-                  <div className="flex flex-wrap items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200/60">
-                    <button 
-                      onClick={() => setYearJobPath([])}
-                      className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 transition text-[11px]"
-                    >
-                      <Home className="w-3.5 h-3.5" />
-                      <span>সাল ভিত্তিক হোম</span>
-                    </button>
-                    {yearJobPath.map((pathItem, index) => {
-                      const isLast = index === yearJobPath.length - 1;
-                      return (
-                        <React.Fragment key={`year-job-path-${pathItem}-${index}`}>
-                          <ChevronRight className="w-3 h-3 text-gray-400" />
-                          {isLast ? (
-                            <span className="text-gray-800 font-extrabold">{pathItem}</span>
-                          ) : (
-                            <button 
-                              onClick={() => setYearJobPath(yearJobPath.slice(0, index + 1))}
-                              className="text-amber-600 hover:text-amber-800 font-bold transition"
-                            >
-                              {pathItem}
-                            </button>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+              <div className="bg-white border border-slate-200/60 p-2.5 sm:p-4 rounded-xl shadow-2xs flex flex-col gap-3.5 text-xs animate-fade-in">
+                {/* Header with Search and Summary */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center shrink-0 shadow-2xs">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-1.5 leading-tight">
+                        <span>সালভিত্তিক জব সলিউশন</span>
+                      </h3>
+                      <p className="text-[10.5px] text-slate-500 font-medium">
+                        পরীক্ষার সাল ও মাস অনুযায়ী সাজানো প্রশ্ন সমাধান ব্যাংক (সর্বশেষ পরীক্ষা সবার উপরে)
+                      </p>
+                    </div>
                   </div>
-                )}
 
-                {/* Sub-Folders / Content Items */}
-                <div className="flex flex-col gap-2">
-                  {!isYearJobRoot && (
-                    <div className="flex justify-between items-center px-0.5 my-0.5">
-                      <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                        {subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentYearJobNode.trim().toLowerCase()).length > 0 ? '📁 উপ-ক্যাটাগরি সমূহ' : '💼 কোনো উপ-ক্যাটাগরি নেই'}
-                      </span>
-                      <button 
-                        onClick={() => setYearJobPath(yearJobPath.slice(0, -1))}
-                        className="text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 text-[11px]"
-                      >
-                        <ArrowLeft className="w-3.5 h-3.5" /> পেছনে যান
-                      </button>
+                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                    {/* Search box */}
+                    <div className="relative flex-1 sm:w-56">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={yearJobSearchQuery}
+                        onChange={e => setYearJobSearchQuery(e.target.value)}
+                        placeholder="পরীক্ষা বা সাল খুঁজুন..."
+                        className="w-full pl-8 pr-7 py-1.5 text-[11px] bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-amber-500 font-medium transition"
+                      />
+                      {yearJobSearchQuery && (
+                        <button
+                          onClick={() => setYearJobSearchQuery('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[10px]"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
-                  )}
 
-                  {yearJobItems.length === 0 ? (
-                    <div className="text-center text-gray-400 py-6 bg-gray-50 rounded-lg border border-dashed text-xs">
-                      এই সাল ভিত্তিক ক্যাটাগরিতে এখনো কোনো প্রশ্ন বা পরীক্ষা তৈরি করা নেই।
-                    </div>
-                  ) : (() => {
-                    const categoryItems = yearJobItems.filter(item =>
-                      subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase())
-                    );
-                    const leafItems = yearJobItems.filter(item =>
-                      !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase())
-                    );
-
-                    return (
-                      <div className="flex flex-col gap-3">
-                        {/* Parent Category Grid Cards */}
-                        {categoryItems.length > 0 && (
-                          <div className="flex flex-col gap-1.5">
-                            {!isYearJobRoot && leafItems.length > 0 && (
-                              <span className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider px-0.5">
-                                📁 সাল ও পরীক্ষা গ্রুপসমূহ
-                              </span>
-                            )}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                              {categoryItems.map((item, idx) => {
-                                const catQuestions = getQuestionsForYearJobNode(item, false);
-                                const qCount = catQuestions.length;
-                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, catQuestions, userReadSet);
-                                const subCount = subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === item.trim().toLowerCase()).length;
-
-                                return (
-                                  <button
-                                    key={`year-job-cat-${idx}-${item}`}
-                                    id={`year-job-cat-card-${idx}`}
-                                    onClick={() => {
-                                      setYearJobPath(isYearJobRoot ? [item] : [...yearJobPath, item]);
-                                    }}
-                                    className="group bg-white hover:bg-amber-50/40 border border-slate-200/80 hover:border-amber-300 rounded-lg p-2 sm:p-2.5 flex flex-col justify-between gap-1.5 text-left shadow-2xs hover:shadow-2xs transition-all duration-150 cursor-pointer active:scale-98"
-                                  >
-                                    <div className="flex items-center justify-between gap-1">
-                                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-amber-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                                        {renderSubjectIcon(item, "w-3.5 h-3.5")}
-                                      </div>
-                                      <div className="flex items-center gap-1 shrink-0">
-                                        <CircularProgressBar
-                                          percentage={progress.percentage}
-                                          size={22}
-                                          strokeWidth={2.5}
-                                          textSizeClass="text-[6.5px]"
-                                          title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
-                                        />
-                                        <span className="text-[8.5px] bg-amber-50 text-amber-800 font-extrabold px-1 py-0.5 rounded border border-amber-200 shrink-0">
-                                          {subCount.toLocaleString('bn-BD')} টি
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="my-0">
-                                      <h4 className="font-extrabold text-[12px] sm:text-[13px] text-slate-800 group-hover:text-amber-800 transition-colors leading-tight line-clamp-2">
-                                        {item}
-                                      </h4>
-                                    </div>
-
-                                    <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[8.5px]">
-                                      {showMcqCount ? (
-                                        <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
-                                          {qCount.toLocaleString('bn-BD')} MCQ
-                                        </span>
-                                      ) : <span />}
-                                      <span className="text-amber-800 font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                                        খুলুন <ChevronRight className="w-2.5 h-2.5" />
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Leaf Category List */}
-                        {leafItems.length > 0 && (
-                          <div className="flex flex-col gap-1.5">
-                            {categoryItems.length > 0 && (
-                              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider px-0.5 mt-0.5">
-                                📅 সাল ভিত্তিক প্রশ্ন সমাধানসমূহ
-                              </span>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                              {leafItems.map((item, idx) => {
-                                const subObj = subcategories.find(s => s.name.trim().toLowerCase() === item.trim().toLowerCase());
-                                const leafQuestions = getQuestionsForYearJobNode(item, false);
-                                const qCount = leafQuestions.length;
-                                const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, leafQuestions, userReadSet);
-
-                                return (
-                                  <button
-                                    key={`year-job-leaf-${idx}-${item}`}
-                                    id={`year-job-leaf-btn-${idx}`}
-                                    onClick={async () => {
-                                      if (user.isGuest) {
-                                        checkGuestAccess(`"${item}" - সালভিত্তিক প্রশ্ন সমাধান`);
-                                        return;
-                                      }
-                                      let subcatQuestions = getQuestionsForYearJobNode(item, false);
-                                      if (subcatQuestions.length === 0 && onFetchQuestionsLazy) {
-                                        const fetched = await onFetchQuestionsLazy({ subcategory: item });
-                                        subcatQuestions = fetched.filter(q => 
-                                          q.subcategory === item || (q.subcategories && q.subcategories.includes(item))
-                                        );
-                                      }
-                                      setReaderQuestions(subcatQuestions);
-                                      setReaderTitle(`সাল ভিত্তিক সমাধান: ${item}`);
-                                      setReaderActiveMode('read');
-                                      setReaderSelectedAnswers({});
-                                      setReaderPage(1);
-                                      setReaderSource('yearJob');
-                                      setReaderCategoryFilter('সব প্রশ্ন');
-                                      setReaderModeActive(true);
-                                    }}
-                                    className="flex items-center justify-between py-3.5 px-3 sm:py-4 sm:px-3.5 bg-gray-50/80 hover:bg-amber-50/40 text-slate-800 rounded-xl font-bold text-xs transition border border-gray-200/60 hover:border-amber-200 shadow-2xs text-left cursor-pointer"
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
-                                        {renderSubjectIcon(item, "w-4 h-4")}
-                                      </span>
-                                      <div className="flex flex-col">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
-                                          {user.isGuest && (
-                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
-                                              🔒 লক করা
-                                            </span>
-                                          )}
-                                        </div>
-                                        {subObj?.date && (
-                                          <span className="text-[10px] text-amber-800 font-bold flex items-center gap-1 mt-0.5">
-                                            <Calendar className="w-3 h-3 text-amber-600" />
-                                            {formatBengaliDate(subObj.date)}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <div 
-                                        className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-2 py-1 rounded-xl shadow-2xs shrink-0"
-                                        title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
-                                      >
-                                        <CircularProgressBar
-                                          percentage={progress.percentage}
-                                          size={24}
-                                          strokeWidth={2.5}
-                                          textSizeClass="text-[7px]"
-                                        />
-                                        <div className="text-right hidden sm:block">
-                                          <span className="text-[8px] text-slate-500 font-bold block leading-none">পড়া হয়েছে</span>
-                                          <span className="text-[9.5px] font-black text-slate-900 leading-tight">
-                                            {toBengaliDigits(progress.percentage)}%
-                                          </span>
-                                        </div>
-                                      </div>
-                                      {user.isGuest ? (
-                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                          🔒 আনলক করুন
-                                        </span>
-                                      ) : showMcqCount ? (
-                                        <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
-                                          {qCount.toLocaleString('bn-BD')} MCQ
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
+                    {/* Expand / Collapse All */}
+                    <button
+                      onClick={toggleAll}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10.5px] transition flex items-center gap-1 shrink-0 cursor-pointer"
+                      title={expandedYearKeys.size > 0 ? "সব সংকুচিত করুন" : "সব সম্প্রসারণ করুন"}
+                    >
+                      {expandedYearKeys.size > 0 ? (
+                        <>
+                          <ChevronDown className="w-3.5 h-3.5" />
+                          <span>সব বন্ধ</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                          <span>সব খুলুন</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                {yearJobQuestions.length === 0 && !isYearJobRoot && (
-                  <div className="mt-1 bg-gray-50 border border-gray-100 p-4 rounded-xl text-center text-gray-500 font-bold text-[11px] flex flex-col gap-1">
-                    <span>🎯 এই সাল ভিত্তিক ক্যাটাগরিতে এখনো কোনো প্রশ্ন যোগ করা হয়নি।</span>
-                    <span className="text-[10px] text-gray-400 font-semibold">এডমিন প্যানেল থেকে এই ক্যাটাগরিতে নতুন প্রশ্ন যোগ করতে পারেন।</span>
+                {/* Stat Badges */}
+                <div className="flex items-center gap-2 flex-wrap text-[10px] font-bold text-slate-600 px-0.5">
+                  <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md">
+                    📅 {toBengaliDigits(totalYearsCount)} টি বছর
+                  </span>
+                  <span className="bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded-md">
+                    📝 {toBengaliDigits(totalExamsCount)} টি পরীক্ষা
+                  </span>
+                  {showMcqCount && (
+                    <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">
+                      🎯 {totalQuestionsCount.toLocaleString('bn-BD')} MCQ
+                    </span>
+                  )}
+                </div>
+
+                {/* Dynamic Year -> Month -> Exam Tree Structure */}
+                {filteredYears.length === 0 ? (
+                  <div className="text-center text-gray-500 py-10 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 p-4">
+                    <Calendar className="w-8 h-8 text-slate-300" />
+                    <span className="font-extrabold text-xs text-slate-700">
+                      {yearJobSearchQuery ? `"${yearJobSearchQuery}" এর সাথে মিলে এমন কোনো পরীক্ষা পাওয়া যায়নি।` : 'জব সলিউশন ব্যাংকে এখনো কোনো পরীক্ষা যুক্ত করা হয়নি।'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 max-w-sm">
+                      জব সলিউশন ব্যাংকে নতুন পরীক্ষা তৈরি করা হলে তা স্বয়ংক্রিয়ভাবে তার পরীক্ষার সাল ও মাস অনুযায়ী এখানে প্রদর্শিত হবে।
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2.5">
+                    {filteredYears.map(yearGroup => {
+                      const isYearExpanded = query ? true : expandedYearKeys.has(yearGroup.year);
+
+                      return (
+                        <div 
+                          key={`year-tree-node-${yearGroup.year}`}
+                          className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-2xs transition-all duration-150"
+                        >
+                          {/* LEVEL 1: YEAR FOLDER / CARD (Default Collapsed) */}
+                          <button
+                            id={`year-folder-btn-${yearGroup.year}`}
+                            onClick={() => toggleYear(yearGroup.year)}
+                            className={`w-full py-3 px-3 sm:px-4 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                              isYearExpanded 
+                                ? 'bg-amber-50/70 hover:bg-amber-100/50 border-b border-amber-200/70' 
+                                : 'bg-white hover:bg-slate-50/80'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                              <span className="w-6 h-6 rounded-md bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 transition-transform duration-200">
+                                {isYearExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-950" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-950" />
+                                )}
+                              </span>
+                              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                <span className="font-black text-[13px] sm:text-[14.5px] text-slate-900 leading-tight">
+                                  {isYearExpanded ? '▼ ' : '▶ '} {yearGroup.yearLabel}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[9.5px] sm:text-[10px] bg-amber-100/90 text-amber-900 font-extrabold px-2 py-0.5 rounded-md border border-amber-200/80">
+                                {toBengaliDigits(yearGroup.totalExams)} টি পরীক্ষা
+                              </span>
+                              <div 
+                                className="hidden sm:flex items-center gap-1.5 bg-white border border-slate-200/80 px-2 py-0.5 rounded-lg shadow-2xs"
+                                title={`পড়ার অগ্রগতি: ${toBengaliDigits(yearGroup.progress.readCount)}/${toBengaliDigits(yearGroup.progress.totalCount)} (${toBengaliDigits(yearGroup.progress.percentage)}%)`}
+                              >
+                                <CircularProgressBar
+                                  percentage={yearGroup.progress.percentage}
+                                  size={18}
+                                  strokeWidth={2.2}
+                                  textSizeClass="text-[5.5px]"
+                                />
+                                <span className="text-[9px] font-black text-slate-800">
+                                  {toBengaliDigits(yearGroup.progress.percentage)}%
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* LEVEL 2: MONTHS LIST (Rendered when Year is Expanded) */}
+                          {isYearExpanded && (
+                            <div className="p-2.5 sm:p-3.5 bg-slate-50/40 flex flex-col gap-2 animate-fade-in">
+                              {yearGroup.months.map(monthGroup => {
+                                const isMonthExpanded = query ? true : expandedMonthKeys.has(monthGroup.monthKey);
+
+                                return (
+                                  <div
+                                    key={`month-tree-node-${monthGroup.monthKey}`}
+                                    className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs"
+                                  >
+                                    {/* LEVEL 2: MONTH HEADER CARD (Default Collapsed) */}
+                                    <button
+                                      id={`month-folder-btn-${monthGroup.monthKey}`}
+                                      onClick={() => toggleMonth(monthGroup.monthKey)}
+                                      className={`w-full py-2.5 px-3 sm:px-3.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                                        isMonthExpanded 
+                                          ? 'bg-amber-100/40 hover:bg-amber-100/60 border-b border-amber-200/60' 
+                                          : 'bg-white hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center shrink-0">
+                                          {isMonthExpanded ? (
+                                            <ChevronDown className="w-3.5 h-3.5" />
+                                          ) : (
+                                            <ChevronRight className="w-3.5 h-3.5" />
+                                          )}
+                                        </span>
+                                        <span className="font-extrabold text-[12.5px] sm:text-[13.5px] text-slate-800">
+                                          {isMonthExpanded ? '▼ ' : '▶ '} {monthGroup.monthLabel}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[9px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200">
+                                          {toBengaliDigits(monthGroup.totalExams)} টি পরীক্ষা
+                                        </span>
+                                        <div 
+                                          className="flex items-center gap-1 bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs"
+                                          title={`পড়ার অগ্রগতি: ${toBengaliDigits(monthGroup.progress.percentage)}%`}
+                                        >
+                                          <CircularProgressBar
+                                            percentage={monthGroup.progress.percentage}
+                                            size={16}
+                                            strokeWidth={2}
+                                            textSizeClass="text-[5px]"
+                                          />
+                                          <span className="text-[8.5px] font-extrabold text-slate-700">
+                                            {toBengaliDigits(monthGroup.progress.percentage)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </button>
+
+                                    {/* LEVEL 3: EXAMS LIST (Rendered when Month is Expanded) */}
+                                    {isMonthExpanded && (
+                                      <div className="p-2 sm:p-2.5 bg-slate-50/60 grid grid-cols-1 md:grid-cols-2 gap-2 animate-fade-in">
+                                        {monthGroup.exams.map((exam, exIdx) => {
+                                          return (
+                                            <button
+                                              key={`year-exam-${exam.id}-${exIdx}`}
+                                              id={`year-exam-btn-${exam.id}`}
+                                              onClick={async () => {
+                                                if (user.isGuest) {
+                                                  checkGuestAccess(`"${exam.name}" - সালভিত্তিক প্রশ্ন সমাধান`);
+                                                  return;
+                                                }
+                                                let examQuestions = getQuestionsForJobNode(exam.name, false);
+                                                if (examQuestions.length === 0 && onFetchQuestionsLazy) {
+                                                  const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
+                                                  examQuestions = fetched.filter(q => 
+                                                    q.subcategory === exam.name || (q.subcategories && q.subcategories.includes(exam.name))
+                                                  );
+                                                }
+                                                setReaderQuestions(examQuestions);
+                                                setReaderTitle(`সালভিত্তিক সমাধান: ${exam.name}`);
+                                                setReaderActiveMode('read');
+                                                setReaderSelectedAnswers({});
+                                                setReaderPage(1);
+                                                setReaderSource('yearJob');
+                                                setReaderCategoryFilter('সব প্রশ্ন');
+                                                setReaderModeActive(true);
+                                              }}
+                                              className="group flex items-center justify-between py-2.5 px-3 bg-white hover:bg-amber-50/50 text-slate-800 rounded-lg font-bold text-xs transition border border-slate-200 hover:border-amber-300 shadow-2xs text-left cursor-pointer active:scale-98"
+                                            >
+                                              <div className="flex items-center gap-2.5 min-w-0">
+                                                <span className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-50 text-amber-800 border border-amber-200 shrink-0 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
+                                                  {renderSubjectIcon(exam.name, "w-3.5 h-3.5")}
+                                                </span>
+                                                <div className="flex flex-col min-w-0">
+                                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="font-extrabold text-slate-900 text-[12.5px] sm:text-[13.5px] group-hover:text-amber-900 transition-colors truncate">
+                                                      {exam.name}
+                                                    </span>
+                                                    {user.isGuest && (
+                                                      <span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-black px-1.5 py-0.2 rounded text-[9px] shadow-2xs">
+                                                        🔒 লক
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex items-center gap-2 text-[9.5px] text-slate-500 font-semibold mt-0.5">
+                                                    <span className="flex items-center gap-0.5 text-amber-800 font-bold">
+                                                      <Calendar className="w-2.5 h-2.5 text-amber-600" />
+                                                      {exam.formattedDate}
+                                                    </span>
+                                                    {exam.subHeading && (
+                                                      <span className="truncate max-w-[120px] text-slate-400 hidden sm:inline">
+                                                        • {exam.subHeading}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              <div className="flex items-center gap-1.5 shrink-0">
+                                                <div 
+                                                  className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs"
+                                                  title={`পড়ার অগ্রগতি: ${toBengaliDigits(exam.progress.readCount)}/${toBengaliDigits(exam.progress.totalCount)} (${toBengaliDigits(exam.progress.percentage)}%)`}
+                                                >
+                                                  <CircularProgressBar
+                                                    percentage={exam.progress.percentage}
+                                                    size={18}
+                                                    strokeWidth={2}
+                                                    textSizeClass="text-[5.5px]"
+                                                  />
+                                                  <span className="text-[8.5px] font-extrabold text-slate-700">
+                                                    {toBengaliDigits(exam.progress.percentage)}%
+                                                  </span>
+                                                </div>
+
+                                                {user.isGuest ? (
+                                                  <span className="text-[9px] bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded shadow-2xs">
+                                                    🔒 আনলক
+                                                  </span>
+                                                ) : showMcqCount ? (
+                                                  <span className="text-[9px] bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
+                                                    {exam.qCount.toLocaleString('bn-BD')} MCQ
+                                                  </span>
+                                                ) : null}
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -8570,12 +9097,8 @@ export default function UserPortal({
             {/* CASCADING FILTER BOX (Hide if override pool active) */}
             {!customExamOverridePool && (
               <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col gap-3">
-                <div className="flex items-center justify-between border-b border-slate-200/50 pb-2">
-                  <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                    <Filter className="w-4 h-4 text-indigo-600" />
-                    ক্যাসকেডিং ফিল্টার (ক্যাটাগরি ও বিষয় বাছাই):
-                  </span>
-                  {(customExamSelectedCat !== 'ALL' || customExamSelectedSubcat !== 'ALL') && (
+                {(customExamSelectedCat !== 'ALL' || customExamSelectedSubcat !== 'ALL') && (
+                  <div className="flex items-center justify-end pb-1">
                     <button
                       type="button"
                       onClick={() => {
@@ -8587,8 +9110,8 @@ export default function UserPortal({
                     >
                       🔄 ফিল্টার রিসেট
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Level 1: Main Category Filter */}
                 <div>
@@ -8604,7 +9127,7 @@ export default function UserPortal({
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
-                    <option value="ALL">সকল বিষয় (All Subjects & Categories)</option>
+                    <option value="ALL">সকল বিষয়</option>
                     {customExamCategoryOptions.map((cat, cIdx) => (
                       <option key={`ce-cat-${cat}-${cIdx}`} value={cat}>{cat}</option>
                     ))}
@@ -8624,7 +9147,7 @@ export default function UserPortal({
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
-                    <option value="ALL">সকল উপ-অধ্যায় (All Subcategories / Topics)</option>
+                    <option value="ALL">সকল উপ-অধ্যায়</option>
                     {customExamSubcategoryOptions.map((sub, sIdx) => (
                       <option key={`ce-sub-${sub}-${sIdx}`} value={sub}>{sub}</option>
                     ))}
@@ -8736,8 +9259,8 @@ export default function UserPortal({
                 onChange={e => setSetupAnswerView(e.target.value as any)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
-                <option value="instant">প্রতিটি উত্তর সাবমিট করার সাথে সাথে (Instant)</option>
-                <option value="after_exam">পরীক্ষা সম্পন্ন হওয়ার পর (After Completion)</option>
+                <option value="instant">প্রতিটি উত্তর সাবমিট করার সাথে সাথে</option>
+                <option value="after_exam">পরীক্ষা সম্পন্ন হওয়ার পর</option>
               </select>
             </div>
 

@@ -1,13 +1,15 @@
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
-import { Question, Course, LiveExam, Routine } from '../types';
+import { Question, Course, LiveExam, Routine, CategoryItem, SubcategoryItem } from '../types';
 
 const DB_NAME = 'OrjonQuestionsDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_QUESTIONS = 'questions';
 const STORE_COURSES = 'courses';
 const STORE_LIVE_EXAMS = 'live_exams';
 const STORE_ROUTINES = 'routines';
+const STORE_CATEGORIES = 'categories';
+const STORE_SUBCATEGORIES = 'subcategories';
 const STORE_META = 'metadata';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -42,6 +44,12 @@ function getDB(): Promise<IDBDatabase> {
         }
         if (!idb.objectStoreNames.contains(STORE_ROUTINES)) {
           idb.createObjectStore(STORE_ROUTINES, { keyPath: 'id' });
+        }
+        if (!idb.objectStoreNames.contains(STORE_CATEGORIES)) {
+          idb.createObjectStore(STORE_CATEGORIES, { keyPath: 'id' });
+        }
+        if (!idb.objectStoreNames.contains(STORE_SUBCATEGORIES)) {
+          idb.createObjectStore(STORE_SUBCATEGORIES, { keyPath: 'id' });
         }
         if (!idb.objectStoreNames.contains(STORE_META)) {
           idb.createObjectStore(STORE_META, { keyPath: 'key' });
@@ -1101,5 +1109,124 @@ export async function performIncrementalExamSyncFromFirestore(
     return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
   }
 }
+
+/**
+ * Fetch all categories stored in local IndexedDB.
+ */
+export async function getCategoriesFromIDB(): Promise<CategoryItem[]> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_CATEGORIES, 'readonly');
+      const store = tx.objectStore(STORE_CATEGORIES);
+      const request = store.getAll();
+      request.onsuccess = () => resolve((request.result || []) as CategoryItem[]);
+      request.onerror = () => resolve([]);
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save all categories to IndexedDB.
+ */
+export async function saveCategoriesToIDB(categories: CategoryItem[]): Promise<void> {
+  if (!categories || !Array.isArray(categories)) return;
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_CATEGORIES, 'readwrite');
+      const store = tx.objectStore(STORE_CATEGORIES);
+      store.clear();
+      for (const c of categories) {
+        if (c && c.id) store.put(c);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {}
+}
+
+/**
+ * Upsert categories in IndexedDB.
+ */
+export async function upsertCategoriesToIDB(toUpsert: CategoryItem[], toRemoveIds: string[] = []): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_CATEGORIES, 'readwrite');
+      const store = tx.objectStore(STORE_CATEGORIES);
+      for (const id of toRemoveIds) {
+        if (id) store.delete(id);
+      }
+      for (const c of toUpsert) {
+        if (c && c.id) store.put(c);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {}
+}
+
+/**
+ * Fetch all subcategories stored in local IndexedDB.
+ */
+export async function getSubcategoriesFromIDB(): Promise<SubcategoryItem[]> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_SUBCATEGORIES, 'readonly');
+      const store = tx.objectStore(STORE_SUBCATEGORIES);
+      const request = store.getAll();
+      request.onsuccess = () => resolve((request.result || []) as SubcategoryItem[]);
+      request.onerror = () => resolve([]);
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save all subcategories to IndexedDB.
+ */
+export async function saveSubcategoriesToIDB(subcategories: SubcategoryItem[]): Promise<void> {
+  if (!subcategories || !Array.isArray(subcategories)) return;
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_SUBCATEGORIES, 'readwrite');
+      const store = tx.objectStore(STORE_SUBCATEGORIES);
+      store.clear();
+      for (const s of subcategories) {
+        if (s && s.id) store.put(s);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {}
+}
+
+/**
+ * Incremental upsert & delete subcategories in IndexedDB.
+ */
+export async function upsertSubcategoriesToIDB(toUpsert: SubcategoryItem[], toRemoveIds: string[] = []): Promise<void> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_SUBCATEGORIES, 'readwrite');
+      const store = tx.objectStore(STORE_SUBCATEGORIES);
+      for (const id of toRemoveIds) {
+        if (id) store.delete(id);
+      }
+      for (const s of toUpsert) {
+        if (s && s.id) store.put(s);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {}
+}
+
 
 

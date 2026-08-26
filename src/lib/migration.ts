@@ -452,6 +452,47 @@ export async function deleteItemFromFirestore(colName: string, id: string): Prom
   }
 }
 
+export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const chunkSize = 400;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(id => {
+        batch.delete(doc(db, colName, String(id)));
+      });
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    console.error(`Error bulk deleting items from ${colName} in Firestore:`, err);
+    return false;
+  }
+}
+
+export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colName: string, items: T[], idPrefix: string = 'doc'): Promise<boolean> {
+  if (!items || items.length === 0) return true;
+  try {
+    const chunkSize = 400;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((item, idx) => {
+        const docId = String(item.id || `${idPrefix}_${Date.now()}_${i + idx}`);
+        const docRef = doc(db, colName, docId);
+        const cleanItem = JSON.parse(JSON.stringify({ ...item, id: docId }));
+        batch.set(docRef, cleanItem, { merge: true });
+      });
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    console.error(`Error bulk saving items to ${colName} in Firestore:`, err);
+    return false;
+  }
+}
+
 export async function syncCollectionToFirestore(colName: string, items: any[], idPrefix: string = 'doc'): Promise<number> {
   return await uploadCollectionInBatches(colName, items, idPrefix);
 }
