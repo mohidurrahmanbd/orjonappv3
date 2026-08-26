@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, generateAutoUserId } from './types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, generateAutoUserId } from '../shared/types';
 import { 
   INITIAL_QUESTIONS, 
   INITIAL_NOTICES, 
@@ -8,9 +8,9 @@ import {
   INITIAL_USERS,
   INITIAL_COURSES,
   INITIAL_COUPONS
-} from './data';
-import AdminPanel from './components/AdminPanel';
-import UserPortal from './components/UserPortal';
+} from '../shared/data';
+import AdminApp from './AdminApp';
+import UserApp from './UserApp';
 import { 
   fetchQuestionsFromFirestore, 
   addQuestionToFirestore, 
@@ -22,7 +22,7 @@ import {
   saveItemToFirestore,
   deleteItemFromFirestore,
   syncCollectionToFirestore
-} from './lib/migration';
+} from '../shared/lib/migration';
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
@@ -36,7 +36,7 @@ import {
   getRoutinesFromIDB,
   saveRoutinesToIDB,
   performIncrementalExamSyncFromFirestore
-} from './lib/indexedDB';
+} from '../shared/lib/indexedDB';
 import { 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail, 
@@ -47,7 +47,8 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { auth } from '../shared/lib/firebase';
+import { verifyAdminClaim } from '../shared/lib/useAdminAuth';
 import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
@@ -277,17 +278,12 @@ export default function App() {
   const [forgotTargetEmail, setForgotTargetEmail] = useState('');
 
   const [adminPassInput, setAdminPassInput] = useState('');
-  const [adminPassword, setAdminPassword] = useState<string>(() => {
-    return localStorage.getItem('orjon_admin_password') || localStorage.getItem('medha_admin_password') || 'admin123';
-  });
 
   const handleUpdateAdminPassword = async (newPass: string) => {
-    setAdminPassword(newPass);
-    localStorage.setItem('orjon_admin_password', newPass);
     if (auth.currentUser) {
       try {
         await updatePassword(auth.currentUser, newPass);
-      } catch (err) {
+      } catch (err: any) {
         console.warn("Firebase Auth admin password update notice:", err);
       }
     }
@@ -295,8 +291,8 @@ export default function App() {
 
   // Admin Forgot Password states
   const [adminLoginSubStep, setAdminLoginSubStep] = useState<'login' | 'forgot-request' | 'forgot-sent'>('login');
-  const [adminUsernameInput, setAdminUsernameInput] = useState('admin');
-  const [adminForgotQuery, setAdminForgotQuery] = useState('mohidur143@gmail.com');
+  const [adminUsernameInput, setAdminUsernameInput] = useState('');
+  const [adminForgotQuery, setAdminForgotQuery] = useState('');
 
   // Guest Live Exam states
   const [directExamId, setDirectExamId] = useState<string | null>(null);
@@ -993,35 +989,11 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          // Inspect current token claims
-          let tokenResult = await fbUser.getIdTokenResult();
-          let hasAdminClaim = tokenResult.claims.admin === true;
-
-          // Check if this is an authorized admin user whose claims need to be populated
-          const emailLower = (fbUser.email || '').toLowerCase().trim();
-          const isAuthorizedAdmin = emailLower === 'mohidur143@gmail.com';
-
-          if (!hasAdminClaim && isAuthorizedAdmin) {
-            try {
-              const idToken = await fbUser.getIdToken(true);
-              const resp = await fetch('/api/admin/set-admin-claims', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idToken })
-              });
-              const data = await resp.json();
-              if (data.success && data.admin) {
-                // Force token refresh to fetch the newly assigned claims
-                tokenResult = await fbUser.getIdTokenResult(true);
-                hasAdminClaim = tokenResult.claims.admin === true;
-              }
-            } catch (claimErr) {
-              console.warn("Backend admin claim sync notice:", claimErr);
-            }
-          }
+          // Force token refresh to fetch verified custom claims directly from Firebase
+          const hasAdminClaim = await verifyAdminClaim(fbUser);
 
           // STRICT ADMIN ACCESS RULE: User is ONLY admin if token claims.admin === true
-          setIsAdmin(hasAdminClaim === true);
+          setIsAdmin(hasAdminClaim);
 
           // If regular user, update currentUser
           if (!hasAdminClaim && fbUser.email) {
@@ -1410,7 +1382,7 @@ export default function App() {
     localStorage.setItem('orjon_allow_user_explanation', allowed ? 'true' : 'false');
   };
 
-  // 2. Authentication Logic (Unified Login for both User and Admin)
+  // 2. Authentication Logic (Firebase Auth)
   const handleUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErrorMessage(null);
@@ -1418,67 +1390,10 @@ export default function App() {
     const pass = passwordInput.trim();
 
     if (!query || !pass) {
-      setLoginErrorMessage('Please enter your User ID, Email, or Username, and Password.');
+      setLoginErrorMessage('Please enter your User ID, Email, or Phone, and Password.');
       return;
     }
 
-    // A. Check if Admin Login attempt
-    const isAdminAttempt = 
-      query === 'admin' || 
-      query === 'mohidur143@gmail.com' ||
-      pass === adminPassword;
-
-    if (isAdminAttempt && (pass === adminPassword || query === 'mohidur143@gmail.com' || query === 'admin')) {
-      const adminEmail = query === 'admin' ? 'mohidur143@gmail.com' : query;
-      let firebaseUser = null;
-
-      // Authenticate with Firebase Auth
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, adminEmail, pass);
-        firebaseUser = userCred.user;
-      } catch (fbErr: any) {
-        if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential' || fbErr.code === 'auth/wrong-password') {
-          try {
-            const regCred = await createUserWithEmailAndPassword(auth, adminEmail, pass);
-            firebaseUser = regCred.user;
-          } catch (regErr) {
-            console.warn("Firebase Auth Admin registration notice:", regErr);
-          }
-        }
-      }
-
-      if (firebaseUser) {
-        try {
-          const idToken = await firebaseUser.getIdToken(true);
-          const claimResp = await fetch('/api/admin/set-admin-claims', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken })
-          });
-          const claimData = await claimResp.json();
-          if (claimData.success) {
-            await firebaseUser.getIdTokenResult(true);
-          }
-        } catch (claimErr) {
-          console.warn("Backend admin claim assignment notice:", claimErr);
-        }
-      }
-
-      if (pass === adminPassword || firebaseUser) {
-        setIsAdmin(true);
-        localStorage.setItem('orjon_last_activity', Date.now().toString());
-        setSessionTimeoutNotice(null);
-        setShowInactivityWarning(false);
-        setPhoneInput('');
-        setPasswordInput('');
-        return;
-      } else {
-        setLoginErrorMessage('ভুল এডমিন পাসওয়ার্ড অথবা ইউজারনেম!');
-        return;
-      }
-    }
-
-    // B. User Login check (Strictly Firebase Auth verification)
     const found = users.find(u => 
       (u.phone && u.phone.trim().toLowerCase() === query) ||
       (u.userId && u.userId.trim().toLowerCase() === query) ||
@@ -1499,11 +1414,24 @@ export default function App() {
       const userCred = await signInWithEmailAndPassword(auth, userEmailToAuth, pass);
       firebaseUser = userCred.user;
       if (firebaseUser) {
+        // Force token refresh and check custom claim for Admin
+        const hasAdmin = await verifyAdminClaim(firebaseUser);
+        if (hasAdmin) {
+          setIsAdmin(true);
+          setCurrentUser(null);
+          localStorage.setItem('orjon_last_activity', Date.now().toString());
+          setSessionTimeoutNotice(null);
+          setShowInactivityWarning(false);
+          setPhoneInput('');
+          setPasswordInput('');
+          return;
+        }
+
         await reload(firebaseUser);
         isVerified = firebaseUser.emailVerified;
       }
     } catch (fbErr: any) {
-      console.warn("Firebase Auth user login notice:", fbErr);
+      console.warn("Firebase Auth login notice:", fbErr);
       if (fbErr.code === 'auth/wrong-password' || fbErr.code === 'auth/invalid-credential') {
         setLoginErrorMessage('Invalid password. Please check your credentials.');
       } else if (fbErr.code === 'auth/user-not-found') {
@@ -1854,94 +1782,52 @@ export default function App() {
 
   const handleAdminVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    const query = adminUsernameInput.trim().toLowerCase();
+    const adminEmail = adminUsernameInput.trim().toLowerCase();
     const pass = adminPassInput.trim();
-    const adminEmail = query.includes('@') ? query : 'mohidur143@gmail.com';
 
-    if (!pass) {
-      alert('অনুগ্রহ করে এডমিন পাসওয়ার্ড প্রদান করুন!');
-      return;
-    }
-
-    const isAuthorized = adminEmail === 'mohidur143@gmail.com';
-
-    if (!isAuthorized && pass !== adminPassword) {
-      alert('ভুল এডমিন ইউজারনেম অথবা পাসওয়ার্ড!');
+    if (!adminEmail || !pass) {
+      alert('অনুগ্রহ করে এডমিন ইমেইল ও পাসওয়ার্ড প্রদান করুন!');
       return;
     }
 
     try {
-      let firebaseUser = auth.currentUser;
-      
-      // Sign in if not authenticated or different account
-      if (!firebaseUser || firebaseUser.email?.toLowerCase() !== adminEmail) {
-        try {
-          const cred = await signInWithEmailAndPassword(auth, adminEmail, pass);
-          firebaseUser = cred.user;
-        } catch (signInErr: any) {
-          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
-            try {
-              const newCred = await createUserWithEmailAndPassword(auth, adminEmail, pass);
-              firebaseUser = newCred.user;
-            } catch (createErr: any) {
-              console.warn("Firebase Auth Admin registration note:", createErr);
-              if (pass === adminPassword || isAuthorized) {
-                console.log("Local system admin password matched.");
-              }
-            }
-          }
-        }
-      }
+      const cred = await signInWithEmailAndPassword(auth, adminEmail, pass);
+      const firebaseUser = cred.user;
 
-      if (firebaseUser) {
-        try {
-          const idToken = await firebaseUser.getIdToken(true);
-          const claimResp = await fetch('/api/admin/set-admin-claims', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken })
-          });
-          const claimData = await claimResp.json();
-          if (claimData.success) {
-            await firebaseUser.getIdTokenResult(true);
-          }
-        } catch (claimErr) {
-          console.warn("Custom claims backend sync notice:", claimErr);
-        }
-      }
+      const hasAdminClaim = await verifyAdminClaim(firebaseUser);
 
-      if (pass === adminPassword || firebaseUser) {
+      if (hasAdminClaim) {
         setIsAdmin(true);
         localStorage.setItem('orjon_last_activity', Date.now().toString());
         setSessionTimeoutNotice(null);
         setShowInactivityWarning(false);
         setAdminPassInput('');
         return;
+      } else {
+        await signOut(auth);
+        setIsAdmin(false);
+        alert('অ্যাক্সেস ডিনাইড! এই একাউন্টে এডমিন পারমিশন নেই (Admin Custom Claim Missing)।');
       }
-
-      alert('ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।');
     } catch (err: any) {
       console.error("Admin verify error:", err);
-      if (pass === adminPassword) {
-        setIsAdmin(true);
-        localStorage.setItem('orjon_last_activity', Date.now().toString());
-        setSessionTimeoutNotice(null);
-        setShowInactivityWarning(false);
-        setAdminPassInput('');
-        return;
+      setIsAdmin(false);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        alert('ভুল এডমিন পাসওয়ার্ড অথবা ইমেইল!');
+      } else if (err.code === 'auth/user-not-found') {
+        alert('এই ইমেইলে কোনো এডমিন একাউন্ট খুঁজে পাওয়া যায়নি।');
+      } else {
+        alert(`এডমিন লগইন ব্যর্থ হয়েছে: ${err.message || 'অনুগ্রহ করে সঠিক তথ্য দিন।'}`);
       }
-      alert(`এডমিন লগইন ব্যর্থ হয়েছে: ${err.message || 'ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।'}`);
     }
   };
 
   const handleAdminForgotRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const q = adminForgotQuery.trim().toLowerCase();
-    if (!q) {
-      alert('অনুগ্রহ করে এডমিন ইমেইল অথবা ইউজারনেম প্রদান করুন!');
+    const targetEmail = adminForgotQuery.trim().toLowerCase();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      alert('অনুগ্রহ করে একটি বৈধ এডমিন ইমেইল প্রদান করুন!');
       return;
     }
-    const targetEmail = q.includes('@') ? q : 'mohidur143@gmail.com';
 
     setIsSendingOtp(true);
     setOtpDeliveryMessage({ text: 'এডমিন পাসওয়ার্ড রিসেট ইমেইল পাঠানো হচ্ছে...', isError: false });
@@ -1964,8 +1850,8 @@ export default function App() {
 
   const handleAdminForgotResendOtp = async () => {
     if (resendCooldown > 0 || isSendingOtp) return;
-    const q = adminForgotQuery.trim().toLowerCase();
-    const targetEmail = q.includes('@') ? q : 'mohidur143@gmail.com';
+    const targetEmail = adminForgotQuery.trim().toLowerCase();
+    if (!targetEmail || !targetEmail.includes('@')) return;
 
     setIsSendingOtp(true);
     setOtpDeliveryMessage({ text: 'এডমিন পাসওয়ার্ড রিসেট ইমেইল পুনরায় পাঠানো হচ্ছে...', isError: false });
@@ -3023,7 +2909,7 @@ export default function App() {
         
         {/* LOGGED IN USER VIEW */}
         {currentUser && !isAdmin && (
-          <UserPortal 
+          <UserApp 
             user={currentUser}
             questions={questions}
             liveExams={liveExams}
@@ -3067,7 +2953,7 @@ export default function App() {
 
         {/* LOGGED IN ADMIN VIEW */}
         {isAdmin && (
-          <AdminPanel 
+          <AdminApp 
             questions={questions}
             liveExams={liveExams}
             notices={notices}
@@ -3114,7 +3000,6 @@ export default function App() {
             onToggleUserExplanation={handleToggleUserExplanation}
             showMcqCount={showMcqCount}
             onToggleMcqCount={handleToggleMcqCount}
-            currentAdminPassword={adminPassword}
             onUpdateAdminPassword={handleUpdateAdminPassword}
             auditLogs={auditLogs}
             onAddAuditLog={addAuditLog}
@@ -3629,7 +3514,7 @@ export default function App() {
                           required
                           value={adminUsernameInput}
                           onChange={e => setAdminUsernameInput(e.target.value)}
-                          placeholder="admin / mohidur143@gmail.com"
+                          placeholder="admin@example.com"
                           className="w-full px-4 py-3 border rounded-xl text-gray-800 focus:ring-2 focus:ring-red-500 focus:outline-none font-medium"
                         />
                       </div>
@@ -3644,7 +3529,7 @@ export default function App() {
                             type="button"
                             onClick={() => {
                               setAdminLoginSubStep('forgot-request');
-                              setAdminForgotQuery(adminUsernameInput.trim() || 'mohidur143@gmail.com');
+                              setAdminForgotQuery(adminUsernameInput.trim());
                             }}
                             className="text-[11px] font-bold text-red-600 hover:text-red-800 hover:underline transition flex items-center gap-1"
                           >
@@ -3679,21 +3564,21 @@ export default function App() {
                           এডমিন পাসওয়ার্ড রিসেট (Firebase Authentication)
                         </div>
                         <p className="text-amber-900 text-[11px] leading-relaxed font-medium">
-                          পাসওয়ার্ড রিসেটের জন্য এডমিন নিবন্ধিত ইমেইল অথবা ইউজারনেম নিশ্চিত করুন। Firebase Authentication সরাসরি আপনার ইমেইলে পাসওয়ার্ড রিসেট লিংক পাঠাবে।
+                          পাসওয়ার্ড রিসেটের জন্য এডমিন নিবন্ধিত ইমেইল নিশ্চিত করুন। Firebase Authentication সরাসরি আপনার ইমেইলে পাসওয়ার্ড রিসেট লিংক পাঠাবে।
                         </p>
                       </div>
 
                       <div>
                         <label className="block text-gray-700 mb-1.5 font-bold flex items-center gap-1">
                           <Mail className="w-4 h-4 text-amber-600" />
-                          এডমিন ইমেইল / ইউজারনেম:
+                          এডমিন ইমেইল:
                         </label>
                         <input
                           type="text"
                           required
                           value={adminForgotQuery}
                           onChange={e => setAdminForgotQuery(e.target.value)}
-                          placeholder="mohidur143@gmail.com"
+                          placeholder="admin@example.com"
                           className="w-full px-4 py-3 border border-amber-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium bg-white"
                         />
                       </div>
@@ -3723,7 +3608,7 @@ export default function App() {
                         <CheckCircle2 className="w-10 h-10 text-emerald-600" />
                         <h3 className="font-extrabold text-emerald-950 text-sm">🎉 পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে!</h3>
                         <p className="text-emerald-800 text-[11px] leading-relaxed font-medium">
-                          Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-emerald-950 font-mono">{adminForgotQuery.includes('@') ? adminForgotQuery : 'mohidur143@gmail.com'}</span>-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে।
+                          Firebase Authentication এর মাধ্যমে এডমিন সিকিউরিটি ইমেইল <span className="font-bold text-emerald-950 font-mono">{adminForgotQuery}</span>-এ সফলভাবে পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে।
                         </p>
                       </div>
 

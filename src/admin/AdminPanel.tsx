@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime } from '../types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime } from '../shared/types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import * as ReactWindow from 'react-window';
-import { firebaseConfig } from '../lib/firebase';
+import { firebaseConfig } from '../shared/lib/firebase';
 import { 
   CollectionCounts, 
   MigrationReport, 
@@ -18,12 +18,12 @@ import {
   migrateDataToFirestore,
   syncCollectionToFirestore,
   getAllLocalStorageMap 
-} from '../lib/migration';
+} from '../shared/lib/migration';
 
 import UserGrowthChart from './UserGrowthChart';
-import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
-import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
-import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
+import { downloadCourseRoutinePDF } from '../shared/lib/pdfGenerator';
+import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchicalMCQModal';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../shared/lib/routineUtils';
 import CurrentAffairsAdmin from './CurrentAffairsAdmin';
 
 const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || (ReactWindow as any).default || ReactWindow;
@@ -84,7 +84,6 @@ interface AdminPanelProps {
   onToggleUserExplanation: (allowed: boolean) => void;
   showMcqCount?: boolean;
   onToggleMcqCount?: (show: boolean) => void;
-  currentAdminPassword?: string;
   onUpdateAdminPassword?: (newPassword: string) => void;
   auditLogs?: AuditLog[];
   onAddAuditLog?: (action: string, details: string, type?: AuditLog['type']) => void;
@@ -221,7 +220,6 @@ export default function AdminPanel({
   onToggleUserExplanation,
   showMcqCount = true,
   onToggleMcqCount,
-  currentAdminPassword = 'admin123',
   onUpdateAdminPassword,
   auditLogs = [],
   onAddAuditLog,
@@ -553,10 +551,6 @@ export default function AdminPanel({
 
   const handleChangeAdminPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currPassInput !== currentAdminPassword) {
-      showCustomAlert('ত্রুটি!', 'বর্তমান পাসওয়ার্ড সঠিক নয়! আবার চেষ্টা করুন।', 'warning');
-      return;
-    }
     if (newAdminPassInput.length < 6) {
       showCustomAlert('ত্রুটি!', 'নতুন পাসওয়ার্ড নূন্যতম ৬ ডিজিটের হতে হবে!', 'warning');
       return;

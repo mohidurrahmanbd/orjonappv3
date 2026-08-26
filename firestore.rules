@@ -7,101 +7,143 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isOwner(userId) {
       return isSignedIn() && (
-        request.auth.token.admin == true ||
-        request.auth.token.email in ['mohidur143@gmail.com']
+        request.auth.uid == userId ||
+        (resource != null && resource.data.email == request.auth.token.email) ||
+        (resource != null && resource.data.userId == request.auth.uid)
       );
     }
 
-    // Questions collection
+    function isWriteOwner(userId) {
+      return isSignedIn() && (
+        request.auth.uid == userId ||
+        (request.resource.data.email == request.auth.token.email) ||
+        (request.resource.data.userId == request.auth.uid)
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // Questions collection - Read-only for users, Admin-write only
     match /questions/{questionId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Users collection
+    // Users collection - Users can read/write only their own document, Admins can access all
     match /users/{userId} {
-      allow read: if true;
-      allow write: if isSignedIn() || isAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isWriteOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isWriteOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Bookmarks collection
+    // Bookmarks collection - Users can manage only their bookmarks, Admins can access all
     match /bookmarks/{bookmarkId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && (
+        resource == null ||
+        resource.data.userUid == request.auth.uid ||
+        resource.data.userEmail == request.auth.token.email ||
+        isAdmin()
+      );
     }
 
-    // Attempts collection
+    // Attempts collection - Users can read/write only their own documents, Admins can access all
     match /attempts/{attemptId} {
-      allow read, write: if true;
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.userEmail == request.auth.token.email ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userEmail == request.auth.token.email ||
+        isAdmin()
+      );
+      allow update, delete: if isAdmin();
     }
 
-    // Categories collection
+    // Categories collection - Read-only for users, Admin-write only
     match /categories/{categoryId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Subcategories collection
+    // Subcategories collection - Read-only for users, Admin-write only
     match /subcategories/{subcategoryId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Notices collection
+    // Notices collection - Read-only for users, Admin-write only
     match /notices/{noticeId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Routines collection
+    // Routines collection - Read-only for users, Admin-write only
     match /routines/{routineId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Courses collection
+    // Courses collection - Read-only for users, Admin-write only
     match /courses/{courseId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Course Enrollments collection
+    // Course Enrollments collection - Users can read/create only their own enrollments, Admins can access all
     match /course_enrollments/{enrollmentId} {
-      allow read, write: if true;
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.userEmail == request.auth.token.email ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.userEmail == request.auth.token.email ||
+        isAdmin()
+      );
+      allow update, delete: if isAdmin();
     }
 
-    // Live Exams collection
+    // Live Exams collection - Read-only for users, Admin-write only
     match /live_exams/{liveExamId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Coupons collection
+    // Coupons collection - Read-only for users, Admin-write only
     match /coupons/{couponId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Payment settings collection
+    // Payment settings collection - Read-only for users, Admin-write only
     match /payment_settings/{settingId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Audit Logs collection
+    // Audit Logs collection - Admin only
     match /audit_logs/{logId} {
       allow read, write: if isAdmin();
     }
 
-    // Upload History collection
+    // Upload History collection - Admin only
     match /upload_history/{uploadId} {
       allow read, write: if isAdmin();
     }
 
     // Test connection collection
     match /test/{testId} {
-      allow read, write: if true;
+      allow read, write: if isAdmin();
     }
 
     // Default deny for unhandled paths

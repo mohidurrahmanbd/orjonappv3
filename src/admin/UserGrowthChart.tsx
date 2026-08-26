@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User } from '../types';
+import { User } from '../shared/types';
 import {
   ResponsiveContainer,
   AreaChart,

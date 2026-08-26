@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Course, Coupon, CourseEnrollment, User, PaymentSettings, DEFAULT_PAYMENT_SETTINGS } from '../types';
+import { Course, Coupon, CourseEnrollment, User, PaymentSettings, DEFAULT_PAYMENT_SETTINGS } from '../shared/types';
 import { 
   X, CheckCircle2, Tag, Percent, Sparkles, ShieldCheck, 
   AlertCircle, GraduationCap, ArrowRight, Wallet, Check, Copy

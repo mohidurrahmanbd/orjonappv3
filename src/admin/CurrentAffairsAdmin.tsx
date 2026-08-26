@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { SubcategoryItem, Question, CategoryItem } from '../types';
-import { isCurrentAffairVariation } from '../App';
+import { SubcategoryItem, Question, CategoryItem } from '../shared/types';
+import { isCurrentAffairVariation } from '../app/App';
 import { Globe, Plus, Trash2, Edit3, CheckCircle2, HelpCircle, FileText, Calendar, BookOpen, AlertCircle, Sparkles, Search, ChevronRight, X, ArrowLeft } from 'lucide-react';
 
 interface CurrentAffairsAdminProps {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../shared/types';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -13,20 +13,20 @@ import {
   ChevronDown, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { downloadCourseRoutinePDF } from '../lib/pdfGenerator';
-import RoutineHierarchicalMCQModal from './RoutineHierarchicalMCQModal';
-import CircularProgressBar from './CircularProgressBar';
+import { downloadCourseRoutinePDF } from '../shared/lib/pdfGenerator';
+import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchicalMCQModal';
+import CircularProgressBar from '../shared/components/CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
 import CourseEnrollmentModal from './CourseEnrollmentModal';
-import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../lib/routineUtils';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, calculateSubjectWiseAnalysis, toBengaliDigits } from '../shared/lib/routineUtils';
 import { updatePassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth } from '../shared/lib/firebase';
 import { 
   calculateRoutineReadingProgress, 
   calculateQuestionsReadingProgress, 
   getUserAllReadQuestionIds, 
   markUserQuestionsAsRead 
-} from '../lib/readingProgress';
+} from '../shared/lib/readingProgress';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
