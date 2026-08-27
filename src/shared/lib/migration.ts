@@ -928,4 +928,84 @@ export async function migrateAllExamDocumentsMissingUpdatedAt(): Promise<{
   };
 }
 
+/**
+ * Migration function to ensure all documents in a collection have version, updatedAt, deletedAt fields.
+ */
+export async function migrateCollectionToVersionSchema(
+  collectionName: 'questions' | 'categories' | 'subcategories' | 'courses' | 'live_exams' | 'routines',
+  defaultVersion: number = 1
+): Promise<{ updatedCount: number; totalCount: number; success: boolean }> {
+  try {
+    const snap = await getDocs(collection(db, collectionName));
+    if (snap.empty) {
+      return { updatedCount: 0, totalCount: 0, success: true };
+    }
+
+    const chunkSize = 400;
+    const docsToUpdate: { ref: any; data: Record<string, any> }[] = [];
+    const nowIso = new Date().toISOString();
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const needsVersion = data.version === undefined || data.version === null;
+      const needsUpdatedAt = !data.updatedAt;
+      const needsDeletedAt = data.deletedAt === undefined;
+
+      if (needsVersion || needsUpdatedAt || needsDeletedAt) {
+        const updatePayload: Record<string, any> = {};
+        if (needsVersion) updatePayload.version = defaultVersion;
+        if (needsUpdatedAt) updatePayload.updatedAt = data.createdAt || nowIso;
+        if (needsDeletedAt) updatePayload.deletedAt = data.isDeleted ? (data.updatedAt || nowIso) : null;
+        docsToUpdate.push({ ref: docSnap.ref, data: updatePayload });
+      }
+    });
+
+    for (let i = 0; i < docsToUpdate.length; i += chunkSize) {
+      const chunk = docsToUpdate.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(item => {
+        batch.update(item.ref, item.data);
+      });
+      await batch.commit();
+    }
+
+    return { updatedCount: docsToUpdate.length, totalCount: snap.size, success: true };
+  } catch (err: any) {
+    console.error(`Error migrating collection ${collectionName} to version schema:`, err);
+    return { updatedCount: 0, totalCount: 0, success: false };
+  }
+}
+
+/**
+ * Master migration to update all Firestore collections to the version-based schema.
+ */
+export async function migrateAllCollectionsToVersionSchema(): Promise<{
+  questions: { updatedCount: number; totalCount: number };
+  categories: { updatedCount: number; totalCount: number };
+  subcategories: { updatedCount: number; totalCount: number };
+  courses: { updatedCount: number; totalCount: number };
+  liveExams: { updatedCount: number; totalCount: number };
+  routines: { updatedCount: number; totalCount: number };
+  success: boolean;
+}> {
+  const [qRes, catRes, subRes, courseRes, examRes, routineRes] = await Promise.all([
+    migrateCollectionToVersionSchema('questions', 1),
+    migrateCollectionToVersionSchema('categories', 1),
+    migrateCollectionToVersionSchema('subcategories', 1),
+    migrateCollectionToVersionSchema('courses', 1),
+    migrateCollectionToVersionSchema('live_exams', 1),
+    migrateCollectionToVersionSchema('routines', 1)
+  ]);
+
+  return {
+    questions: { updatedCount: qRes.updatedCount, totalCount: qRes.totalCount },
+    categories: { updatedCount: catRes.updatedCount, totalCount: catRes.totalCount },
+    subcategories: { updatedCount: subRes.updatedCount, totalCount: subRes.totalCount },
+    courses: { updatedCount: courseRes.updatedCount, totalCount: courseRes.totalCount },
+    liveExams: { updatedCount: examRes.updatedCount, totalCount: examRes.totalCount },
+    routines: { updatedCount: routineRes.updatedCount, totalCount: routineRes.totalCount },
+    success: qRes.success && catRes.success && subRes.success && courseRes.success && examRes.success && routineRes.success
+  };
+}
+
 

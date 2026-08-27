@@ -18,7 +18,7 @@ function isIndexedDBSupported(): boolean {
   return typeof window !== 'undefined' && 'indexedDB' in window && window.indexedDB !== null;
 }
 
-function getDB(): Promise<IDBDatabase> {
+export function getDB(): Promise<IDBDatabase> {
   if (!isIndexedDBSupported()) {
     return Promise.reject(new Error('IndexedDB is not supported in this environment.'));
   }

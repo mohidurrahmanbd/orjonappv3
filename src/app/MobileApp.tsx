@@ -50,8 +50,20 @@ import {
   saveLiveExamsToIDB,
   getRoutinesFromIDB,
   saveRoutinesToIDB,
-  performIncrementalExamSyncFromFirestore
+  performIncrementalExamSyncFromFirestore,
+  saveCategoriesToIDB,
+  saveSubcategoriesToIDB
 } from '../shared/lib/indexedDB';
+import { 
+  initSQLite, 
+  getAllCategories as getSQLiteCategories, 
+  getAllSubcategories as getSQLiteSubcategories, 
+  getAllQuestions as getSQLiteQuestions, 
+  insertCategories as insertSQLiteCategories,
+  insertSubcategories as insertSQLiteSubcategories,
+  insertQuestions as insertSQLiteQuestions,
+  loadDataForExamOrRoutineOrCourse
+} from '../shared/lib/sqlite';
 import { 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail, 
@@ -282,7 +294,7 @@ export default function MobileApp() {
     updateAttemptsDB(updatedAttempts);
   };
 
-  // 1. Load database on mount with IndexedDB for instant startup & Timestamp-Based Incremental Sync
+  // 1. Load database on mount with SQLite as Primary Source, fallback to IndexedDB & Firestore
   useEffect(() => {
     const storedQ = localStorage.getItem('orjon_questions') || localStorage.getItem('medha_questions');
     let loadedQ: Question[] = [];
@@ -311,6 +323,56 @@ export default function MobileApp() {
 
     setQuestions(normalizedQ);
 
+    // Initialize SQLite (automatically copies questions.db from APK assets on native if not present, or seeds web fallback)
+    initSQLite().then(async () => {
+      try {
+        console.log('[SQLite] Initialized successfully. Loading primary data from SQLite...');
+        const [sqliteCats, sqliteSubs, sqliteQs] = await Promise.all([
+          getSQLiteCategories(),
+          getSQLiteSubcategories(),
+          getSQLiteQuestions(10000, 0)
+        ]);
+
+        if (sqliteCats && sqliteCats.length > 0) {
+          setCategories(sqliteCats);
+          localStorage.setItem('orjon_categories', JSON.stringify(sqliteCats));
+          saveCategoriesToIDB(sqliteCats).catch(() => {});
+        }
+
+        if (sqliteSubs && sqliteSubs.length > 0) {
+          setSubcategories(sqliteSubs);
+          localStorage.setItem('orjon_subcategories', JSON.stringify(sqliteSubs));
+          saveSubcategoriesToIDB(sqliteSubs).catch(() => {});
+        }
+
+        if (sqliteQs && sqliteQs.length > 0) {
+          const normalizedSQLiteQ = sqliteQs.map(q => {
+            let cat = q.category || '';
+            if (isJobSolutionVariation(cat)) {
+              cat = 'জব সলিউশন পরীক্ষা';
+            } else if (isYearJobSolutionVariation(cat)) {
+              cat = 'সাল ভিত্তিক জব সলিউশন';
+            }
+            return {
+              ...q,
+              category: cat
+            };
+          });
+          const dedupedQ = dedupeQuestions(normalizedSQLiteQ);
+          setQuestions(dedupedQ);
+          localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
+          saveQuestionsToIDB(dedupedQ).catch(() => {});
+        } else {
+          // If SQLite was empty, insert local seed questions
+          insertSQLiteQuestions(normalizedQ).catch(() => {});
+        }
+      } catch (sqlErr) {
+        console.warn('[SQLite] Primary loading notice (fallback active):', sqlErr);
+      }
+    }).catch(err => {
+      console.warn('[SQLite] Init notice:', err);
+    });
+
     getQuestionsFromIDB().then((idbQuestions) => {
       if (idbQuestions && idbQuestions.length > 0) {
         const loadedFromIDB = idbQuestions.map(q => {
@@ -326,7 +388,12 @@ export default function MobileApp() {
           };
         });
         const dedupedQ = dedupeQuestions(loadedFromIDB);
-        setQuestions(dedupedQ);
+        setQuestions(prev => {
+          // Keep whatever is more complete
+          if (prev.length >= dedupedQ.length) return prev;
+          return dedupedQ;
+        });
+        insertSQLiteQuestions(dedupedQ).catch(() => {});
         syncSubcategoriesWithFirestoreQuestions(dedupedQ);
       } else {
         saveQuestionsToIDB(normalizedQ);
@@ -1048,6 +1115,25 @@ export default function MobileApp() {
 
   const handleFetchQuestionsLazy = async (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }): Promise<Question[]> => {
     try {
+      // 1. Attempt hybrid loader: checks local SQLite first, then Firestore for missing records
+      const hybridRes = await loadDataForExamOrRoutineOrCourse({
+        categoryName: filter.category,
+        subcategoryName: filter.subcategory
+      });
+
+      if (hybridRes.questions && hybridRes.questions.length > 0) {
+        setQuestions(prev => {
+          const map = new Map<string, Question>();
+          prev.forEach(q => map.set(q.id, q));
+          hybridRes.questions.forEach(q => map.set(q.id, q));
+          const merged = Array.from(map.values());
+          saveQuestionsToIDB(merged);
+          return merged;
+        });
+        return hybridRes.questions;
+      }
+
+      // 2. Fallback to fetchQuestionsLazyFromFirestore if not found
       const fetched = await fetchQuestionsLazyFromFirestore(filter);
       if (fetched && fetched.length > 0) {
         setQuestions(prev => {
@@ -1056,6 +1142,7 @@ export default function MobileApp() {
           fetched.forEach(q => map.set(q.id, q));
           const merged = Array.from(map.values());
           saveQuestionsToIDB(merged);
+          insertSQLiteQuestions(fetched).catch(() => {});
           return merged;
         });
       }

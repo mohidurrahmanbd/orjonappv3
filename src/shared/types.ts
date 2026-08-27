@@ -1,3 +1,13 @@
+export interface GlobalSyncVersions {
+  questionVersion: number;
+  categoryVersion: number;
+  subcategoryVersion: number;
+  courseVersion: number;
+  examVersion: number;
+  routineVersion: number;
+  updatedAt?: string;
+}
+
 export interface QuestionComment {
   id: string;
   userPhone: string;
@@ -42,6 +52,10 @@ export interface Question {
   userExplanations?: UserExplanation[];
   createdAt?: string;
   date?: string;
+  version?: number;
+  updatedAt?: string;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface User {
@@ -161,6 +175,9 @@ export interface Course {
   price?: number;          // Course price in BDT (0 or undefined = Free)
   originalPrice?: number;  // Optional regular/original price (for strikethrough comparison)
   coupons?: Coupon[];      // Optional course-specific coupons
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface ScheduledExamConfig {
@@ -191,6 +208,9 @@ export interface Routine {
   // Scheduled Exam configuration
   examConfig?: ScheduledExamConfig;
   examDate?: string;
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface LiveExam {
@@ -214,6 +234,9 @@ export interface LiveExam {
   totalMarks?: number;
   passMarks?: number;
   questionSelection?: 'auto' | 'manual';
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface Bookmark {
@@ -228,6 +251,11 @@ export interface CategoryItem {
   id: string;
   name: string;
   subHeading?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface SubcategoryItem {
@@ -240,6 +268,10 @@ export interface SubcategoryItem {
   text?: string; // Text bullet points for current affairs & notes
   details?: string;
   createdAt?: string;
+  updatedAt?: string;
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface AuditLog {
