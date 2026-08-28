@@ -21,7 +21,10 @@ import {
   fetchCollectionFromFirestore,
   saveItemToFirestore,
   deleteItemFromFirestore,
-  syncCollectionToFirestore
+  syncCollectionToFirestore,
+  syncSingleUserToFirestore,
+  syncSingleAttemptToFirestore,
+  syncMultipleAttemptsToFirestore
 } from '../shared/lib/migration';
 import {
   getQuestionsFromIDB,
@@ -399,22 +402,29 @@ export default function App() {
     if (!emailLower) return;
 
     const userIdentifier = userObj.phone || userObj.userId || userObj.email;
+    const migratedAttempts: Attempt[] = [];
     const updatedAttempts = attempts.map(a => {
       const aEmailLower = a.userEmail?.toLowerCase();
       const aPhoneLower = a.userPhone?.toLowerCase();
       if (aEmailLower === emailLower || aPhoneLower === emailLower) {
-        return {
+        const migrated = {
           ...a,
           userPhone: userIdentifier,
           userEmail: userObj.email,
           username: userObj.name,
           isGuestAttempt: false
         };
+        migratedAttempts.push(migrated);
+        return migrated;
       }
       return a;
     });
 
-    updateAttemptsDB(updatedAttempts);
+    setAttempts(updatedAttempts);
+    localStorage.setItem('orjon_attempts', JSON.stringify(updatedAttempts));
+    if (migratedAttempts.length > 0) {
+      syncMultipleAttemptsToFirestore(migratedAttempts);
+    }
   };
 
   // 1. Load database on mount with IndexedDB for instant startup & Timestamp-Based Incremental Sync
@@ -1425,7 +1435,7 @@ export default function App() {
     syncCollectionToFirestore('live_exams', deduped, 'le');
   };
 
-  const updateUsersDB = (newU: User[]) => {
+  const updateUsersDB = (newU: User[], userToSync?: User) => {
     const userMap = new Map<string, User>();
     newU.forEach(u => {
       const { password, ...rest } = u as any;
@@ -1437,22 +1447,32 @@ export default function App() {
     setUsers(dedupedUsers);
     localStorage.setItem('orjon_users', JSON.stringify(dedupedUsers));
     // REQUIREMENT 3: Without verifying user's email, don't store data in Firebase
-    const verifiedUsersOnly = dedupedUsers.filter(u => u.emailVerified === true);
-    syncCollectionToFirestore('users', verifiedUsersOnly, 'user');
+    if (userToSync) {
+      if (userToSync.emailVerified === true) {
+        syncSingleUserToFirestore(userToSync);
+      }
+    } else {
+      const verifiedUsersOnly = dedupedUsers.filter(u => u.emailVerified === true);
+      verifiedUsersOnly.forEach(u => syncSingleUserToFirestore(u));
+    }
   };
 
-  const updateAttemptsDB = (newA: Attempt[]) => {
+  const updateAttemptsDB = (newA: Attempt[], attemptToSync?: Attempt) => {
     setAttempts(newA);
     localStorage.setItem('orjon_attempts', JSON.stringify(newA));
     // REQUIREMENT: Chapter/Custom/Demo exam results are stored ONLY in localStorage and NOT synced to Firebase.
     // Official Live Exam results are stored in localStorage AND synced to Firebase.
-    const officialAttemptsOnly = newA.filter(a => 
-      !a.examId.startsWith('prep_') && 
-      !a.examId.startsWith('job_') && 
-      !a.examId.startsWith('custom_') && 
-      !a.examId.startsWith('demo_')
-    );
-    syncCollectionToFirestore('attempts', officialAttemptsOnly, 'att');
+    if (attemptToSync) {
+      syncSingleAttemptToFirestore(attemptToSync);
+    } else {
+      const officialAttemptsOnly = newA.filter(a => 
+        !a.examId.startsWith('prep_') && 
+        !a.examId.startsWith('job_') && 
+        !a.examId.startsWith('custom_') && 
+        !a.examId.startsWith('demo_')
+      );
+      syncMultipleAttemptsToFirestore(officialAttemptsOnly);
+    }
   };
 
   const updateBookmarksDB = (newB: Bookmark[]) => {
@@ -1588,12 +1608,12 @@ export default function App() {
 
     // Save/update verified user in DB
     if (!users.some(u => u.email?.toLowerCase() === activeUser.email?.toLowerCase())) {
-      updateUsersDB([...users, activeUser]);
+      updateUsersDB([...users, activeUser], activeUser);
     } else {
       const updatedUsers = users.map(u => 
         u.email?.toLowerCase() === activeUser.email?.toLowerCase() ? { ...u, emailVerified: true } : u
       );
-      updateUsersDB(updatedUsers);
+      updateUsersDB(updatedUsers, activeUser);
     }
 
     setCurrentUser(activeUser);
@@ -1730,7 +1750,7 @@ export default function App() {
             if (!users.some(u => u.email?.toLowerCase() === pendingUser.email?.toLowerCase())) {
               updatedUsers.push(verifiedUser);
             }
-            updateUsersDB(updatedUsers);
+            updateUsersDB(updatedUsers, verifiedUser);
             associateGuestAttemptsWithUser(verifiedUser);
           }
           setOtpDeliveryMessage({
@@ -2958,11 +2978,12 @@ export default function App() {
       return true;
     });
 
-    updateAttemptsDB(cleanAttempts);
+    updateAttemptsDB(cleanAttempts, fullAttempt);
 
     // Update user stats in users DB
+    let activeUpdatedUser: User | null = null;
     const updatedUsers = users.map(u => {
-      if (u.phone === currentUser.phone) {
+      if (u.phone === currentUser.phone || u.userId === currentUser.userId || u.email === currentUser.email) {
         const newUserObj = {
           ...u,
           lifetimeAnswered: u.lifetimeAnswered + attempt.totalQuestions,
@@ -2971,12 +2992,13 @@ export default function App() {
         };
         // Update current session object state
         setCurrentUser(newUserObj);
+        activeUpdatedUser = newUserObj;
         return newUserObj;
       }
       return u;
     });
 
-    updateUsersDB(updatedUsers);
+    updateUsersDB(updatedUsers, activeUpdatedUser || undefined);
   };
 
   const handleUpdateUserProfile = async (updatedUser: User) => {
@@ -2988,7 +3010,7 @@ export default function App() {
         ? updatedUser 
         : u
     );
-    updateUsersDB(updatedUsers);
+    updateUsersDB(updatedUsers, updatedUser);
   };
 
   return (

@@ -1,6 +1,7 @@
 import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Course, LiveExam, Routine, Attempt } from '../types';
+import { Course, LiveExam, Routine, Attempt, User } from '../types';
+import { incrementGlobalVersion } from './sync/versionSyncService';
 
 export interface CollectionCounts {
   questions: number;
@@ -497,6 +498,114 @@ export async function syncCollectionToFirestore(colName: string, items: any[], i
   return await uploadCollectionInBatches(colName, items, idPrefix);
 }
 
+/**
+ * Saves or updates a single verified user document in Firestore.
+ * Avoids any full collection reads (0 reads, 1 write).
+ * Enforces requirement: user.emailVerified === true.
+ */
+export async function syncSingleUserToFirestore(user: User): Promise<boolean> {
+  if (!user || user.emailVerified !== true) {
+    return false;
+  }
+  try {
+    const docId = String(user.userId || user.phone || user.email || `user_${Date.now()}`);
+    const docRef = doc(db, 'users', docId);
+    const nowIso = new Date().toISOString();
+    const { password, ...rest } = user as any;
+    const cleanUser = JSON.parse(JSON.stringify({
+      ...rest,
+      id: docId,
+      userId: user.userId || docId,
+      updatedAt: (user as any).updatedAt || nowIso
+    }));
+    await setDoc(docRef, cleanUser, { merge: true });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'users'); } catch {}
+    }
+    console.warn('Failed to sync single user to Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Saves a single exam attempt to Firestore if it's an official Live Exam.
+ * Chapter/Custom/Demo exam results are stored ONLY locally.
+ * Avoids any collection reads (0 reads, 1 write).
+ */
+export async function syncSingleAttemptToFirestore(attempt: Attempt): Promise<boolean> {
+  if (!attempt) return false;
+  const isOfficial = !attempt.examId.startsWith('prep_') && 
+                     !attempt.examId.startsWith('job_') && 
+                     !attempt.examId.startsWith('custom_') && 
+                     !attempt.examId.startsWith('demo_');
+  if (!isOfficial) return false;
+
+  try {
+    const docId = String(attempt.id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+    const docRef = doc(db, 'attempts', docId);
+    const nowIso = new Date().toISOString();
+    const cleanAttempt = JSON.parse(JSON.stringify({
+      ...attempt,
+      id: docId,
+      updatedAt: (attempt as any).updatedAt || attempt.submittedAt || nowIso
+    }));
+    await setDoc(docRef, cleanAttempt, { merge: true });
+    return true;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'attempts'); } catch {}
+    }
+    console.warn('Failed to sync single attempt to Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Batch saves multiple official attempts (e.g. for guest migration) directly to Firestore
+ * using writeBatch without downloading the attempts collection (0 reads, N writes).
+ */
+export async function syncMultipleAttemptsToFirestore(attempts: Attempt[]): Promise<number> {
+  if (!Array.isArray(attempts) || attempts.length === 0) return 0;
+  const officialAttempts = attempts.filter(a => 
+    !a.examId.startsWith('prep_') && 
+    !a.examId.startsWith('job_') && 
+    !a.examId.startsWith('custom_') && 
+    !a.examId.startsWith('demo_')
+  );
+  if (officialAttempts.length === 0) return 0;
+
+  try {
+    const chunkSize = 400;
+    let count = 0;
+    const nowIso = new Date().toISOString();
+    for (let i = 0; i < officialAttempts.length; i += chunkSize) {
+      const chunk = officialAttempts.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((att, idx) => {
+        const docId = String(att.id || `att_${Date.now()}_${i + idx}`);
+        const docRef = doc(db, 'attempts', docId);
+        const cleanAttempt = JSON.parse(JSON.stringify({
+          ...att,
+          id: docId,
+          updatedAt: (att as any).updatedAt || att.submittedAt || nowIso
+        }));
+        batch.set(docRef, cleanAttempt, { merge: true });
+        count++;
+      });
+      await batch.commit();
+    }
+    return count;
+  } catch (err: any) {
+    if (err?.code === 'permission-denied') {
+      try { handleFirestoreError(err, OperationType.WRITE, 'attempts'); } catch {}
+    }
+    console.warn('Failed to sync multiple attempts to Firestore:', err);
+    return 0;
+  }
+}
+
 // Direct Firestore Course Operations
 export async function fetchCoursesFromFirestore(): Promise<Course[]> {
   try {
@@ -529,9 +638,15 @@ export async function addCourseToFirestore(course: Course): Promise<boolean> {
     const docId = String(course.id || `course_${Date.now()}`);
     const docRef = doc(db, 'courses', docId);
     const nowIso = new Date().toISOString();
+    let newVersion = (course as any).version || 1;
+    try {
+      newVersion = await incrementGlobalVersion('courseVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...course,
       id: docId,
+      version: newVersion,
       createdAt: course.createdAt || nowIso,
       updatedAt: course.updatedAt || nowIso
     }));
@@ -550,8 +665,14 @@ export async function updateCourseInFirestore(id: string, courseData: Partial<Co
   try {
     const docRef = doc(db, 'courses', String(id));
     const nowIso = new Date().toISOString();
+    let newVersion = (courseData as any).version;
+    try {
+      newVersion = await incrementGlobalVersion('courseVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...courseData,
+      version: newVersion || 1,
       updatedAt: courseData.updatedAt || nowIso
     }));
     await updateDoc(docRef, cleanItem);
@@ -568,6 +689,22 @@ export async function updateCourseInFirestore(id: string, courseData: Partial<Co
 export async function deleteCourseFromFirestore(id: string): Promise<boolean> {
   try {
     const docRef = doc(db, 'courses', String(id));
+    const nowIso = new Date().toISOString();
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('courseVersion');
+    } catch {}
+
+    // Mark as soft deleted first with bumped version so differential sync picks up deletion
+    try {
+      await updateDoc(docRef, {
+        isDeleted: true,
+        deletedAt: nowIso,
+        version: newVersion,
+        updatedAt: nowIso
+      });
+    } catch {}
+
     await deleteDoc(docRef);
     return true;
   } catch (err: any) {
@@ -654,9 +791,15 @@ export async function addLiveExamToFirestore(exam: LiveExam): Promise<boolean> {
     const docId = String(exam.id || `exam_${Date.now()}`);
     const docRef = doc(db, 'live_exams', docId);
     const nowIso = new Date().toISOString();
+    let newVersion = (exam as any).version || 1;
+    try {
+      newVersion = await incrementGlobalVersion('examVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...exam,
       id: docId,
+      version: newVersion,
       createdAt: exam.createdAt || nowIso,
       updatedAt: exam.updatedAt || nowIso
     }));
@@ -675,8 +818,14 @@ export async function updateLiveExamInFirestore(id: string, examData: Partial<Li
   try {
     const docRef = doc(db, 'live_exams', String(id));
     const nowIso = new Date().toISOString();
+    let newVersion = (examData as any).version;
+    try {
+      newVersion = await incrementGlobalVersion('examVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...examData,
+      version: newVersion || 1,
       updatedAt: examData.updatedAt || nowIso
     }));
     await updateDoc(docRef, cleanItem);
@@ -693,6 +842,21 @@ export async function updateLiveExamInFirestore(id: string, examData: Partial<Li
 export async function deleteLiveExamFromFirestore(id: string): Promise<boolean> {
   try {
     const docRef = doc(db, 'live_exams', String(id));
+    const nowIso = new Date().toISOString();
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('examVersion');
+    } catch {}
+
+    try {
+      await updateDoc(docRef, {
+        isDeleted: true,
+        deletedAt: nowIso,
+        version: newVersion,
+        updatedAt: nowIso
+      });
+    } catch {}
+
     await deleteDoc(docRef);
     return true;
   } catch (err: any) {
@@ -735,9 +899,15 @@ export async function addRoutineToFirestore(routine: Routine): Promise<boolean> 
     const docId = String(routine.id || `routine_${Date.now()}`);
     const docRef = doc(db, 'routines', docId);
     const nowIso = new Date().toISOString();
+    let newVersion = (routine as any).version || 1;
+    try {
+      newVersion = await incrementGlobalVersion('routineVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...routine,
       id: docId,
+      version: newVersion,
       createdAt: routine.createdAt || nowIso,
       updatedAt: routine.updatedAt || nowIso
     }));
@@ -756,8 +926,14 @@ export async function updateRoutineInFirestore(id: string, routineData: Partial<
   try {
     const docRef = doc(db, 'routines', String(id));
     const nowIso = new Date().toISOString();
+    let newVersion = (routineData as any).version;
+    try {
+      newVersion = await incrementGlobalVersion('routineVersion');
+    } catch {}
+
     const cleanItem = JSON.parse(JSON.stringify({
       ...routineData,
+      version: newVersion || 1,
       updatedAt: routineData.updatedAt || nowIso
     }));
     await updateDoc(docRef, cleanItem);
@@ -774,6 +950,21 @@ export async function updateRoutineInFirestore(id: string, routineData: Partial<
 export async function deleteRoutineFromFirestore(id: string): Promise<boolean> {
   try {
     const docRef = doc(db, 'routines', String(id));
+    const nowIso = new Date().toISOString();
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('routineVersion');
+    } catch {}
+
+    try {
+      await updateDoc(docRef, {
+        isDeleted: true,
+        deletedAt: nowIso,
+        version: newVersion,
+        updatedAt: nowIso
+      });
+    } catch {}
+
     await deleteDoc(docRef);
     return true;
   } catch (err: any) {

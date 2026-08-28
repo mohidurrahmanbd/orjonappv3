@@ -1,6 +1,14 @@
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { Question, Course, LiveExam, Routine, CategoryItem, SubcategoryItem } from '../types';
+import { 
+  insertCourses as insertCoursesToSQLite, 
+  deleteCourse as deleteCourseFromSQLite, 
+  insertLiveExams as insertLiveExamsToSQLite, 
+  deleteLiveExam as deleteLiveExamFromSQLite, 
+  insertRoutines as insertRoutinesToSQLite, 
+  deleteRoutine as deleteRoutineFromSQLite 
+} from './sqlite/sqliteService';
 
 const DB_NAME = 'OrjonQuestionsDB';
 const DB_VERSION = 3;
@@ -649,8 +657,12 @@ export async function upsertCoursesToIDB(
 }
 
 /**
- * Perform incremental background sync with Firestore for Courses using timestamp (updatedAt > lastCourseSyncedAt).
- * Downloads ONLY changed or newly created courses since lastCourseSyncedAt.
+ * Perform metadata-first incremental background sync with Firestore for Courses.
+ * 1. Checks `meta/versions` document in Firestore (1 doc read).
+ * 2. Compares local courseVersion with server courseVersion.
+ * 3. If version matches & local cache present: ZERO collection reads!
+ * 4. If version differs: queries only courses with `version > localCourseVersion`.
+ * 5. Updates both IndexedDB and SQLite stores.
  */
 export async function performIncrementalCourseSyncFromFirestore(
   onUpdate?: (updatedCourses: Course[]) => void
@@ -658,40 +670,83 @@ export async function performIncrementalCourseSyncFromFirestore(
   try {
     const syncStartTimeIso = new Date().toISOString();
     const meta = await getCoursesMetaFromIDB();
-    const lastCourseSyncedAt = meta?.lastCourseSyncedAt || '';
     const localCached = await getCoursesFromIDB();
+    const localVersion = meta?.version || (localCached.length > 0 ? 1 : 0);
 
-    // If never synced before or local IDB cache is empty, perform full initial sync
-    if (!lastCourseSyncedAt || localCached.length === 0) {
-      const snap = await getDocs(collection(db, 'courses'));
-      if (!snap.empty) {
-        const fetched: Course[] = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (!data.isDeleted) {
-            fetched.push(normalizeCourse({
-              ...data,
-              id: data.id || docSnap.id
-            }));
-          }
-        });
-        if (fetched.length > 0) {
-          await saveCoursesToIDB(fetched);
-          if (onUpdate) onUpdate(fetched);
-          return { hasChanges: true, totalCount: fetched.length };
+    // 1. Fetch server meta/versions
+    let serverCourseVersion = 1;
+    try {
+      const versionDocRef = doc(db, 'meta', 'versions');
+      const versionSnap = await getDoc(versionDocRef);
+      if (versionSnap.exists()) {
+        const vData = versionSnap.data();
+        if (vData.courseVersion !== undefined) {
+          serverCourseVersion = Number(vData.courseVersion);
         }
       }
-      await updateCoursesMetaTimestamp(syncStartTimeIso);
+    } catch (e) {
+      console.warn('[IndexedDB] Could not check meta/versions for courses:', e);
       return { hasChanges: false, totalCount: localCached.length };
     }
 
-    // Query ONLY course documents modified after lastCourseSyncedAt
-    const q = query(collection(db, 'courses'), where('updatedAt', '>', lastCourseSyncedAt));
+    // 2. Zero-reads optimization: If versions match and local data exists -> 0 collection reads!
+    if (localVersion >= serverCourseVersion && localCached.length > 0) {
+      console.log(`[IndexedDB] Courses up to date (v${localVersion}). 0 collection reads.`);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    // 3. Initial sync if local cache is empty
+    if (localCached.length === 0) {
+      const snap = await getDocs(collection(db, 'courses'));
+      const activeCourses: Course[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (!data.isDeleted && !data.deletedAt) {
+          activeCourses.push(normalizeCourse({
+            ...data,
+            id: String(data.id || docSnap.id),
+            version: data.version || serverCourseVersion,
+            updatedAt: data.updatedAt || syncStartTimeIso
+          }));
+        }
+      });
+
+      if (activeCourses.length > 0) {
+        await saveCoursesToIDB(activeCourses);
+        await insertCoursesToSQLite(activeCourses);
+        if (onUpdate) onUpdate(activeCourses);
+      }
+
+      // Save version to metadata
+      try {
+        const idb = await getDB();
+        const tx = idb.transaction(STORE_META, 'readwrite');
+        tx.objectStore(STORE_META).put({
+          key: 'courses_meta',
+          lastCourseSyncedAt: syncStartTimeIso,
+          count: activeCourses.length,
+          version: serverCourseVersion
+        });
+      } catch {}
+
+      return { hasChanges: activeCourses.length > 0, totalCount: activeCourses.length };
+    }
+
+    // 4. Differential sync: Query ONLY courses with version > localVersion
+    const q = query(collection(db, 'courses'), where('version', '>', localVersion));
     const snap = await getDocs(q);
 
     if (snap.empty) {
-      // 0 bandwidth & 0 reads! Update timestamp checkpoint
-      await updateCoursesMetaTimestamp(syncStartTimeIso);
+      try {
+        const idb = await getDB();
+        const tx = idb.transaction(STORE_META, 'readwrite');
+        tx.objectStore(STORE_META).put({
+          key: 'courses_meta',
+          lastCourseSyncedAt: syncStartTimeIso,
+          count: localCached.length,
+          version: serverCourseVersion
+        });
+      } catch {}
       return { hasChanges: false, totalCount: localCached.length };
     }
 
@@ -701,24 +756,40 @@ export async function performIncrementalCourseSyncFromFirestore(
     snap.forEach((docSnap) => {
       const data = docSnap.data();
       const courseId = String(data.id || docSnap.id);
-      if (data.isDeleted) {
+      if (data.isDeleted || data.deletedAt) {
         removedIds.push(courseId);
       } else {
         modifiedOrAdded.push(normalizeCourse({
           ...data,
-          id: courseId
+          id: courseId,
+          version: data.version || serverCourseVersion,
+          updatedAt: data.updatedAt || syncStartTimeIso
         }));
       }
     });
 
     if (modifiedOrAdded.length > 0 || removedIds.length > 0) {
       await upsertCoursesToIDB(modifiedOrAdded, removedIds);
+      if (modifiedOrAdded.length > 0) await insertCoursesToSQLite(modifiedOrAdded);
+      for (const id of removedIds) await deleteCourseFromSQLite(id);
+
       const freshlyMerged = await getCoursesFromIDB();
       if (onUpdate) onUpdate(freshlyMerged);
+
+      try {
+        const idb = await getDB();
+        const tx = idb.transaction(STORE_META, 'readwrite');
+        tx.objectStore(STORE_META).put({
+          key: 'courses_meta',
+          lastCourseSyncedAt: syncStartTimeIso,
+          count: freshlyMerged.length,
+          version: serverCourseVersion
+        });
+      } catch {}
+
       return { hasChanges: true, totalCount: freshlyMerged.length };
     }
 
-    await updateCoursesMetaTimestamp(syncStartTimeIso);
     return { hasChanges: false, totalCount: localCached.length };
   } catch (err) {
     console.warn('Incremental course sync notice (using local cache):', err);
@@ -987,8 +1058,12 @@ export async function updateExamsMetaTimestamp(lastExamSyncedAt: string = new Da
 }
 
 /**
- * Perform incremental background sync with Firestore for Exams (live_exams and routines) using timestamp (updatedAt > lastExamSyncedAt).
- * Downloads ONLY changed or newly created live exams and routines since lastExamSyncedAt.
+ * Perform metadata-first incremental background sync with Firestore for Exams (live_exams and routines).
+ * 1. Checks `meta/versions` document in Firestore (1 doc read).
+ * 2. Compares local examVersion & routineVersion with server versions.
+ * 3. If versions match & local cache present: ZERO collection reads!
+ * 4. If versions differ: queries only modified live_exams and routines where version > localVersion.
+ * 5. Updates both IndexedDB and SQLite stores.
  */
 export async function performIncrementalExamSyncFromFirestore(
   onUpdate?: (data: { liveExams: LiveExam[]; routines: Routine[] }) => void
@@ -996,114 +1071,166 @@ export async function performIncrementalExamSyncFromFirestore(
   try {
     const syncStartTimeIso = new Date().toISOString();
     const meta = await getExamsMetaFromIDB();
-    const lastExamSyncedAt = meta?.lastExamSyncedAt || '';
     const localLiveExams = await getLiveExamsFromIDB();
     const localRoutines = await getRoutinesFromIDB();
 
-    // If never synced before or local IDB cache is empty, perform full initial sync
-    if (!lastExamSyncedAt || (localLiveExams.length === 0 && localRoutines.length === 0)) {
-      const [snapLE, snapR] = await Promise.all([
-        getDocs(collection(db, 'live_exams')),
-        getDocs(collection(db, 'routines'))
-      ]);
+    const localExamVersion = (meta as any)?.examVersion || meta?.version || (localLiveExams.length > 0 ? 1 : 0);
+    const localRoutineVersion = (meta as any)?.routineVersion || meta?.version || (localRoutines.length > 0 ? 1 : 0);
 
-      const fetchedLE: LiveExam[] = [];
-      const fetchedR: Routine[] = [];
-
-      if (!snapLE.empty) {
-        snapLE.forEach(d => {
-          const data = d.data();
-          if (!data.isDeleted) {
-            fetchedLE.push(normalizeLiveExam({ ...data, id: data.id || d.id }));
-          }
-        });
+    // 1. Fetch server meta/versions
+    let serverExamVersion = 1;
+    let serverRoutineVersion = 1;
+    try {
+      const versionDocRef = doc(db, 'meta', 'versions');
+      const versionSnap = await getDoc(versionDocRef);
+      if (versionSnap.exists()) {
+        const vData = versionSnap.data();
+        if (vData.examVersion !== undefined) serverExamVersion = Number(vData.examVersion);
+        if (vData.routineVersion !== undefined) serverRoutineVersion = Number(vData.routineVersion);
       }
-
-      if (!snapR.empty) {
-        snapR.forEach(d => {
-          const data = d.data();
-          if (!data.isDeleted) {
-            fetchedR.push(normalizeRoutine({ ...data, id: data.id || d.id }));
-          }
-        });
-      }
-
-      if (fetchedLE.length > 0) await saveLiveExamsToIDB(fetchedLE);
-      if (fetchedR.length > 0) await saveRoutinesToIDB(fetchedR);
-
-      await updateExamsMetaTimestamp(syncStartTimeIso);
-      if (onUpdate && (fetchedLE.length > 0 || fetchedR.length > 0)) {
-        onUpdate({ liveExams: fetchedLE, routines: fetchedR });
-      }
-
-      return {
-        hasChanges: fetchedLE.length > 0 || fetchedR.length > 0,
-        liveExamChanges: fetchedLE.length,
-        routineChanges: fetchedR.length
-      };
+    } catch (e) {
+      console.warn('[IndexedDB] Could not check meta/versions for exams:', e);
+      return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
     }
 
-    // Query ONLY documents modified after lastExamSyncedAt
-    const qLE = query(collection(db, 'live_exams'), where('updatedAt', '>', lastExamSyncedAt));
-    const qR = query(collection(db, 'routines'), where('updatedAt', '>', lastExamSyncedAt));
+    // 2. Zero-reads optimization: If both versions match and local data exists -> 0 collection reads!
+    if (
+      localExamVersion >= serverExamVersion &&
+      localRoutineVersion >= serverRoutineVersion &&
+      (localLiveExams.length > 0 || localRoutines.length > 0)
+    ) {
+      console.log(`[IndexedDB] Live Exams & Routines up to date (exam v${localExamVersion}, routine v${localRoutineVersion}). 0 collection reads.`);
+      return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
+    }
 
-    const [snapLE, snapR] = await Promise.all([getDocs(qLE), getDocs(qR)]);
+    let modifiedLE: LiveExam[] = [];
+    let removedLEIds: string[] = [];
+    let modifiedR: Routine[] = [];
+    let removedRIds: string[] = [];
 
-    const modifiedLE: LiveExam[] = [];
-    const removedLEIds: string[] = [];
-
-    const modifiedR: Routine[] = [];
-    const removedRIds: string[] = [];
-
-    snapLE.forEach(docSnap => {
-      const data = docSnap.data();
-      const id = String(data.id || docSnap.id);
-      if (data.isDeleted) {
-        removedLEIds.push(id);
-      } else {
-        modifiedLE.push(normalizeLiveExam({ ...data, id }));
+    // 3. Process Live Exams
+    if (localLiveExams.length === 0) {
+      const snapLE = await getDocs(collection(db, 'live_exams'));
+      snapLE.forEach((d) => {
+        const data = d.data();
+        if (!data.isDeleted && !data.deletedAt) {
+          modifiedLE.push(normalizeLiveExam({
+            ...data,
+            id: String(data.id || d.id),
+            version: data.version || serverExamVersion,
+            updatedAt: data.updatedAt || syncStartTimeIso
+          }));
+        }
+      });
+      if (modifiedLE.length > 0) {
+        await saveLiveExamsToIDB(modifiedLE);
+        await insertLiveExamsToSQLite(modifiedLE);
       }
-    });
+    } else if (serverExamVersion > localExamVersion) {
+      const qLE = query(collection(db, 'live_exams'), where('version', '>', localExamVersion));
+      const snapLE = await getDocs(qLE);
+      snapLE.forEach((docSnap) => {
+        const data = docSnap.data();
+        const id = String(data.id || docSnap.id);
+        if (data.isDeleted || data.deletedAt) {
+          removedLEIds.push(id);
+        } else {
+          modifiedLE.push(normalizeLiveExam({
+            ...data,
+            id,
+            version: data.version || serverExamVersion,
+            updatedAt: data.updatedAt || syncStartTimeIso
+          }));
+        }
+      });
 
-    snapR.forEach(docSnap => {
-      const data = docSnap.data();
-      const id = String(data.id || docSnap.id);
-      if (data.isDeleted) {
-        removedRIds.push(id);
-      } else {
-        modifiedR.push(normalizeRoutine({ ...data, id }));
+      if (modifiedLE.length > 0 || removedLEIds.length > 0) {
+        await upsertLiveExamsToIDB(modifiedLE, removedLEIds);
+        if (modifiedLE.length > 0) await insertLiveExamsToSQLite(modifiedLE);
+        for (const id of removedLEIds) await deleteLiveExamFromSQLite(id);
       }
-    });
+    }
+
+    // 4. Process Routines
+    if (localRoutines.length === 0) {
+      const snapR = await getDocs(collection(db, 'routines'));
+      snapR.forEach((d) => {
+        const data = d.data();
+        if (!data.isDeleted && !data.deletedAt) {
+          modifiedR.push(normalizeRoutine({
+            ...data,
+            id: String(data.id || d.id),
+            version: data.version || serverRoutineVersion,
+            updatedAt: data.updatedAt || syncStartTimeIso
+          }));
+        }
+      });
+      if (modifiedR.length > 0) {
+        await saveRoutinesToIDB(modifiedR);
+        await insertRoutinesToSQLite(modifiedR);
+      }
+    } else if (serverRoutineVersion > localRoutineVersion) {
+      const qR = query(collection(db, 'routines'), where('version', '>', localRoutineVersion));
+      const snapR = await getDocs(qR);
+      snapR.forEach((docSnap) => {
+        const data = docSnap.data();
+        const id = String(data.id || docSnap.id);
+        if (data.isDeleted || data.deletedAt) {
+          removedRIds.push(id);
+        } else {
+          modifiedR.push(normalizeRoutine({
+            ...data,
+            id,
+            version: data.version || serverRoutineVersion,
+            updatedAt: data.updatedAt || syncStartTimeIso
+          }));
+        }
+      });
+
+      if (modifiedR.length > 0 || removedRIds.length > 0) {
+        await upsertRoutinesToIDB(modifiedR, removedRIds);
+        if (modifiedR.length > 0) await insertRoutinesToSQLite(modifiedR);
+        for (const id of removedRIds) await deleteRoutineFromSQLite(id);
+      }
+    }
 
     const hasLEChanges = modifiedLE.length > 0 || removedLEIds.length > 0;
     const hasRChanges = modifiedR.length > 0 || removedRIds.length > 0;
 
-    if (hasLEChanges) {
-      await upsertLiveExamsToIDB(modifiedLE, removedLEIds);
-    }
-    if (hasRChanges) {
-      await upsertRoutinesToIDB(modifiedR, removedRIds);
-    }
-
-    if (hasLEChanges || hasRChanges) {
+    // 5. Update metadata store
+    try {
       const [freshLE, freshR] = await Promise.all([
         getLiveExamsFromIDB(),
         getRoutinesFromIDB()
       ]);
-      await updateExamsMetaTimestamp(syncStartTimeIso);
-      if (onUpdate) {
+      const idb = await getDB();
+      const tx = idb.transaction(STORE_META, 'readwrite');
+      tx.objectStore(STORE_META).put({
+        key: 'exams_meta',
+        lastExamSyncedAt: syncStartTimeIso,
+        liveExamCount: freshLE.length,
+        routineCount: freshR.length,
+        version: Math.max(serverExamVersion, serverRoutineVersion),
+        examVersion: serverExamVersion,
+        routineVersion: serverRoutineVersion
+      });
+
+      if ((hasLEChanges || hasRChanges) && onUpdate) {
         onUpdate({ liveExams: freshLE, routines: freshR });
       }
+
       return {
-        hasChanges: true,
+        hasChanges: hasLEChanges || hasRChanges,
+        liveExamChanges: modifiedLE.length + removedLEIds.length,
+        routineChanges: modifiedR.length + removedRIds.length
+      };
+    } catch {
+      return {
+        hasChanges: hasLEChanges || hasRChanges,
         liveExamChanges: modifiedLE.length,
         routineChanges: modifiedR.length
       };
     }
-
-    // Zero changes, update checkpoint timestamp
-    await updateExamsMetaTimestamp(syncStartTimeIso);
-    return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
   } catch (err) {
     console.warn('Incremental exam sync notice (using local cache):', err);
     return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
