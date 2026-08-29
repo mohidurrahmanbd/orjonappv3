@@ -4,6 +4,7 @@
   html, body {
     max-width: 100vw;
     overflow-x: hidden;
+    font-family: 'Hind Siliguri', 'Noto Sans Bengali', system-ui, -apple-system, sans-serif;
     font-size: 20.21px;
     letter-spacing: -0.01em;
     user-select: none;
