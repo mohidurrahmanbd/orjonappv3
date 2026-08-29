@@ -146,6 +146,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Meta collection (versioning and system metadata)
+    match /meta/{metaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Default deny for unhandled paths
     match /{document=**} {
       allow read, write: if false;

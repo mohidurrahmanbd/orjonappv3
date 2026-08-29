@@ -179,9 +179,27 @@
       "properties": {
         "status": { "type": "string" }
       }
+    },
+    "Meta": {
+      "title": "Meta",
+      "description": "Global sync versions and metadata",
+      "type": "object",
+      "properties": {
+        "questionVersion": { "type": "number" },
+        "categoryVersion": { "type": "number" },
+        "subcategoryVersion": { "type": "number" },
+        "courseVersion": { "type": "number" },
+        "examVersion": { "type": "number" },
+        "routineVersion": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
+    "/meta/{metaId}": {
+      "schema": "Meta",
+      "description": "System metadata and version control collection"
+    },
     "/questions/{questionId}": {
       "schema": "Question",
       "description": "Question collection"

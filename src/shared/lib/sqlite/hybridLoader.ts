@@ -1,4 +1,4 @@
-import { doc, getDoc, getDocs, collection, query, where, documentId } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, documentId, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Question, CategoryItem, SubcategoryItem, LiveExam, Routine, Course } from '../../types';
 import { 
@@ -6,14 +6,23 @@ import {
   getQuestionsByCategory, 
   getQuestionsBySubcategory,
   insertQuestions,
-  getAllCategories,
   getCategoryById,
   insertCategories,
-  getAllSubcategories,
   getSubcategoryById,
   insertSubcategories
 } from './sqliteService';
-import { upsertQuestionsToIDB, saveCategoriesToIDB, saveSubcategoriesToIDB } from '../indexedDB';
+import { 
+  getQuestionsFromIDB, 
+  upsertQuestionsToIDB, 
+  saveCategoriesToIDB, 
+  saveSubcategoriesToIDB, 
+  normalizeQuestion 
+} from '../indexedDB';
+import { 
+  getGlobalSyncVersions, 
+  getLocalSyncVersions, 
+  saveLocalSyncVersions 
+} from '../sync/versionSyncService';
 
 export interface HybridLoadResult {
   questions: Question[];
@@ -23,11 +32,21 @@ export interface HybridLoadResult {
   missingQuestionsFetched: number;
 }
 
+export interface ScopedQuestionQuery {
+  categoryName?: string;
+  subcategoryName?: string;
+  topic?: string;
+  examId?: string;
+  questionIds?: string[];
+  limitCount?: number;
+  forceRefresh?: boolean;
+}
+
 /**
  * Normalizes question object before saving/displaying
  */
 function normalizeQuestionDoc(data: any, id: string): Question {
-  return {
+  return normalizeQuestion({
     ...data,
     id: data.id || id,
     categories: data.categories || (data.categoriesJson ? JSON.parse(data.categoriesJson) : undefined),
@@ -36,11 +55,11 @@ function normalizeQuestionDoc(data: any, id: string): Question {
     subjectPath: data.subjectPath || (data.subjectPathJson ? JSON.parse(data.subjectPathJson) : undefined),
     comments: data.comments || (data.commentsJson ? JSON.parse(data.commentsJson) : undefined),
     userExplanations: data.userExplanations || (data.userExplanationsJson ? JSON.parse(data.userExplanationsJson) : undefined)
-  };
+  });
 }
 
 /**
- * Fetches missing question IDs in chunks from Firestore
+ * Fetches missing question IDs in chunks of 30 from Firestore
  */
 async function fetchMissingQuestionsFromFirestore(missingIds: string[]): Promise<Question[]> {
   if (!missingIds || missingIds.length === 0) return [];
@@ -51,24 +70,29 @@ async function fetchMissingQuestionsFromFirestore(missingIds: string[]): Promise
   for (let i = 0; i < missingIds.length; i += CHUNK_SIZE) {
     const chunk = missingIds.slice(i, i + CHUNK_SIZE);
     try {
-      // Attempt query with documentId() 'in' filter
       const q = query(collection(db, 'questions'), where(documentId(), 'in', chunk));
       const snap = await getDocs(q);
       
       const foundInChunk = new Set<string>();
       snap.forEach((d) => {
-        foundInChunk.add(d.id);
-        fetchedQuestions.push(normalizeQuestionDoc(d.data(), d.id));
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          foundInChunk.add(d.id);
+          fetchedQuestions.push(normalizeQuestionDoc(data, d.id));
+        }
       });
 
-      // For any IDs not found by doc ID query, fetch individually by doc(db, 'questions', id) or 'id' field
+      // For any IDs not found by doc ID query, fetch individually as fallback
       const remaining = chunk.filter(id => !foundInChunk.has(id));
       if (remaining.length > 0) {
         for (const remId of remaining) {
           try {
             const singleSnap = await getDoc(doc(db, 'questions', remId));
             if (singleSnap.exists()) {
-              fetchedQuestions.push(normalizeQuestionDoc(singleSnap.data(), singleSnap.id));
+              const data = singleSnap.data();
+              if (!data.deletedAt && !data.isDeleted) {
+                fetchedQuestions.push(normalizeQuestionDoc(data, singleSnap.id));
+              }
             }
           } catch (e) {
             console.warn(`[HybridLoader] Doc fetch fallback for ${remId}:`, e);
@@ -81,7 +105,10 @@ async function fetchMissingQuestionsFromFirestore(missingIds: string[]): Promise
         try {
           const singleSnap = await getDoc(doc(db, 'questions', id));
           if (singleSnap.exists()) {
-            fetchedQuestions.push(normalizeQuestionDoc(singleSnap.data(), singleSnap.id));
+            const data = singleSnap.data();
+            if (!data.deletedAt && !data.isDeleted) {
+              fetchedQuestions.push(normalizeQuestionDoc(data, singleSnap.id));
+            }
           }
         } catch (e) {
           console.warn(`[HybridLoader] Single question fetch error for ${id}:`, e);
@@ -91,6 +118,158 @@ async function fetchMissingQuestionsFromFirestore(missingIds: string[]): Promise
   }
 
   return fetchedQuestions;
+}
+
+/**
+ * Version-aware scoped question lazy loader:
+ * Loading priority:
+ * 1. React Memory & Local Cache (SQLite / IndexedDB)
+ * 2. meta/versions check
+ * 3. Targeted scoped Firestore fetch (only if local missing or version outdated)
+ * 4. Local cache update (IndexedDB + SQLite)
+ */
+export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Promise<Question[]> {
+  try {
+    const boundLimit = target.limitCount || 100;
+    let localMatches: Question[] = [];
+
+    // 1. Check local SQLite and IndexedDB
+    if (target.questionIds && target.questionIds.length > 0) {
+      const rawIds = target.questionIds.map(String);
+      const sqliteQs = await getQuestionsByIds(rawIds);
+      localMatches = sqliteQs;
+    } else if (target.subcategoryName) {
+      const sub = target.subcategoryName.trim();
+      const sqliteQs = await getQuestionsBySubcategory(sub);
+      if (sqliteQs.length > 0) {
+        localMatches = sqliteQs;
+      } else {
+        const idbQs = await getQuestionsFromIDB();
+        const subLower = sub.toLowerCase();
+        localMatches = idbQs.filter(q => 
+          (q.subcategory && q.subcategory.trim().toLowerCase() === subLower) ||
+          (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === subLower))
+        );
+      }
+    } else if (target.categoryName) {
+      const cat = target.categoryName.trim();
+      const sqliteQs = await getQuestionsByCategory(cat);
+      if (sqliteQs.length > 0) {
+        localMatches = sqliteQs;
+      } else {
+        const idbQs = await getQuestionsFromIDB();
+        const catLower = cat.toLowerCase();
+        localMatches = idbQs.filter(q => 
+          (q.category && q.category.trim().toLowerCase() === catLower) ||
+          (q.csvCategory && q.csvCategory.trim().toLowerCase() === catLower) ||
+          (q.categories && q.categories.some(c => c.trim().toLowerCase() === catLower))
+        );
+      }
+    } else if (target.examId) {
+      const idbQs = await getQuestionsFromIDB();
+      localMatches = idbQs.filter(q => (q as any).examId === target.examId);
+    }
+
+    // 2. Version Gating: Check server meta/versions vs local sync version
+    let isServerVersionNewer = false;
+    let serverQuestionVersion = 1;
+    try {
+      const serverVersions = await getGlobalSyncVersions();
+      const localVersions = await getLocalSyncVersions();
+      serverQuestionVersion = serverVersions.questionVersion || 1;
+      const localQuestionVersion = localVersions.questionVersion || 0;
+
+      if (serverQuestionVersion > localQuestionVersion) {
+        isServerVersionNewer = true;
+      }
+    } catch {
+      // If version check fails, rely on presence of local matches
+    }
+
+    // If local matches exist and server version is NOT newer and not forced -> Return immediately with 0 Firestore reads!
+    if (localMatches.length > 0 && !isServerVersionNewer && !target.forceRefresh) {
+      return localMatches;
+    }
+
+    // 3. Targeted Firestore Fetch (Bounded & Scoped)
+    let fetchedFromFirestore: Question[] = [];
+    const qColRef = collection(db, 'questions');
+
+    if (target.questionIds && target.questionIds.length > 0) {
+      const existingIdSet = new Set(localMatches.map(q => String(q.id)));
+      const missingIds = target.questionIds.map(String).filter(id => !existingIdSet.has(id));
+      if (missingIds.length > 0) {
+        const missingFetched = await fetchMissingQuestionsFromFirestore(missingIds);
+        fetchedFromFirestore.push(...missingFetched);
+      }
+    } else if (target.subcategoryName) {
+      const qSub = query(
+        qColRef, 
+        where('subcategory', '==', target.subcategoryName),
+        limit(boundLimit)
+      );
+      const snap = await getDocs(qSub);
+      snap.forEach(d => {
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          fetchedFromFirestore.push(normalizeQuestionDoc(data, d.id));
+        }
+      });
+    } else if (target.categoryName) {
+      const qCat = query(
+        qColRef, 
+        where('category', '==', target.categoryName),
+        limit(boundLimit)
+      );
+      const snap = await getDocs(qCat);
+      snap.forEach(d => {
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          fetchedFromFirestore.push(normalizeQuestionDoc(data, d.id));
+        }
+      });
+    } else if (target.examId) {
+      const qExam = query(
+        qColRef, 
+        where('examId', '==', target.examId),
+        limit(boundLimit)
+      );
+      const snap = await getDocs(qExam);
+      snap.forEach(d => {
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          fetchedFromFirestore.push(normalizeQuestionDoc(data, d.id));
+        }
+      });
+    }
+
+    // 4. Local Cache Update
+    if (fetchedFromFirestore.length > 0) {
+      await insertQuestions(fetchedFromFirestore);
+      await upsertQuestionsToIDB(fetchedFromFirestore, []);
+
+      // Merge results
+      const map = new Map<string, Question>();
+      localMatches.forEach(q => map.set(String(q.id), q));
+      fetchedFromFirestore.forEach(q => map.set(String(q.id), q));
+      const combined = Array.from(map.values());
+
+      // Update local question version if server version was newer
+      if (isServerVersionNewer) {
+        const localVersions = await getLocalSyncVersions();
+        localVersions.questionVersion = serverQuestionVersion;
+        localVersions.updatedAt = new Date().toISOString();
+        await saveLocalSyncVersions(localVersions);
+      }
+
+      return combined;
+    }
+
+    return localMatches;
+  } catch (err) {
+    console.warn('[HybridLoader] loadScopedQuestionsLazy notice (using local cache):', err);
+    return [];
+  }
 }
 
 /**
@@ -106,6 +285,7 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
   subcategoryIds?: string[];
   categoryName?: string;
   subcategoryName?: string;
+  forceRefresh?: boolean;
 }): Promise<HybridLoadResult> {
   const resultQuestions: Question[] = [];
   const resultCategories: CategoryItem[] = [];
@@ -121,7 +301,6 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
       if (localCat) {
         resultCategories.push(localCat);
       } else {
-        // Fetch missing category from Firestore
         try {
           const snap = await getDoc(doc(db, 'categories', catId));
           if (snap.exists()) {
@@ -144,7 +323,6 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
       if (localSub) {
         resultSubcategories.push(localSub);
       } else {
-        // Fetch missing subcategory from Firestore
         try {
           const snap = await getDoc(doc(db, 'subcategories', subId));
           if (snap.exists()) {
@@ -176,28 +354,24 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
   // ------------------------------------------
   if (target.questionIds && target.questionIds.length > 0) {
     const rawIds = target.questionIds.map(String);
-    // 1. Query SQLite for matching IDs
     const sqliteQuestions = await getQuestionsByIds(rawIds);
     const sqliteFoundMap = new Map<string, Question>();
     sqliteQuestions.forEach(q => sqliteFoundMap.set(String(q.id), q));
 
-    // 2. Identify missing IDs
     const missingIds = rawIds.filter(id => !sqliteFoundMap.has(id));
 
     if (missingIds.length > 0) {
-      console.log(`[HybridLoader] ${missingIds.length} questions not found in local SQLite. Fetching missing from Firestore...`);
+      console.log(`[HybridLoader] ${missingIds.length} questions missing locally. Fetching targeted chunk from Firestore...`);
       const fetched = await fetchMissingQuestionsFromFirestore(missingIds);
       missingQuestionsCount = fetched.length;
 
       if (fetched.length > 0) {
-        // 3. Store newly downloaded records locally in SQLite & IDB
         await insertQuestions(fetched);
         await upsertQuestionsToIDB(fetched, []);
         fetched.forEach(q => sqliteFoundMap.set(String(q.id), q));
       }
     }
 
-    // Assemble questions in requested order
     rawIds.forEach(id => {
       const found = sqliteFoundMap.get(id);
       if (found) {
@@ -214,31 +388,21 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
     };
   }
 
-  // If no explicit question IDs provided, load by category / subcategory from SQLite
-  if (target.subcategoryName) {
-    const localQuestions = await getQuestionsBySubcategory(target.subcategoryName);
-    if (localQuestions.length > 0) {
-      return {
-        questions: localQuestions,
-        categories: resultCategories,
-        subcategories: resultSubcategories,
-        source: 'sqlite',
-        missingQuestionsFetched: 0
-      };
-    }
-  }
+  // If no explicit question IDs, use scoped lazy loader
+  if (target.subcategoryName || target.categoryName) {
+    const scopedQs = await loadScopedQuestionsLazy({
+      categoryName: target.categoryName,
+      subcategoryName: target.subcategoryName,
+      forceRefresh: target.forceRefresh
+    });
 
-  if (target.categoryName) {
-    const localQuestions = await getQuestionsByCategory(target.categoryName);
-    if (localQuestions.length > 0) {
-      return {
-        questions: localQuestions,
-        categories: resultCategories,
-        subcategories: resultSubcategories,
-        source: 'sqlite',
-        missingQuestionsFetched: 0
-      };
-    }
+    return {
+      questions: scopedQs,
+      categories: resultCategories,
+      subcategories: resultSubcategories,
+      source: 'hybrid',
+      missingQuestionsFetched: 0
+    };
   }
 
   return {

@@ -65,7 +65,8 @@ import {
   insertCategories as insertSQLiteCategories,
   insertSubcategories as insertSQLiteSubcategories,
   insertQuestions as insertSQLiteQuestions,
-  loadDataForExamOrRoutineOrCourse
+  loadDataForExamOrRoutineOrCourse,
+  loadScopedQuestionsLazy
 } from '../shared/lib/sqlite';
 import { 
   createUserWithEmailAndPassword, 
@@ -495,18 +496,8 @@ export default function MobileApp() {
       console.warn("IndexedDB exams initialization notice:", err);
     });
 
-    // Background incremental sync
-    performIncrementalSyncFromFirestore((updatedQuestions) => {
-      if (updatedQuestions && updatedQuestions.length > 0) {
-        const dedupedQ = dedupeQuestions(updatedQuestions);
-        setQuestions(dedupedQ);
-        try {
-          localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
-        } catch (e) {}
-        syncSubcategoriesWithFirestoreQuestions(dedupedQ);
-      }
-    }).catch(err => {});
-
+    // Background incremental sync for Courses and Exams
+    // Questions use version-gated page-level lazy synchronization
     performIncrementalCourseSyncFromFirestore((updatedCourses) => {
       if (updatedCourses && updatedCourses.length > 0) {
         const dedupedC = dedupeCourses(updatedCourses);
@@ -1137,34 +1128,14 @@ export default function MobileApp() {
 
   const handleFetchQuestionsLazy = async (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }): Promise<Question[]> => {
     try {
-      // 1. Attempt hybrid loader: checks local SQLite first, then Firestore for missing records
-      const hybridRes = await loadDataForExamOrRoutineOrCourse({
-        categoryName: filter.category,
-        subcategoryName: filter.subcategory
-      });
-
-      if (hybridRes.questions && hybridRes.questions.length > 0) {
-        setQuestions(prev => {
-          const map = new Map<string, Question>();
-          prev.forEach(q => map.set(q.id, q));
-          hybridRes.questions.forEach(q => map.set(q.id, q));
-          const merged = Array.from(map.values());
-          saveQuestionsToIDB(merged);
-          return merged;
-        });
-        return hybridRes.questions;
-      }
-
-      // 2. Fallback to fetchQuestionsLazyFromFirestore if not found
-      const fetched = await fetchQuestionsLazyFromFirestore(filter);
+      const fetched = await loadScopedQuestionsLazy(filter);
       if (fetched && fetched.length > 0) {
         setQuestions(prev => {
           const map = new Map<string, Question>();
-          prev.forEach(q => map.set(q.id, q));
-          fetched.forEach(q => map.set(q.id, q));
+          prev.forEach(q => map.set(String(q.id), q));
+          fetched.forEach(q => map.set(String(q.id), q));
           const merged = Array.from(map.values());
           saveQuestionsToIDB(merged);
-          insertSQLiteQuestions(fetched).catch(() => {});
           return merged;
         });
       }
