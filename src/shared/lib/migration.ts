@@ -359,10 +359,15 @@ export async function addQuestionToFirestore(question: any): Promise<boolean> {
   try {
     const docId = String(question.id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
     const docRef = doc(db, 'questions', docId);
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('questionVersion');
+    } catch {}
     const now = Date.now();
     const cleanItem = JSON.parse(JSON.stringify({
       ...question,
       id: docId,
+      version: question?.version || newVersion,
       updatedAt: question?.updatedAt || now
     }));
     await setDoc(docRef, cleanItem, { merge: true });
@@ -379,9 +384,14 @@ export async function addQuestionToFirestore(question: any): Promise<boolean> {
 export async function updateQuestionInFirestore(id: string, questionData: any): Promise<boolean> {
   try {
     const docRef = doc(db, 'questions', String(id));
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('questionVersion');
+    } catch {}
     const now = Date.now();
     const cleanItem = JSON.parse(JSON.stringify({
       ...questionData,
+      version: questionData?.version || newVersion,
       updatedAt: questionData?.updatedAt || now
     }));
     await updateDoc(docRef, cleanItem);
@@ -398,6 +408,20 @@ export async function updateQuestionInFirestore(id: string, questionData: any): 
 export async function deleteQuestionFromFirestore(id: string): Promise<boolean> {
   try {
     const docRef = doc(db, 'questions', String(id));
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('questionVersion');
+    } catch {}
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+    try {
+      await setDoc(docRef, {
+        isDeleted: true,
+        deletedAt: nowIso,
+        version: newVersion,
+        updatedAt: nowMs
+      }, { merge: true });
+    } catch {}
     await deleteDoc(docRef);
     return true;
   } catch (err: any) {
@@ -414,7 +438,12 @@ export async function bulkUploadQuestionsToFirestore(items: any[]): Promise<numb
 }
 
 export async function bulkDeleteQuestionsFromFirestore(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
   try {
+    let newVersion = 1;
+    try {
+      newVersion = await incrementGlobalVersion('questionVersion');
+    } catch {}
     const chunkSize = 400;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
@@ -488,15 +517,19 @@ export async function deleteItemFromFirestore(colName: string, id: string): Prom
       try {
         newVersion = await incrementGlobalVersion(versionKey);
       } catch {}
+      // Update with tombstone so incremental differential sync detects deletion across devices
       try {
-        await updateDoc(docRef, {
+        await setDoc(docRef, {
           isDeleted: true,
           deletedAt: nowIso,
           version: newVersion,
           updatedAt: nowIso
-        });
-      } catch {}
+        }, { merge: true });
+      } catch (err) {
+        console.warn(`Tombstone update notice for ${colName}/${id}:`, err);
+      }
     }
+    // Delete document directly in Firestore
     await deleteDoc(docRef);
     return true;
   } catch (err) {

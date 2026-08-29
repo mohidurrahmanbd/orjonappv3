@@ -21,6 +21,7 @@ import {
   fetchCollectionFromFirestore,
   saveItemToFirestore,
   deleteItemFromFirestore,
+  bulkDeleteItemsFromFirestore,
   syncCollectionToFirestore,
   syncSingleUserToFirestore,
   syncSingleAttemptToFirestore,
@@ -29,18 +30,26 @@ import {
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
+  upsertQuestionsToIDB,
   performIncrementalSyncFromFirestore,
   fetchQuestionsLazyFromFirestore,
   getCoursesFromIDB,
   saveCoursesToIDB,
+  upsertCoursesToIDB,
   performIncrementalCourseSyncFromFirestore,
   getLiveExamsFromIDB,
   saveLiveExamsToIDB,
+  upsertLiveExamsToIDB,
   getRoutinesFromIDB,
   saveRoutinesToIDB,
+  upsertRoutinesToIDB,
   performIncrementalExamSyncFromFirestore,
+  getCategoriesFromIDB,
   saveCategoriesToIDB,
-  saveSubcategoriesToIDB
+  upsertCategoriesToIDB,
+  getSubcategoriesFromIDB,
+  saveSubcategoriesToIDB,
+  upsertSubcategoriesToIDB
 } from '../shared/lib/indexedDB';
 import { 
   initSQLite, 
@@ -50,6 +59,13 @@ import {
   insertCategories as insertSQLiteCategories,
   insertSubcategories as insertSQLiteSubcategories,
   insertQuestions as insertSQLiteQuestions,
+  deleteCourse as deleteCourseFromSQLite,
+  deleteLiveExam as deleteLiveExamFromSQLite,
+  deleteRoutine as deleteRoutineFromSQLite,
+  deleteQuestion as deleteQuestionFromSQLite,
+  deleteQuestions as deleteQuestionsFromSQLite,
+  deleteCategory as deleteCategoryFromSQLite,
+  deleteSubcategory as deleteSubcategoryFromSQLite,
   loadDataForExamOrRoutineOrCourse,
   loadScopedQuestionsLazy
 } from '../shared/lib/sqlite';
@@ -666,6 +682,20 @@ export default function App() {
       }
     }).catch(err => {
       console.warn("Background exams incremental sync notice:", err);
+    });
+
+    // Background incremental question sync
+    performIncrementalSyncFromFirestore((updatedQuestions) => {
+      if (updatedQuestions && updatedQuestions.length > 0) {
+        setQuestions(prev => {
+          const idMap = new Map<string | number, Question>();
+          prev.forEach(q => idMap.set(String(q.id), q));
+          updatedQuestions.forEach(q => idMap.set(String(q.id), q));
+          return Array.from(idMap.values());
+        });
+      }
+    }).catch(err => {
+      console.warn("Background questions incremental sync notice:", err);
     });
 
     // Audit logs initial seed (Local Cache)
@@ -2166,27 +2196,38 @@ export default function App() {
     addAuditLog('প্রশ্ন আপডেট (Update)', `প্রশ্ন সম্পাদনা/আপডেট করা হয়েছে (ID: ${id})`, 'update');
   };
 
-  const handleDeleteQuestion = (id: string) => {
+  const handleDeleteQuestion = async (id: string): Promise<boolean> => {
     const targetQ = questions.find(item => item.id === id);
     const qSnippet = targetQ ? `"${targetQ.text.slice(0, 45)}..."` : `ID: ${id}`;
+    const ok = await deleteQuestionFromFirestore(id);
+    if (!ok) return false;
     const updatedQ = questions.filter(item => item.id !== id);
     updateQuestionsDB(updatedQ);
-    deleteQuestionFromFirestore(id);
+    try {
+      await deleteQuestionFromSQLite(id);
+    } catch {}
 
     // Clean bookmarks for this question
     const updatedB = bookmarks.filter(b => b.questionId !== id);
     updateBookmarksDB(updatedB);
     addAuditLog('প্রশ্ন মুছে ফেলা (Delete)', `প্রশ্ন সরাসরি মুছে ফেলা হয়েছে: ${qSnippet}`, 'delete');
+    return true;
   };
 
-  const handleBulkDeleteQuestions = (ids: string[]) => {
+  const handleBulkDeleteQuestions = async (ids: string[]): Promise<boolean> => {
+    if (!ids || ids.length === 0) return true;
+    const ok = await bulkDeleteQuestionsFromFirestore(ids);
+    if (!ok) return false;
     const updatedQ = questions.filter(item => !ids.includes(item.id));
     updateQuestionsDB(updatedQ);
-    bulkDeleteQuestionsFromFirestore(ids);
+    try {
+      await deleteQuestionsFromSQLite(ids);
+    } catch {}
 
     const updatedB = bookmarks.filter(b => !ids.includes(b.questionId));
     updateBookmarksDB(updatedB);
     addAuditLog('বাল্ক প্রশ্ন ডিলিট (Bulk Delete)', `একসাথে ${ids.length} টি প্রশ্ন মুছে ফেলা হয়েছে`, 'bulk');
+    return true;
   };
 
   const handleBulkMoveQuestions = (ids: string[], targetCategory: string, targetSubcategory?: string, mode: 'move' | 'link' = 'move') => {
@@ -2355,10 +2396,19 @@ export default function App() {
     addAuditLog('লাইভ পরীক্ষা আপডেট (Update Exam)', `লাইভ পরীক্ষা আপডেট করা হয়েছে (ID: ${id})`, 'exam');
   };
 
-  const handleDeleteLiveExam = (id: string) => {
+  const handleDeleteLiveExam = async (id: string): Promise<boolean> => {
     const target = liveExams.find(e => e.id === id);
-    updateLiveExamsDB(liveExams.filter(item => item.id !== id));
+    const ok = await deleteItemFromFirestore('live_exams', id);
+    if (!ok) return false;
+    const remaining = liveExams.filter(item => item.id !== id);
+    setLiveExams(remaining);
+    localStorage.setItem('orjon_live_exams', JSON.stringify(remaining));
+    await upsertLiveExamsToIDB([], [id]);
+    try {
+      await deleteLiveExamFromSQLite(id);
+    } catch {}
     addAuditLog('লাইভ পরীক্ষা মুছে ফেলা (Delete Exam)', `লাইভ পরীক্ষা মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'exam');
+    return true;
   };
 
   const handleSaveCourse = (cData: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -2380,10 +2430,19 @@ export default function App() {
     addAuditLog('কোর্স আপডেট (Update Course)', `কোর্স আপডেট করা হয়েছে (ID: ${id})`, 'other');
   };
 
-  const handleDeleteCourse = (id: string) => {
+  const handleDeleteCourse = async (id: string): Promise<boolean> => {
     const target = courses.find(c => c.id === id);
-    updateCoursesDB(courses.filter(item => item.id !== id));
+    const ok = await deleteItemFromFirestore('courses', id);
+    if (!ok) return false;
+    const remaining = courses.filter(item => item.id !== id);
+    setCourses(remaining);
+    localStorage.setItem('orjon_courses', JSON.stringify(remaining));
+    await upsertCoursesToIDB([], [id]);
+    try {
+      await deleteCourseFromSQLite(id);
+    } catch {}
     addAuditLog('কোর্স মুছে ফেলা (Delete Course)', `কোর্স মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'other');
+    return true;
   };
 
   const handleSaveCoupon = (couponData: Omit<Coupon, 'id' | 'createdAt'>) => {
@@ -2411,14 +2470,16 @@ export default function App() {
     addAuditLog('কুপন আপডেট (Update Coupon)', `ID: ${id}`, 'update');
   };
 
-  const handleDeleteCoupon = (id: string) => {
+  const handleDeleteCoupon = async (id: string): Promise<boolean> => {
+    const ok = await deleteItemFromFirestore('coupons', id);
+    if (!ok) return false;
     setCoupons(prev => {
       const updated = prev.filter(c => c.id !== id);
       localStorage.setItem('orjon_coupons', JSON.stringify(updated));
-      syncCollectionToFirestore('coupons', updated, 'item');
       return updated;
     });
     addAuditLog('কুপন মুছে ফেলা (Delete Coupon)', `ID: ${id}`, 'delete');
+    return true;
   };
 
   const handleEnrollCourse = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
@@ -2455,14 +2516,16 @@ export default function App() {
     addAuditLog('পেমেন্ট সেটিংস পরিবর্তন', `বিকাশ: ${newSettings.bkashNumber} (${newSettings.bkashType}), নগদ: ${newSettings.nagadNumber}, রকেট: ${newSettings.rocketNumber}`, 'update');
   };
 
-  const handleDeleteEnrollment = (id: string) => {
+  const handleDeleteEnrollment = async (id: string): Promise<boolean> => {
+    const ok = await deleteItemFromFirestore('course_enrollments', id);
+    if (!ok) return false;
     setCourseEnrollments(prev => {
       const updated = prev.filter(e => e.id !== id);
       localStorage.setItem('orjon_course_enrollments', JSON.stringify(updated));
-      syncCollectionToFirestore('course_enrollments', updated, 'item');
       return updated;
     });
     addAuditLog('এনরোলমেন্ট মুছে ফেলা (Delete Enrollment)', `ID: ${id}`, 'delete');
+    return true;
   };
 
   const handleSaveRoutine = (
@@ -2529,10 +2592,19 @@ export default function App() {
     addAuditLog('রুটিন আপডেট (Update Routine)', `রুটিন আপডেট করা হয়েছে (ID: ${id})`, 'routine');
   };
 
-  const handleDeleteRoutine = (id: string) => {
+  const handleDeleteRoutine = async (id: string): Promise<boolean> => {
     const target = routines.find(r => r.id === id);
-    updateRoutinesDB(routines.filter(item => item.id !== id));
+    const ok = await deleteItemFromFirestore('routines', id);
+    if (!ok) return false;
+    const remaining = routines.filter(item => item.id !== id);
+    setRoutines(remaining);
+    localStorage.setItem('orjon_routines', JSON.stringify(remaining));
+    await upsertRoutinesToIDB([], [id]);
+    try {
+      await deleteRoutineFromSQLite(id);
+    } catch {}
     addAuditLog('রুটিন মুছে ফেলা (Delete Routine)', `রুটিন মুছে ফেলা হয়েছে: "${target ? target.title : id}"`, 'routine');
+    return true;
   };
 
   const handleAddCategory = (name: string, subHeading?: string) => {
@@ -2661,23 +2733,36 @@ export default function App() {
     }
   };
 
-  const handleDeleteCategory = (id: string) => {
+  const handleDeleteCategory = async (id: string): Promise<boolean> => {
     const cat = categories.find(c => c.id === id);
-    if (!cat) return;
+    if (!cat) return false;
     if (cat.name === 'বিষয়ভিত্তিক প্রস্তুতি' || cat.name === 'জব সলিউশন পরীক্ষা' || cat.name === 'সাল ভিত্তিক জব সলিউশন' || cat.name === 'সাম্প্রতিক বিষয়াবলী' || isJobSolutionVariation(cat.name) || isYearJobSolutionVariation(cat.name) || isCurrentAffairVariation(cat.name)) {
       alert('সতর্কতা: মূল রুট ক্যাটাগরি ডিলিট করা সম্ভব নয়!');
-      return;
+      return false;
+    }
+    const ok = await deleteItemFromFirestore('categories', id);
+    if (!ok) return false;
+    const subcatIdsToDelete = subcategories.filter(s => s.parentCategory === cat.name).map(s => s.id);
+    if (subcatIdsToDelete.length > 0) {
+      await bulkDeleteItemsFromFirestore('subcategories', subcatIdsToDelete);
     }
     const remainingCats = categories.filter(c => c.id !== id);
     const remainingSubcats = subcategories.filter(s => s.parentCategory !== cat.name);
     updateCategoriesDB(remainingCats);
     updateSubcategoriesDB(remainingSubcats);
+    try {
+      await deleteCategoryFromSQLite(id);
+      for (const sId of subcatIdsToDelete) {
+        await deleteSubcategoryFromSQLite(sId);
+      }
+    } catch {}
     addAuditLog('ক্যাটাগরি মুছে ফেলা (Delete Category)', `ক্যাটাগরি মুছে ফেলা হয়েছে: "${cat.name}"`, 'category');
+    return true;
   };
 
-  const handleDeleteSubcategory = (id: string) => {
+  const handleDeleteSubcategory = async (id: string): Promise<boolean> => {
     const sub = subcategories.find(s => s.id === id);
-    if (!sub) return;
+    if (!sub) return false;
     
     // Find all descendants recursively
     const toDelete = new Set<string>([sub.name]);
@@ -2692,18 +2777,29 @@ export default function App() {
       });
     }
 
-    const remainingSubcats = subcategories.filter(s => s.id !== id && !toDelete.has(s.name));
-    updateSubcategoriesDB(remainingSubcats);
+    const toDeleteIds: string[] = [];
     subcategories.forEach(s => {
       if (s.id === id || toDelete.has(s.name)) {
-        deleteItemFromFirestore('subcategories', s.id);
+        toDeleteIds.push(s.id);
       }
     });
+
+    const ok = await bulkDeleteItemsFromFirestore('subcategories', toDeleteIds);
+    if (!ok) return false;
+
+    const remainingSubcats = subcategories.filter(s => s.id !== id && !toDelete.has(s.name));
+    updateSubcategoriesDB(remainingSubcats);
+    try {
+      for (const sId of toDeleteIds) {
+        await deleteSubcategoryFromSQLite(sId);
+      }
+    } catch {}
     addAuditLog('সাব-ক্যাটাগরি মুছে ফেলা (Delete Category)', `সাব-ক্যাটাগরি ও সংশ্লিষ্ট সাব-ব্রাঞ্চ মুছে ফেলা হয়েছে: "${sub.name}"`, 'category');
+    return true;
   };
 
-  const handleBulkDeleteSubcategories = (ids: string[]) => {
-    if (!ids || ids.length === 0) return;
+  const handleBulkDeleteSubcategories = async (ids: string[]): Promise<boolean> => {
+    if (!ids || ids.length === 0) return true;
     const targets = subcategories.filter(s => ids.includes(s.id));
     const toDelete = new Set<string>(targets.map(s => s.name));
 
@@ -2718,14 +2814,25 @@ export default function App() {
       });
     }
 
-    const remainingSubcats = subcategories.filter(s => !ids.includes(s.id) && !toDelete.has(s.name));
-    updateSubcategoriesDB(remainingSubcats);
+    const toDeleteIds: string[] = [];
     subcategories.forEach(s => {
       if (ids.includes(s.id) || toDelete.has(s.name)) {
-        deleteItemFromFirestore('subcategories', s.id);
+        toDeleteIds.push(s.id);
       }
     });
+
+    const ok = await bulkDeleteItemsFromFirestore('subcategories', toDeleteIds);
+    if (!ok) return false;
+
+    const remainingSubcats = subcategories.filter(s => !ids.includes(s.id) && !toDelete.has(s.name));
+    updateSubcategoriesDB(remainingSubcats);
+    try {
+      for (const sId of toDeleteIds) {
+        await deleteSubcategoryFromSQLite(sId);
+      }
+    } catch {}
     addAuditLog('বাল্ক সাব-ক্যাটাগরি মুছে ফেলা (Bulk Delete Categories)', `একসাথে ${ids.length} টি সাব-ক্যাটাগরি ডিলিট করা হয়েছে`, 'category');
+    return true;
   };
 
   const handleBulkMoveSubcategories = (ids: string[], newParentCategory: string) => {

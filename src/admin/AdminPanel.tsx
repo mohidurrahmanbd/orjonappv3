@@ -40,22 +40,22 @@ interface AdminPanelProps {
   subcategories: SubcategoryItem[];
   onAddCategory: (name: string, subHeading?: string) => void;
   onAddSubcategory: (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string) => void;
-  onDeleteCategory: (id: string) => void;
-  onDeleteSubcategory: (id: string) => void;
-  onBulkDeleteSubcategories?: (ids: string[]) => void;
+  onDeleteCategory: (id: string) => Promise<boolean> | void;
+  onDeleteSubcategory: (id: string) => Promise<boolean> | void;
+  onBulkDeleteSubcategories?: (ids: string[]) => Promise<boolean> | void;
   onBulkMoveSubcategories?: (ids: string[], newParentCategory: string) => void;
   onUpdateCategory?: (id: string, newName: string, subHeading?: string) => void;
   onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => void;
   onAddQuestion: (q: Omit<Question, 'id'>) => void;
   onUpdateQuestion: (id: string, q: Partial<Question>) => void;
-  onDeleteQuestion: (id: string) => void;
-  onBulkDeleteQuestions: (ids: string[]) => void;
+  onDeleteQuestion: (id: string) => Promise<boolean> | void;
+  onBulkDeleteQuestions: (ids: string[]) => Promise<boolean> | void;
   onBulkMoveQuestions: (ids: string[], targetCategory: string, targetSubcategory?: string, mode?: 'move' | 'link') => void;
   onBulkUploadQuestions: (questionsList: Omit<Question, 'id'>[]) => void;
   onSaveNotice: (text: string) => void;
   onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateLiveExam?: (id: string, updatedExam: Partial<LiveExam>) => void;
-  onDeleteLiveExam: (id: string) => void;
+  onDeleteLiveExam: (id: string) => Promise<boolean> | void;
   onSaveRoutine: (
     title: string, 
     details: string, 
@@ -67,18 +67,18 @@ interface AdminPanelProps {
     examConfig?: ScheduledExamConfig
   ) => void;
   onUpdateRoutine?: (id: string, updatedRoutine: Partial<Routine>) => void;
-  onDeleteRoutine: (id: string) => void;
+  onDeleteRoutine: (id: string) => Promise<boolean> | void;
   onSaveCourse?: (course: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateCourse?: (id: string, updatedCourse: Partial<Course>) => void;
-  onDeleteCourse?: (id: string) => void;
+  onDeleteCourse?: (id: string) => Promise<boolean> | void;
   coupons?: Coupon[];
   courseEnrollments?: CourseEnrollment[];
   paymentSettings?: PaymentSettings;
   onSaveCoupon?: (coupon: Omit<Coupon, 'id' | 'createdAt'>) => void;
   onUpdateCoupon?: (id: string, updatedCoupon: Partial<Coupon>) => void;
-  onDeleteCoupon?: (id: string) => void;
+  onDeleteCoupon?: (id: string) => Promise<boolean> | void;
   onUpdatePaymentSettings?: (settings: Partial<PaymentSettings>) => void;
-  onDeleteEnrollment?: (id: string) => void;
+  onDeleteEnrollment?: (id: string) => Promise<boolean> | void;
   onLogout: () => void;
   allowUserExplanation: boolean;
   onToggleUserExplanation: (allowed: boolean) => void;
@@ -3792,11 +3792,15 @@ export default function AdminPanel({
     showCustomConfirm(
       '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
       `‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${selectedQIds.length}‡¶ü‡¶ø ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶è‡¶ï‡¶¨‡¶æ‡¶∞‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-      () => {
+      async () => {
         const count = selectedQIds.length;
-        onBulkDeleteQuestions(selectedQIds);
-        setSelectedQIds([]);
-        showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', `‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${count}‡¶ü‡¶ø ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!`, 'success');
+        const ok = await onBulkDeleteQuestions(selectedQIds);
+        if (ok !== false) {
+          setSelectedQIds([]);
+          showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', `‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${count}‡¶ü‡¶ø ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!`, 'success');
+        } else {
+          showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶∏‡¶Æ‡ßÇ‡¶π ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+        }
       },
       'warning'
     );
@@ -3857,15 +3861,24 @@ export default function AdminPanel({
     showCustomConfirm(
       '‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
       `‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${selectedSubcatIds.length}‡¶ü‡¶ø ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶è‡¶¨‡¶Ç ‡¶è‡¶¶‡ßá‡¶∞ ‡¶Ö‡¶ß‡ßÄ‡¶®‡¶∏‡ßç‡¶• ‡¶∏‡¶Æ‡¶∏‡ßç‡¶§ ‡¶¨‡ßç‡¶∞‡¶æ‡¶û‡ßç‡¶ö ‡¶è‡¶ï‡¶¨‡¶æ‡¶∞‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-      () => {
+      async () => {
         const count = selectedSubcatIds.length;
+        let ok = true;
         if (onBulkDeleteSubcategories) {
-          onBulkDeleteSubcategories(selectedSubcatIds);
+          const res = await onBulkDeleteSubcategories(selectedSubcatIds);
+          if (res === false) ok = false;
         } else {
-          selectedSubcatIds.forEach(id => onDeleteSubcategory(id));
+          for (const id of selectedSubcatIds) {
+            const res = await onDeleteSubcategory(id);
+            if (res === false) ok = false;
+          }
         }
-        setSelectedSubcatIds([]);
-        showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®!', `‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${count}‡¶ü‡¶ø ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!`, 'success');
+        if (ok) {
+          setSelectedSubcatIds([]);
+          showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®!', `‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ${count}‡¶ü‡¶ø ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!`, 'success');
+        } else {
+          showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶∏‡¶Æ‡¶∏‡ßç‡¶Ø‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+        }
       },
       'warning'
     );
@@ -6534,9 +6547,13 @@ export default function AdminPanel({
                         showCustomConfirm(
                           '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
                           '‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶è‡¶á ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶ü‡¶ø ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®?',
-                          () => {
-                            onDeleteQuestion(q.id);
-                            showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                          async () => {
+                            const ok = await onDeleteQuestion(q.id);
+                            if (ok !== false) {
+                              showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                            } else {
+                              showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+                            }
                           },
                           'warning'
                         );
@@ -8494,9 +8511,13 @@ export default function AdminPanel({
                               showCustomConfirm(
                                 '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
                                 '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®? ‡¶è‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶≤‡ßá ‡¶è‡¶∞ ‡¶´‡¶≤‡¶æ‡¶´‡¶≤ ‡¶°‡¶æ‡¶ü‡¶æ‡¶ì ‡¶π‡¶æ‡¶∞‡¶ø‡ßü‡ßá ‡¶Ø‡¶æ‡¶¨‡ßá!',
-                                () => {
-                                  onDeleteLiveExam(exam.id);
-                                  showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                async () => {
+                                  const ok = await onDeleteLiveExam(exam.id);
+                                  if (ok !== false) {
+                                    showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                  } else {
+                                    showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+                                  }
                                 },
                                 'warning'
                               );
@@ -8780,9 +8801,15 @@ export default function AdminPanel({
                                   showCustomConfirm(
                                     '‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
                                     `"${course.title}" ‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-                                    () => {
-                                      if (onDeleteCourse) onDeleteCourse(course.id);
-                                      showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                    async () => {
+                                      if (onDeleteCourse) {
+                                        const ok = await onDeleteCourse(course.id);
+                                        if (ok !== false) {
+                                          showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                        } else {
+                                          showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+                                        }
+                                      }
                                     },
                                     'warning'
                                   );
@@ -9000,9 +9027,15 @@ export default function AdminPanel({
                                     showCustomConfirm(
                                       '‡¶ï‡ßÅ‡¶™‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
                                       `"${coupon.code}" ‡¶ï‡ßÅ‡¶™‡¶®‡¶ü‡¶ø ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-                                      () => {
-                                        onDeleteCoupon(coupon.id);
-                                        showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶ï‡ßÅ‡¶™‡¶®‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                      async () => {
+                                        if (onDeleteCoupon) {
+                                          const ok = await onDeleteCoupon(coupon.id);
+                                          if (ok !== false) {
+                                            showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶ï‡ßÅ‡¶™‡¶®‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                          } else {
+                                            showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', '‡¶ï‡ßÅ‡¶™‡¶® ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'error');
+                                          }
+                                        }
                                       },
                                       'warning'
                                     );
@@ -9352,3601 +9385,136 @@ export default function AdminPanel({
                                       showCustomConfirm(
                                         '‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶Æ‡ßÅ‡¶õ‡ßÅ‡¶®',
                                         `"${enr.userName || '‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ'}"-‡¶è‡¶∞ "${enr.courseTitle}" ‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡ßá‡¶∞ ‡¶è‡¶á ‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶°‡¶ü‡¶ø ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-                                        () => {
-                                          onDeleteEnrollment(enr.id);
-                                          showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®!', '‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
-                                        },
-                                        'warning'
-                                      );
-                                    }}
-                                    className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-800 transition cursor-pointer border border-rose-200/80"
-                                    title="‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶Æ‡ßÅ‡¶õ‡ßÅ‡¶®"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SUB-VIEW 4: PAYMENT RECEIVE SETTINGS */}
-          {courseSubTab === 'payment-settings' && (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* Configuration Form */}
-              <div className="md:col-span-7 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-sm space-y-5">
-                <div className="border-b border-gray-100 pb-3">
-                  <h3 className="font-black text-base text-slate-800 flex items-center gap-2">
-                    <Wallet className="w-5 h-5 text-amber-500" />
-                    <span>üí≥ ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶ó‡ßç‡¶∞‡¶π‡¶£ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶ì ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡ßá‡¶∂‡¶®‡¶æ ‡¶ï‡¶®‡¶´‡¶ø‡¶ó‡¶æ‡¶∞‡ßá‡¶∂‡¶®</span>
-                  </h3>
-                  <p className="text-slate-500 text-xs mt-1">
-                    ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞‡¶æ ‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡ßá ‡¶è‡¶®‡¶∞‡ßã‡¶≤ ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡¶Æ‡ßü ‡¶ï‡ßã‡¶® ‡¶¨‡¶ø‡¶ï‡¶æ‡¶∂, ‡¶®‡¶ó‡¶¶ ‡¶¨‡¶æ ‡¶∞‡¶ï‡ßá‡¶ü ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞‡ßá ‡¶´‡¶ø ‡¶™‡¶æ‡¶†‡¶æ‡¶¨‡ßá ‡¶§‡¶æ ‡¶è‡¶ñ‡¶æ‡¶®‡ßá ‡¶∏‡ßá‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                  </p>
-                </div>
-
-                <form onSubmit={handleSavePaymentSettingsSubmit} className="space-y-4">
-                  {/* bKash Configuration */}
-                  <div className="p-4 bg-pink-50/50 border border-pink-200 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-pink-600 text-white font-black text-xs flex items-center justify-center">
-                          b
-                        </div>
-                        <h4 className="font-extrabold text-slate-800 text-sm">‡¶¨‡¶ø‡¶ï‡¶æ‡¶∂ (bKash) ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡ßá‡¶ü‡¶ø‡¶Ç‡¶∏</h4>
-                      </div>
-                      <span className="text-[11px] font-bold text-pink-700 bg-pink-100 px-2 py-0.5 rounded-md">
-                        ‡¶¨‡¶ø‡¶ï‡¶æ‡¶∂ ‡¶ó‡ßá‡¶ü‡¶ì‡ßü‡ßá
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-2">
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶¨‡¶ø‡¶ï‡¶æ‡¶∂ ‡¶ó‡ßç‡¶∞‡¶π‡¶£ ‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={bkashNumber}
-                          onChange={(e) => setBkashNumber(e.target.value)}
-                          placeholder="e.g. 01711223344"
-                          className="w-full px-3 py-2 bg-white border border-pink-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶è‡¶ï‡¶æ‡¶â‡¶®‡ßç‡¶ü ‡¶ß‡¶∞‡¶®
-                        </label>
-                        <select
-                          value={bkashType}
-                          onChange={(e) => setBkashType(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-white border border-pink-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
-                        >
-                          <option value="Personal">Personal (‡¶¨‡ßç‡¶Ø‡¶ï‡ßç‡¶§‡¶ø‡¶ó‡¶§)</option>
-                          <option value="Merchant">Merchant (‡¶Æ‡¶æ‡¶∞‡ßç‡¶ö‡ßá‡¶®‡ßç‡¶ü)</option>
-                          <option value="Agent">Agent (‡¶è‡¶ú‡ßá‡¶®‡ßç‡¶ü)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Nagad Configuration */}
-                  <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-amber-600 text-white font-black text-xs flex items-center justify-center">
-                          ‡¶®
-                        </div>
-                        <h4 className="font-extrabold text-slate-800 text-sm">‡¶®‡¶ó‡¶¶ (Nagad) ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡ßá‡¶ü‡¶ø‡¶Ç‡¶∏</h4>
-                      </div>
-                      <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
-                        ‡¶®‡¶ó‡¶¶ ‡¶ó‡ßá‡¶ü‡¶ì‡ßü‡ßá
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-2">
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶®‡¶ó‡¶¶ ‡¶ó‡ßç‡¶∞‡¶π‡¶£ ‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={nagadNumber}
-                          onChange={(e) => setNagadNumber(e.target.value)}
-                          placeholder="e.g. 01811223344"
-                          className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶è‡¶ï‡¶æ‡¶â‡¶®‡ßç‡¶ü ‡¶ß‡¶∞‡¶®
-                        </label>
-                        <select
-                          value={nagadType}
-                          onChange={(e) => setNagadType(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                        >
-                          <option value="Personal">Personal (‡¶¨‡ßç‡¶Ø‡¶ï‡ßç‡¶§‡¶ø‡¶ó‡¶§)</option>
-                          <option value="Merchant">Merchant (‡¶Æ‡¶æ‡¶∞‡ßç‡¶ö‡ßá‡¶®‡ßç‡¶ü)</option>
-                          <option value="Agent">Agent (‡¶è‡¶ú‡ßá‡¶®‡ßç‡¶ü)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rocket Configuration */}
-                  <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-purple-600 text-white font-black text-xs flex items-center justify-center">
-                          R
-                        </div>
-                        <h4 className="font-extrabold text-slate-800 text-sm">‡¶∞‡¶ï‡ßá‡¶ü (Rocket) ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡ßá‡¶ü‡¶ø‡¶Ç‡¶∏</h4>
-                      </div>
-                      <span className="text-[11px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-md">
-                        ‡¶∞‡¶ï‡ßá‡¶ü ‡¶ó‡ßá‡¶ü‡¶ì‡ßü‡ßá
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-2">
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶∞‡¶ï‡ßá‡¶ü ‡¶ó‡ßç‡¶∞‡¶π‡¶£ ‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={rocketNumber}
-                          onChange={(e) => setRocketNumber(e.target.value)}
-                          placeholder="e.g. 01911223344"
-                          className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-700 text-[11px] mb-1">
-                          ‡¶è‡¶ï‡¶æ‡¶â‡¶®‡ßç‡¶ü ‡¶ß‡¶∞‡¶®
-                        </label>
-                        <select
-                          value={rocketType}
-                          onChange={(e) => setRocketType(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-white border border-purple-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                        >
-                          <option value="Personal">Personal (‡¶¨‡ßç‡¶Ø‡¶ï‡ßç‡¶§‡¶ø‡¶ó‡¶§)</option>
-                          <option value="Merchant">Merchant (‡¶Æ‡¶æ‡¶∞‡ßç‡¶ö‡ßá‡¶®‡ßç‡¶ü)</option>
-                          <option value="Agent">Agent (‡¶è‡¶ú‡ßá‡¶®‡ßç‡¶ü)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Instructions for Students */}
-                  <div>
-                    <label className="block font-bold text-slate-700 text-xs mb-1">
-                      ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶ú‡¶®‡ßç‡¶Ø ‡¶ö‡ßá‡¶ï‡¶Ü‡¶â‡¶ü ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡ßá‡¶∂‡¶®‡¶æ ‡¶ì ‡¶®‡ßã‡¶ü‡¶ø‡¶∂
-                    </label>
-                    <textarea
-                      value={paymentInstructions}
-                      onChange={(e) => setPaymentInstructions(e.target.value)}
-                      placeholder="‡¶ü‡¶æ‡¶ï‡¶æ ‡¶™‡¶æ‡¶†‡¶æ‡¶®‡ßã‡¶∞ ‡¶™‡¶∞ ‡¶ü‡ßç‡¶∞‡¶æ‡¶®‡¶ú‡ßá‡¶ï‡¶∂‡¶® ‡¶Ü‡¶á‡¶°‡¶ø (TrxID) ‡¶è‡¶¨‡¶Ç ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶®‡¶ø‡¶ö‡ßá ‡¶™‡ßç‡¶∞‡¶¶‡¶æ‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§"
-                      rows={3}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      ‡¶è‡¶á ‡¶¨‡¶æ‡¶∞‡ßç‡¶§‡¶æ‡¶ü‡¶ø ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶ï‡ßá‡¶®‡¶æ‡¶∞ ‡¶∏‡¶Æ‡ßü ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶™‡¶™‡¶Ü‡¶™‡ßá ‡¶™‡ßç‡¶∞‡¶¶‡¶∞‡ßç‡¶∂‡¶ø‡¶§ ‡¶π‡¶¨‡ßá‡•§
-                    </p>
-                  </div>
-
-                  {/* Save Action */}
-                  <div className="pt-2 flex items-center justify-between">
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>üíæ ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡ßá‡¶ü‡¶ø‡¶Ç‡¶∏ ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶£ ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-                    </button>
-
-                    {paymentSaveSuccess && (
-                      <span className="text-emerald-700 font-bold text-xs flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶ø‡¶§ ‡¶π‡ßü‡ßá‡¶õ‡ßá!</span>
-                      </span>
-                    )}
-                  </div>
-                </form>
-              </div>
-
-              {/* Live Preview for Students' Checkout Experience */}
-              <div className="md:col-span-5 bg-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-400" />
-                      <h4 className="font-extrabold text-sm text-slate-100">üì± ‡¶∏‡ßç‡¶ü‡ßÅ‡¶°‡ßá‡¶®‡ßç‡¶ü ‡¶ö‡ßá‡¶ï‡¶Ü‡¶â‡¶ü ‡¶™‡ßç‡¶∞‡¶ø‡¶≠‡¶ø‡¶â</h4>
-                    </div>
-                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md">
-                      ‡¶≤‡¶æ‡¶á‡¶≠ ‡¶™‡ßç‡¶∞‡¶ø‡¶≠‡¶ø‡¶â
-                    </span>
-                  </div>
-
-                  <p className="text-slate-300 text-xs mb-4">
-                    ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞‡¶æ ‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡ßá ‡¶è‡¶®‡¶∞‡ßã‡¶≤ ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡¶Æ‡ßü ‡¶Ø‡ßá‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶®‡¶ø‡¶∞‡ßç‡¶ß‡¶æ‡¶∞‡¶ø‡¶§ ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶ì ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡ßá‡¶∂‡¶®‡¶æ ‡¶¶‡ßá‡¶ñ‡¶§‡ßá ‡¶™‡¶æ‡¶¨‡ßá:
-                  </p>
-
-                  <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
-                    {/* bKash Sample Box */}
-                    <div className="p-3 bg-pink-950/40 border border-pink-800/50 rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-pink-400 text-xs">‡¶¨‡¶ø‡¶ï‡¶æ‡¶∂ (bKash)</span>
-                          <span className="bg-pink-500/20 text-pink-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-pink-500/30">
-                            {bkashType}
-                          </span>
-                        </div>
-                        <div className="font-mono font-black text-sm text-pink-100 mt-0.5">
-                          {bkashNumber || '‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶¶‡ßá‡¶ì‡ßü‡¶æ ‡¶π‡ßü‡¶®‡¶ø'}
-                        </div>
-                      </div>
-                      <span className="text-[10px] bg-pink-600 text-white px-2 py-1 rounded-lg font-bold">
-                        ‡¶ï‡¶™‡¶ø ‡¶ï‡¶∞‡ßÅ‡¶®
-                      </span>
-                    </div>
-
-                    {/* Nagad Sample Box */}
-                    <div className="p-3 bg-amber-950/40 border border-amber-800/50 rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-amber-400 text-xs">‡¶®‡¶ó‡¶¶ (Nagad)</span>
-                          <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-amber-500/30">
-                            {nagadType}
-                          </span>
-                        </div>
-                        <div className="font-mono font-black text-sm text-amber-100 mt-0.5">
-                          {nagadNumber || '‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶¶‡ßá‡¶ì‡ßü‡¶æ ‡¶π‡ßü‡¶®‡¶ø'}
-                        </div>
-                      </div>
-                      <span className="text-[10px] bg-amber-600 text-white px-2 py-1 rounded-lg font-bold">
-                        ‡¶ï‡¶™‡¶ø ‡¶ï‡¶∞‡ßÅ‡¶®
-                      </span>
-                    </div>
-
-                    {/* Rocket Sample Box */}
-                    <div className="p-3 bg-purple-950/40 border border-purple-800/50 rounded-xl flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-purple-400 text-xs">‡¶∞‡¶ï‡ßá‡¶ü (Rocket)</span>
-                          <span className="bg-purple-500/20 text-purple-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-purple-500/30">
-                            {rocketType}
-                          </span>
-                        </div>
-                        <div className="font-mono font-black text-sm text-purple-100 mt-0.5">
-                          {rocketNumber || '‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶¶‡ßá‡¶ì‡ßü‡¶æ ‡¶π‡ßü‡¶®‡¶ø'}
-                        </div>
-                      </div>
-                      <span className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded-lg font-bold">
-                        ‡¶ï‡¶™‡¶ø ‡¶ï‡¶∞‡ßÅ‡¶®
-                      </span>
-                    </div>
-                  </div>
-
-                  {paymentInstructions && (
-                    <div className="mt-4 p-3 bg-slate-800/60 rounded-xl border border-slate-700/60 text-slate-300 text-xs">
-                      <div className="font-bold text-slate-200 text-[11px] mb-1">üì¢ ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶®‡ßã‡¶ü‡¶ø‡¶∂:</div>
-                      <p className="text-slate-300 text-[11px] leading-relaxed">{paymentInstructions}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>‡¶Ö‡ßç‡¶Ø‡¶æ‡¶°‡¶Æ‡¶ø‡¶® ‡¶∏‡ßá‡¶≠ ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶•‡ßá ‡¶∏‡¶æ‡¶•‡ßá ‡¶∏‡¶ï‡¶≤ ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ ‡¶®‡¶§‡ßÅ‡¶® ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶¶‡ßá‡¶ñ‡¶§‡ßá ‡¶™‡¶æ‡¶¨‡ßá‡•§</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 4. ROUTINES MANAGEMENT */}
-      {activeTab === 'routines' && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
-          {/* Create Routine Form */}
-          <div className="md:col-span-7 bg-white p-5 sm:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-5">
-            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
-              <h3 className="font-black text-base text-indigo-950 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-indigo-600" />
-                üìÖ ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶ì ‡¶è‡¶ï‡ßç‡¶∏‡¶æ‡¶Æ ‡¶∂‡¶ø‡¶°‡¶ø‡¶â‡¶≤‡¶æ‡¶∞
-              </h3>
-              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-xl">
-                ‡¶ï‡ßç‡¶Ø‡¶æ‡¶∏‡¶ï‡ßá‡¶°‡¶ø‡¶Ç ‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶™‡ßã‡¶∞‡ßç‡¶ü‡ßá‡¶°
-              </span>
-            </div>
-
-            <form onSubmit={handleCreateRoutine} className="space-y-4">
-              {/* Course Selector */}
-              <div>
-                <label className="block text-gray-700 mb-1.5 font-bold">üéì ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®:</label>
-                <select
-                  value={routineCourseId}
-                  onChange={e => setRoutineCourseId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-bold"
-                >
-                  <option value="">‡¶∏‡¶æ‡¶ß‡¶æ‡¶∞‡¶£ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® (‡¶∏‡¶ï‡¶≤ ‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡ßá‡¶∞ ‡¶ú‡¶®‡ßç‡¶Ø)</option>
-                  {(courses || []).map(c => (
-                    <option key={c.id} value={c.id}>
-                      üéì {c.title} ({c.status === 'active' ? '‡¶ö‡¶≤‡¶Æ‡¶æ‡¶®' : c.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Title & Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-700 mb-1 font-bold">‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® / ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∂‡¶ø‡¶∞‡ßã‡¶®‡¶æ‡¶Æ: *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={routineTitle}
-                    onChange={e => setRoutineTitle(e.target.value)}
-                    placeholder="‡¶Ø‡ßá‡¶Æ‡¶®: ‡¶Æ‡¶°‡ßá‡¶≤ ‡¶ü‡ßá‡¶∏‡ßç‡¶ü ‡ß¶‡ßß - ‡¶¨‡¶æ‡¶Ç‡¶≤‡¶æ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶∞‡¶£ ‡¶ì ‡¶ó‡¶æ‡¶£‡¶ø‡¶§‡¶ø‡¶ï ‡¶Ø‡ßÅ‡¶ï‡ßç‡¶§‡¶ø" 
-                    className="w-full px-3.5 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 mb-1 font-bold">‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶®‡ßã‡¶ü (‡¶ê‡¶ö‡ßç‡¶õ‡¶ø‡¶ï):</label>
-                  <input 
-                    type="text"
-                    value={routineDetails}
-                    onChange={e => setRoutineDetails(e.target.value)}
-                    placeholder="‡¶Ø‡ßá‡¶Æ‡¶®: ‡¶™‡ßÉ‡¶∑‡ßç‡¶†‡¶æ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡ß´‡ß¶-‡ßÆ‡ß´ ‡¶∞‡¶ø‡¶≠‡¶ø‡¶∂‡¶® ‡¶¶‡¶ø‡¶®‡•§"
-                    className="w-full px-3.5 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* --- CASCADING SYLLABUS TOPICS FILTERS --- */}
-              <div className="bg-gradient-to-br from-indigo-50/70 to-purple-50/70 p-4 rounded-2xl border border-indigo-100/80 space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-black text-indigo-950 text-xs flex items-center gap-1.5">
-                    <FolderTree className="w-4 h-4 text-indigo-600" />
-                    üìö ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® (Cascading Syllabus Selection)
-                  </h4>
-                  <span className="bg-emerald-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-full shadow-xs">
-                    üéØ ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ö‡¶ø‡¶Ç ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®: {routineMatchingQuestions.length.toLocaleString('bn-BD')} ‡¶ü‡¶ø
-                  </span>
-                </div>
-
-                {/* Step 1: Root Category Selection */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-black">‡ßß</span>
-                      ‡¶ß‡¶æ‡¶™ ‡ßß: ‡¶Æ‡ßÇ‡¶≤ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® (Root Category):
-                    </label>
-                    {routineSelectedRootCategory && (
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
-                        ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§: {routineSelectedRootCategory}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {routineRootCategories.map(rootCat => {
-                      const isSelected = routineSelectedRootCategory === rootCat;
-                      const rootMcqCount = rootCategoryMCQCounts[rootCat] || 0;
-                      return (
-                        <button
-                          key={rootCat}
-                          type="button"
-                          onClick={() => {
-                            setRoutineSelectedRootCategory(rootCat);
-                            setRoutineSelectedCategories([]);
-                            setRoutineSelectedSubcategories([]);
-                            setRoutineSelectedLeafCategories([]);
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black transition border cursor-pointer flex items-center gap-1.5 ${
-                            isSelected 
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm scale-[1.02]' 
-                              : 'bg-gray-50 hover:bg-indigo-50 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          <span>{isSelected ? '‚úì' : 'üìå'}</span>
-                          <span>{rootCat}</span>
-                          {rootMcqCount > 0 && (
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200/80 text-gray-700'}`}>
-                              {rootMcqCount.toLocaleString('bn-BD')}‡¶ü‡¶ø
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Step 2: Category Selection (Dynamically Loaded based on Step 1) */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-black">‡ß®</span>
-                      ‡¶ß‡¶æ‡¶™ ‡ß®: ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø / ‡¶¨‡¶ø‡¶∑‡ßü ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® (Category - ‡¶°‡¶æ‡¶Ø‡¶º‡¶®‡¶æ‡¶Æ‡¶ø‡¶ï ‡¶≤‡ßã‡¶°):
-                    </label>
-                    {routineSelectedCategories.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoutineSelectedCategories([]);
-                          setRoutineSelectedSubcategories([]);
-                          setRoutineSelectedLeafCategories([]);
-                        }}
-                        className="text-[10px] font-bold text-rose-600 hover:underline"
-                      >
-                        ‡¶∞‡¶ø‡¶∏‡ßá‡¶ü ({routineSelectedCategories.length})
-                      </button>
-                    )}
-                  </div>
-
-                  {!routineSelectedRootCategory ? (
-                    <div className="p-3 bg-amber-50 text-amber-800 rounded-xl text-xs font-semibold">
-                      üëà ‡¶Ö‡¶®‡ßÅ‡¶ó‡ßç‡¶∞‡¶π ‡¶ï‡¶∞‡ßá ‡¶™‡ßç‡¶∞‡¶•‡¶Æ‡ßá ‡¶ß‡¶æ‡¶™ ‡ßß ‡¶•‡ßá‡¶ï‡ßá ‡¶è‡¶ï‡¶ü‡¶ø ‡¶Æ‡ßÇ‡¶≤ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                    </div>
-                  ) : routineAvailableCategories.length === 0 ? (
-                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
-                      ‡¶è‡¶á ‡¶Æ‡ßÇ‡¶≤ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø‡¶∞ ‡¶Ö‡¶ß‡ßÄ‡¶®‡ßá ‡¶ï‡ßã‡¶®‡ßã ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø‡•§
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
-                      {routineAvailableCategories.map(cat => {
-                        const isSelected = routineSelectedCategories.includes(cat.name);
-                        return (
-                          <button
-                            key={cat.name}
-                            type="button"
-                            onClick={() => {
-                              if (isSelected) {
-                                setRoutineSelectedCategories(prev => prev.filter(c => c !== cat.name));
-                                setRoutineSelectedSubcategories([]);
-                                setRoutineSelectedLeafCategories([]);
-                              } else {
-                                setRoutineSelectedCategories(prev => [...prev, cat.name]);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition border cursor-pointer flex items-center gap-1 ${
-                              isSelected 
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
-                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            <span>{isSelected ? '‚úì ' : '+ '}</span>
-                            <span>{cat.name}</span>
-                            {cat.count > 0 && (
-                              <span className={`text-[9.5px] font-medium px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
-                                ({cat.count.toLocaleString('bn-BD')}‡¶ü‡¶ø)
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Step 3: Sub-category Selection (Dynamically Loaded based on Step 2) */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-black">‡ß©</span>
-                      ‡¶ß‡¶æ‡¶™ ‡ß©: ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø / ‡¶¨‡¶ø‡¶∑‡ßü‡¶æ‡¶¨‡¶≤‡¶ø (Sub-category - ‡¶°‡¶æ‡¶Ø‡¶º‡¶®‡¶æ‡¶Æ‡¶ø‡¶ï ‡¶≤‡ßã‡¶°):
-                    </label>
-                    {routineSelectedSubcategories.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoutineSelectedSubcategories([]);
-                          setRoutineSelectedLeafCategories([]);
-                        }}
-                        className="text-[10px] font-bold text-rose-600 hover:underline"
-                      >
-                        ‡¶∞‡¶ø‡¶∏‡ßá‡¶ü ({routineSelectedSubcategories.length})
-                      </button>
-                    )}
-                  </div>
-
-                  {routineSelectedCategories.length === 0 ? (
-                    <div className="p-3 bg-indigo-50/60 text-indigo-700 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                      <span>üëà</span>
-                      <span>‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶¶‡ßá‡¶ñ‡¶§‡ßá ‡¶Ö‡¶®‡ßÅ‡¶ó‡ßç‡¶∞‡¶π ‡¶ï‡¶∞‡ßá ‡¶™‡ßç‡¶∞‡¶•‡¶Æ‡ßá ‡¶ß‡¶æ‡¶™ ‡ß® ‡¶•‡ßá‡¶ï‡ßá ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø / ‡¶¨‡¶ø‡¶∑‡ßü ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§</span>
-                    </div>
-                  ) : routineAvailableSubcategories.length === 0 ? (
-                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
-                      ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø‡¶∞ ‡¶Ö‡¶ß‡ßÄ‡¶®‡ßá ‡¶∏‡¶∞‡¶æ‡¶∏‡¶∞‡¶ø ‡¶ï‡ßã‡¶®‡ßã ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø (‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏‡ßá ‡¶Ö‡¶®‡ßç‡¶§‡¶∞‡ßç‡¶≠‡ßÅ‡¶ï‡ßç‡¶§ ‡¶•‡¶æ‡¶ï‡¶¨‡ßá)‡•§
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
-                      {routineAvailableSubcategories.map(sub => {
-                        const isSelected = routineSelectedSubcategories.includes(sub.name);
-                        return (
-                          <button
-                            key={sub.id || sub.name}
-                            type="button"
-                            onClick={() => {
-                              if (isSelected) {
-                                setRoutineSelectedSubcategories(prev => prev.filter(s => s !== sub.name));
-                                setRoutineSelectedLeafCategories([]);
-                              } else {
-                                setRoutineSelectedSubcategories(prev => [...prev, sub.name]);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition border cursor-pointer flex items-center gap-1 ${
-                              isSelected 
-                                ? 'bg-purple-600 text-white border-purple-600 shadow-xs' 
-                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            <span>{isSelected ? '‚úì ' : '+ '}</span>
-                            <span>{sub.name}</span>
-                            {sub.count > 0 && (
-                              <span className={`text-[9.5px] font-medium px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
-                                ({sub.count.toLocaleString('bn-BD')}‡¶ü‡¶ø)
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Step 4: Leaf Topics Selection (Optional - Dynamically Loaded based on Step 3) */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100/80 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-800 font-extrabold text-[11.5px] flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-black">‡ß™</span>
-                      ‡¶ß‡¶æ‡¶™ ‡ß™: ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡¶ø‡¶∑‡ßç‡¶ü ‡¶Ö‡¶ß‡ßç‡¶Ø‡¶æ‡ßü / ‡¶ü‡¶™‡¶ø‡¶ï (Leaf Topics - ‡¶ê‡¶ö‡ßç‡¶õ‡¶ø‡¶ï):
-                    </label>
-                    {routineSelectedLeafCategories.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setRoutineSelectedLeafCategories([])}
-                        className="text-[10px] font-bold text-rose-600 hover:underline"
-                      >
-                        ‡¶∞‡¶ø‡¶∏‡ßá‡¶ü ({routineSelectedLeafCategories.length})
-                      </button>
-                    )}
-                  </div>
-
-                  {routineSelectedSubcategories.length === 0 ? (
-                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs">
-                      ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡¶ø‡¶∑‡ßç‡¶ü ‡¶ü‡¶™‡¶ø‡¶ï ‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞ ‡¶ï‡¶∞‡¶§‡ßá ‡¶ß‡¶æ‡¶™ ‡ß© ‡¶•‡ßá‡¶ï‡ßá ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                    </div>
-                  ) : routineAvailableLeafCategories.length === 0 ? (
-                    <div className="p-3 bg-gray-50 text-gray-500 rounded-xl text-xs font-medium">
-                      ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø‡¶∞ ‡¶Ö‡¶ß‡ßÄ‡¶®‡ßá ‡¶Ü‡¶∞ ‡¶ï‡ßã‡¶®‡ßã ‡¶Ö‡¶ß‡¶∏‡ßç‡¶§‡¶® ‡¶Ö‡¶ß‡ßç‡¶Ø‡¶æ‡ßü ‡¶®‡ßá‡¶á (‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏‡ßá ‡¶Ö‡¶®‡ßç‡¶§‡¶∞‡ßç‡¶≠‡ßÅ‡¶ï‡ßç‡¶§ ‡¶•‡¶æ‡¶ï‡¶¨‡ßá)‡•§
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
-                      {routineAvailableLeafCategories.map(item => {
-                        const isSelected = routineSelectedLeafCategories.includes(item.name);
-                        return (
-                          <button
-                            key={item.name}
-                            type="button"
-                            onClick={() => {
-                              if (isSelected) {
-                                setRoutineSelectedLeafCategories(prev => prev.filter(l => l !== item.name));
-                              } else {
-                                setRoutineSelectedLeafCategories(prev => [...prev, item.name]);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition border cursor-pointer flex items-center gap-1 ${
-                              isSelected 
-                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' 
-                                : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            <span>{isSelected ? '‚úì ' : '+ '}</span>
-                            <span>{item.name}</span>
-                            <span className={`text-[9px] px-1 rounded ${isSelected ? 'bg-white/20 text-white' : 'text-gray-500'}`}>
-                              ({item.count.toLocaleString('bn-BD')}‡¶ü‡¶ø)
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Live Syllabus Hierarchy Path Preview */}
-                {(() => {
-                  const dummyRoutine: Routine = {
-                    id: 'preview',
-                    title: routineTitle,
-                    details: routineDetails,
-                    selectedCategories: [routineSelectedRootCategory, ...routineSelectedCategories].filter(Boolean),
-                    selectedSubcategories: routineSelectedSubcategories,
-                    selectedLeafCategories: routineSelectedLeafCategories,
-                    createdAt: new Date().toISOString()
-                  };
-                  const livePaths = formatRoutineSyllabusPaths(dummyRoutine, subcategories, categories, questions);
-                  if (livePaths.length === 0) return null;
-                  return (
-                    <div className="bg-indigo-50/90 border border-indigo-200 rounded-2xl p-3 space-y-1.5 shadow-2xs">
-                      <div className="flex items-center justify-between text-xs font-black text-indigo-950">
-                        <span className="flex items-center gap-1.5">
-                          <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                          üìö ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏ ‡¶™‡¶æ‡¶• (Selected Syllabus Hierarchy):
-                        </span>
-                        <span className="text-[10px] text-indigo-700 font-bold bg-indigo-100 px-2 py-0.5 rounded-md">
-                          ‡¶Æ‡ßã‡¶ü {livePaths.length} ‡¶ü‡¶ø ‡¶∂‡¶æ‡¶ñ‡¶æ
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {livePaths.map((path, pIdx) => (
-                          <div key={pIdx} className="bg-white border border-indigo-100 text-indigo-950 font-bold px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 flex-wrap">
-                            <span className="text-indigo-600 font-black">üìå</span>
-                            {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                              <React.Fragment key={sIdx}>
-                                <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
-                                {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">‚Ä∫</span>}
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* --- PRESET SCHEDULED EXAM CONFIGURATION --- */}
-              <div className="border border-indigo-200 rounded-2xl p-4 bg-indigo-50/40 space-y-3">
-                <label className="flex items-center gap-2 font-black text-indigo-950 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={routineEnableExam}
-                    onChange={e => setRoutineEnableExam(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
-                  />
-                  <span>‚è∞ ‡¶è‡¶á ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏‡ßá‡¶∞ ‡¶â‡¶™‡¶∞ ‡¶∂‡¶ø‡¶°‡¶ø‡¶â‡¶≤‡¶° ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶∏‡ßá‡¶ü‡¶Ü‡¶™ ‡¶ï‡¶∞‡ßÅ‡¶® (Preset Scheduled Exam)</span>
-                </label>
-
-                {routineEnableExam && (
-                  <div className="space-y-3.5 pt-2 border-t border-indigo-100 animate-fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶∂‡ßÅ‡¶∞‡ßÅ‡¶∞ ‡¶∏‡¶Æ‡ßü (Start Date & Time): *</label>
-                        <input
-                          type="datetime-local"
-                          required={routineEnableExam}
-                          value={routineExamStartTime}
-                          onChange={e => setRoutineExamStartTime(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-xl text-gray-800 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶∂‡ßá‡¶∑‡ßá‡¶∞ ‡¶∏‡¶Æ‡ßü (Expiry Date & Time):</label>
-                        <input
-                          type="datetime-local"
-                          value={routineExamExpiryTime}
-                          onChange={e => setRoutineExamExpiryTime(e.target.value)}
-                          className="w-full px-3 py-2 border rounded-xl text-gray-800 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶∏‡¶Æ‡ßü (‡¶Æ‡¶ø‡¶®‡¶ø‡¶ü):</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={routineExamTimeLimit}
-                          onChange={e => setRoutineExamTimeLimit(Number(e.target.value))}
-                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶è‡¶Æ‡¶∏‡¶ø‡¶ï‡¶ø‡¶â ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={routineExamQLimit}
-                          onChange={e => setRoutineExamQLimit(Number(e.target.value))}
-                          disabled={routineExamQuestionSelection === 'manual'}
-                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white disabled:bg-gray-100"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶Æ‡ßã‡¶ü ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={routineExamTotalMarks}
-                          onChange={e => setRoutineExamTotalMarks(Number(e.target.value))}
-                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-gray-700 mb-1 font-bold">‡¶™‡¶æ‡¶∏ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={routineExamPassMarks}
-                          onChange={e => setRoutineExamPassMarks(Number(e.target.value))}
-                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Question Selection Mode */}
-                    <div>
-                      <label className="block text-gray-700 mb-1.5 font-extrabold">‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡¶∂‡¶® ‡¶Æ‡ßã‡¶° (Question Selection):</label>
-                      <div className="flex gap-3">
-                        <label className="flex items-center gap-1.5 font-bold text-gray-800 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="qSelectMode"
-                            checked={routineExamQuestionSelection === 'auto'}
-                            onChange={() => setRoutineExamQuestionSelection('auto')}
-                          />
-                          <span>‚ö° ‡¶∏‡ßç‡¶¨‡ßü‡¶Ç‡¶ï‡ßç‡¶∞‡¶ø‡ßü (Automatic filter from syllabus)</span>
-                        </label>
-                        <label className="flex items-center gap-1.5 font-bold text-gray-800 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="qSelectMode"
-                            checked={routineExamQuestionSelection === 'manual'}
-                            onChange={() => setRoutineExamQuestionSelection('manual')}
-                          />
-                          <span>üñêÔ∏è ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ (Specific Question Pick)</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Manual Question Picker */}
-                    {routineExamQuestionSelection === 'manual' && (
-                      <div className="bg-white p-3 rounded-2xl border border-indigo-200 space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="font-extrabold text-indigo-950 text-[11px]">
-                            ‡¶®‡¶ø‡¶∞‡ßç‡¶ß‡¶æ‡¶∞‡¶ø‡¶§ ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏‡ßá‡¶∞ ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶•‡ßá‡¶ï‡ßá ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶® (‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§: {routineExamManualQuestionIds.length} ‡¶ü‡¶ø)
-                          </span>
-                          <input
-                            type="text"
-                            placeholder="‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶ñ‡ßÅ‡¶Å‡¶ú‡ßÅ‡¶®..."
-                            value={routineManualQuestionSearch}
-                            onChange={e => setRoutineManualQuestionSearch(e.target.value)}
-                            className="px-2.5 py-1 border rounded-lg text-[10px] w-40"
-                          />
-                        </div>
-                        <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-gray-100 pr-1">
-                          {routineMatchingQuestions
-                            .filter(q => !routineManualQuestionSearch || q.text.toLowerCase().includes(routineManualQuestionSearch.toLowerCase()))
-                            .map((q, idx) => {
-                              const isChecked = routineExamManualQuestionIds.includes(q.id);
-                              return (
-                                <label key={q.id || idx} className="flex items-start gap-2 pt-1.5 cursor-pointer hover:bg-gray-50 p-1 rounded-lg">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      if (isChecked) {
-                                        setRoutineExamManualQuestionIds(prev => prev.filter(id => id !== q.id));
-                                      } else {
-                                        setRoutineExamManualQuestionIds(prev => [...prev, q.id]);
-                                      }
-                                    }}
-                                    className="mt-0.5"
-                                  />
-                                  <div className="text-[11px]">
-                                    <p className="font-bold text-gray-800 line-clamp-1">{q.text}</p>
-                                    <span className="text-[9px] text-gray-400 font-medium">
-                                      {q.category} ‚Ä¢ {q.subcategory} {q.csvCategory ? `‚Ä¢ ${q.csvCategory}` : ''}
-                                    </span>
-                                  </div>
-                                </label>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-2xl transition shadow flex items-center justify-center gap-2 text-xs"
-              >
-                <Sparkles className="w-4 h-4 text-indigo-200" />
-                ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶ì ‡¶è‡¶ï‡ßç‡¶∏‡¶æ‡¶Æ ‡¶™‡ßç‡¶∞‡¶ï‡¶æ‡¶∂ ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </form>
-          </div>
-
-          {/* Published Routines & Scheduled Exams List */}
-          <div className="md:col-span-5 bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-2.5">
-              <h3 className="font-black text-sm text-gray-900">üìã ‡¶™‡ßç‡¶∞‡¶ï‡¶æ‡¶∂‡¶ø‡¶§ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶ì ‡¶è‡¶ï‡ßç‡¶∏‡¶æ‡¶Æ ‡¶ï‡¶æ‡¶∞‡ßç‡¶°‡¶∏‡¶Æ‡ßÇ‡¶π ({routines.length})</h3>
-            </div>
-
-            <div className="space-y-3.5 max-h-[800px] overflow-y-auto pr-1">
-              {(!routines || routines.length === 0) ? (
-                <p className="text-gray-400 py-8 text-center font-medium">‡¶ï‡ßã‡¶®‡ßã ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶™‡ßç‡¶∞‡¶ï‡¶æ‡¶∂ ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡¶®‡¶ø‡•§</p>
-              ) : (
-                (routines || []).map((item, idx) => {
-                  const hasExam = item.examConfig && item.examConfig.enabled;
-                  const targetCourse = courses ? courses.find(c => c.id === item.courseId || c.title === item.courseName) : undefined;
-
-                  return (
-                    <div key={item.id ? `rt-${item.id}-${idx}` : `rt-${idx}`} className="p-4 bg-gray-50/80 border border-gray-200/80 rounded-2xl shadow-2xs space-y-2.5 relative">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          {item.courseName && (
-                            <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[9px] font-black uppercase mb-1">
-                              üéì {item.courseName}
-                            </span>
-                          )}
-                          <h4 className="font-extrabold text-indigo-950 text-xs leading-snug">{item.title}</h4>
-                        </div>
-                        <button 
-                          onClick={() => {
-                            showCustomConfirm(
-                              '‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶ï‡¶∞‡¶£',
-                              '‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®‡¶ü‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?',
-                              () => {
-                                onDeleteRoutine(item.id);
-                                showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡ßü‡ßá‡¶õ‡ßá!', '‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
-                              },
-                              'warning'
-                            );
-                          }}
-                          className="text-rose-600 hover:text-rose-800 font-bold shrink-0 text-[10px]"
-                        >
-                          üóëÔ∏è ‡¶Æ‡ßÅ‡¶õ‡ßÅ‡¶®
-                        </button>
-                      </div>
-
-                      {/* View Hierarchical MCQs Action */}
-                      <button
-                        type="button"
-                        onClick={() => setViewingHierarchyRoutine(item)}
-                        className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-extrabold py-1.5 px-3 rounded-xl transition text-[10.5px] flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                      >
-                        <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>üéì ‡¶™‡¶∞‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞  ‡¶™‡ßç‡¶∞‡¶∏‡ßç‡¶§‡ßÅ‡¶§‡¶ø</span>
-                      </button>
-
-                      {/* PDF Export Action */}
-                      {item.courseName && (
-                        <button
-                          onClick={() => {
-                            const courseRoutines = routines.filter(r => r.courseId === item.courseId || r.courseName === item.courseName);
-                            downloadCourseRoutinePDF(item.courseName || '‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®', targetCourse?.category, courseRoutines, subcategories, categories, questions);
-                          }}
-                          className="w-full bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold py-1.5 px-3 rounded-xl transition text-[10px] flex items-center justify-center gap-1.5"
-                        >
-                          <Download className="w-3.5 h-3.5 text-indigo-600" />
-                          üì• ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® PDF ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶°
-                        </button>
-                      )}
-
-                      {/* Exam Config Badge */}
-                      {hasExam && (
-                        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-2.5 rounded-xl font-bold text-[10px] space-y-1 shadow-xs">
-                          <p className="flex items-center gap-1 text-[11px] font-black">
-                            ‚è∞ ‡¶∂‡¶ø‡¶°‡¶ø‡¶â‡¶≤‡¶° ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ: {formatBengaliDateTime(item.examConfig?.startTime)}
-                          </p>
-                          <p className="text-emerald-100 font-medium">
-                            ‡¶è‡¶Æ‡¶∏‡¶ø‡¶ï‡¶ø‡¶â: {item.examConfig?.qLimit || 20} ‡¶ü‡¶ø | ‡¶∏‡¶Æ‡¶Ø‡¶º: {item.examConfig?.timeLimit || 20} ‡¶Æ‡¶ø. | ‡¶™‡ßÇ‡¶∞‡ßç‡¶£‡¶Æ‡¶æ‡¶®: {item.examConfig?.totalMarks || 20}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Syllabus Path Hierarchy */}
-                      {(() => {
-                        const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
-                        if (syllabusPaths.length === 0) return null;
-                        return (
-                          <div className="space-y-1 bg-white p-2.5 rounded-xl border border-indigo-100/90 shadow-2xs">
-                            <span className="text-[10px] font-black text-indigo-950 flex items-center gap-1">
-                              <FolderTree className="w-3 h-3 text-indigo-600" />
-                              üìö ‡¶∏‡¶ø‡¶≤‡ßá‡¶¨‡¶æ‡¶∏ (Selected Syllabus):
-                            </span>
-                            <div className="flex flex-col gap-1">
-                              {syllabusPaths.map((path, pIdx) => (
-                                <div key={pIdx} className="bg-indigo-50/70 border border-indigo-200/80 text-indigo-950 font-bold px-2 py-1 rounded-lg text-[9.5px] flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-indigo-600 font-black">üìå</span>
-                                  {path.split(/\s*>\s*/).map((seg, sIdx, arr) => (
-                                    <React.Fragment key={sIdx}>
-                                      <span className={sIdx === arr.length - 1 ? "text-indigo-950 font-black" : "text-indigo-700"}>{seg}</span>
-                                      {sIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">‚Ä∫</span>}
-                                    </React.Fragment>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {item.details && (
-                        <p className="text-gray-600 text-[11px] whitespace-pre-line leading-relaxed bg-white p-2.5 rounded-xl border border-gray-100">
-                          {item.details}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. VIEW RESULTS */}
-      {activeTab === 'results' && (
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-5 text-xs">
-          
-          {/* User Exams Stat block */}
-          {(() => {
-            const userAttempts7Days = attempts.filter(a => {
-              const isUserCreated = a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_');
-              if (!isUserCreated) return false;
-              const submittedTime = new Date(a.submittedAt).getTime();
-              const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-              return submittedTime >= sevenDaysAgo;
-            });
-
-            return (
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] bg-indigo-600 text-white font-extrabold px-2.5 py-0.5 rounded-full w-max uppercase tracking-wider">
-                    ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡¶æ‡¶∞‡¶ï‡¶æ‡¶∞‡ßÄ ‡¶ï‡¶æ‡¶∏‡ßç‡¶ü‡¶Æ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶ü‡ßç‡¶∞‡ßç‡¶Ø‡¶æ‡¶ï‡¶æ‡¶∞
-                  </span>
-                  <h4 className="font-extrabold text-indigo-950 text-xs mt-1">
-                    üìä ‡¶¨‡¶ø‡¶ó‡¶§ ‡ß≠ ‡¶¶‡¶ø‡¶®‡ßá ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶¶‡ßç‡¶¨‡¶æ‡¶∞‡¶æ ‡¶§‡ßà‡¶∞‡¶ø ‡¶Æ‡ßã‡¶ü ‡¶è‡¶Æ‡¶∏‡¶ø‡¶ï‡¶ø‡¶â ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ
-                  </h4>
-                  <p className="text-[10px] text-gray-600 font-semibold leading-relaxed">
-                    ‡¶®‡¶ø‡¶∞‡¶æ‡¶™‡¶§‡ßç‡¶§‡¶æ ‡¶®‡ßÄ‡¶§‡¶ø ‡¶Ö‡¶®‡ßÅ‡¶Ø‡¶æ‡ßü‡ßÄ, ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶™‡ßç‡¶Ø‡¶æ‡¶®‡ßá‡¶≤ ‡¶•‡ßá‡¶ï‡ßá ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶¨‡ßç‡¶Ø‡¶ï‡ßç‡¶§‡¶ø‡¶ó‡¶§ ‡¶¨‡¶æ ‡¶ï‡¶æ‡¶∏‡ßç‡¶ü‡¶Æ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶´‡¶≤‡¶æ‡¶´‡¶≤‡ßá‡¶∞ ‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶¨‡¶ø‡¶¨‡¶∞‡¶£ ‡¶¶‡ßá‡¶ñ‡¶æ ‡¶Ø‡¶æ‡¶¨‡ßá ‡¶®‡¶æ‡•§ ‡¶∂‡ßÅ‡¶ß‡ßÅ‡¶Æ‡¶æ‡¶§‡ßç‡¶∞ ‡¶§‡¶æ‡¶¶‡ßá‡¶∞ ‡¶§‡ßà‡¶∞‡¶ø ‡¶ï‡¶∞‡¶æ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶ü‡ßç‡¶∞‡ßç‡¶Ø‡¶æ‡¶ï ‡¶ï‡¶∞‡¶æ ‡¶Ø‡¶æ‡¶¨‡ßá‡•§
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-xl border border-indigo-100 shadow-sm shrink-0">
-                  <div className="flex flex-col text-right">
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">‡¶Æ‡ßã‡¶ü ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ</span>
-                    <span className="text-2xl font-black text-indigo-600">
-                      {userAttempts7Days.length.toLocaleString('bn-BD')} ‡¶ü‡¶ø
-                    </span>
-                  </div>
-                  <span className="text-2xl">üî•</span>
-                </div>
-              </div>
-            );
-          })()}
-
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-t pt-4 border-gray-100">
-            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-amber-500" />
-              üìà ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶™‡ßç‡¶∞‡¶æ‡¶™‡ßç‡¶§ ‡¶Æ‡¶æ‡¶∞‡ßç‡¶ï‡¶∏ ‡¶ì ‡¶´‡¶≤‡¶æ‡¶´‡¶≤ ‡¶§‡¶æ‡¶≤‡¶ø‡¶ï‡¶æ (‡¶Ö‡¶´‡¶ø‡¶∂‡¶ø‡ßü‡¶æ‡¶≤ ‡¶≤‡¶æ‡¶á‡¶≠ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ)
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500 font-semibold shrink-0">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®:</span>
-              <select 
-                value={selectedExamIdForResults}
-                onChange={e => setSelectedExamIdForResults(e.target.value)}
-                className="px-3 py-1.5 border rounded-xl bg-white text-gray-800 focus:outline-none"
-              >
-                <option value="">‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®...</option>
-                {[...liveExams]
-                  .sort((a, b) => {
-                    const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
-                    const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
-                    return timeB - timeA;
-                  })
-                  .map((le, idx) => <option key={le.id ? `le-opt-${le.id}-${idx}` : `le-opt-${idx}`} value={le.id}>{le.title} (‡¶≤‡¶æ‡¶á‡¶≠)</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="border rounded-xl overflow-x-auto">
-            <table className="w-full text-left divide-y divide-gray-100 text-[11px] sm:text-xs">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-gray-500 font-bold">‡¶∞‚Äç‡ßç‡¶Ø‡¶æ‡¶Ç‡¶ï</th>
-                  <th className="px-4 py-3 text-gray-500 font-bold">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞ ‡¶®‡¶æ‡¶Æ</th>
-                  <th className="px-4 py-3 text-gray-500 font-bold">‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞</th>
-                  <th className="px-4 py-3 text-gray-500 font-bold text-center">‡¶™‡ßç‡¶∞‡¶æ‡¶™‡ßç‡¶§ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞</th>
-                  <th className="px-4 py-3 text-gray-500 font-bold text-center">‡¶∏‡¶†‡¶ø‡¶ï/‡¶≠‡ßÅ‡¶≤</th>
-                  <th className="px-4 py-3 text-gray-500 font-bold text-right">‡¶§‡¶æ‡¶∞‡¶ø‡¶ñ ‡¶ì ‡¶∏‡¶Æ‡ßü</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {selectedExamIdForResults === '' ? (
-                  <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-8">‡¶¶‡ßü‡¶æ ‡¶ï‡¶∞‡ßá ‡¶â‡¶™‡¶∞‡ßá ‡¶ï‡ßã‡¶®‡ßã ‡¶è‡¶ï‡¶ü‡¶ø ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®‡•§</td>
-                  </tr>
-                ) : activeExamResults.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-8">‡¶è‡¶á ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡ßü ‡¶è‡¶ñ‡¶® ‡¶™‡¶∞‡ßç‡¶Ø‡¶®‡ßç‡¶§ ‡¶ï‡ßá‡¶â ‡¶Ö‡¶Ç‡¶∂ ‡¶®‡ßá‡ßü‡¶®‡¶ø‡•§</td>
-                  </tr>
-                ) : (
-                  activeExamResults
-                    .sort((a, b) => b.score - a.score)
-                    .map((item, index) => (
-                      <tr key={item.id} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-bold text-gray-500">{(index + 1).toLocaleString('bn-BD')}</td>
-                        <td className="px-4 py-3 font-bold text-indigo-950">{item.username}</td>
-                        <td className="px-4 py-3 font-mono text-gray-600">{item.userPhone}</td>
-                        <td className="px-4 py-3 text-center text-indigo-600 font-extrabold">{item.score.toLocaleString('bn-BD')}</td>
-                        <td className="px-4 py-3 text-center text-gray-500 font-medium">
-                          <span className="text-green-600">{item.correctCount}</span> / <span className="text-red-500">{item.wrongCount}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-400 text-[10px]">
-                          {new Date(item.submittedAt).toLocaleString('bn-BD')}
-                        </td>
-                      </tr>
-                    ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 6. REGISTERED USERS LIST */}
-      {activeTab === 'users' && (() => {
-        // Prepare enriched list
-        const safeUsers = users || [];
-        const enrichedUsers = safeUsers.map(u => {
-          // Calculate points
-          let approvedPoints = 0;
-          let pendingPoints = 0;
-          questions.forEach(q => {
-            if (q.comments) {
-              q.comments.forEach(c => {
-                if (c.userPhone === u.phone) {
-                  if (c.pointsApproved) {
-                    approvedPoints += 1;
-                  } else {
-                    pendingPoints += 1;
-                  }
-                }
-              });
-            }
-            if (q.userExplanations) {
-              q.userExplanations.forEach(e => {
-                if (e.userPhone === u.phone) {
-                  if (e.pointsApproved) {
-                    approvedPoints += 1;
-                  } else {
-                    pendingPoints += 1;
-                  }
-                }
-              });
-            }
-          });
-
-          // Calculate Last 7 Days MCQ
-          const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-          const user7DayAttempts = attempts.filter(a => a.userPhone === u.phone && new Date(a.submittedAt).getTime() >= sevenDaysAgo);
-          const last7DaysMcq = user7DayAttempts.reduce((sum, a) => sum + a.totalQuestions, 0);
-
-          // Calculate Official Exam Attained
-          const officialExamsAttained = attempts.filter(a => 
-            a.userPhone === u.phone && 
-            !a.examId.startsWith('prep_') && 
-            !a.examId.startsWith('job_') && 
-            !a.examId.startsWith('custom_') &&
-            !a.examId.startsWith('demo_')
-          ).length;
-
-          return {
-            ...u,
-            approvedPoints,
-            pendingPoints,
-            last7DaysMcq,
-            officialExamsAttained
-          };
-        });
-
-        // Filter
-        const filteredUsers = enrichedUsers.filter(u => {
-          const q = userSearch.toLowerCase().trim();
-          const matchesSearch = 
-            u.name.toLowerCase().includes(q) ||
-            u.phone.includes(q) ||
-            (u.userId && u.userId.toLowerCase().includes(q)) ||
-            (u.email && u.email.toLowerCase().includes(q));
-          const matchesGender = 
-            userGenderFilter === 'ALL' || 
-            u.gender === userGenderFilter;
-          return matchesSearch && matchesGender;
-        });
-
-        // Sort
-        const sortedUsers = [...filteredUsers].sort((a, b) => {
-          if (userSortBy === 'lifetimeAnswered') {
-            return b.lifetimeAnswered - a.lifetimeAnswered;
-          } else if (userSortBy === 'last7DaysMcq') {
-            return b.last7DaysMcq - a.last7DaysMcq;
-          } else if (userSortBy === 'approvedPoints') {
-            return b.approvedPoints - a.approvedPoints;
-          } else if (userSortBy === 'pendingPoints') {
-            return b.pendingPoints - a.pendingPoints;
-          } else if (userSortBy === 'officialExamsAttained') {
-            return b.officialExamsAttained - a.officialExamsAttained;
-          } else {
-            // Default: createdAt descending
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-          }
-        });
-
-        return (
-          <div className="flex flex-col gap-5 animate-fade-in">
-            {/* Recent User Growth Analytics */}
-            <UserGrowthChart users={safeUsers} />
-
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 text-xs">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-indigo-600" />
-                üë• ‡¶∞‡ßá‡¶ú‡¶ø‡¶∏‡ßç‡¶ü‡¶æ‡¶∞‡ßç‡¶° ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶™‡ßç‡¶∞‡ßã‡¶´‡¶æ‡¶á‡¶≤ ‡¶§‡¶æ‡¶≤‡¶ø‡¶ï‡¶æ
-              </h3>
-              <span className="bg-indigo-50 border border-indigo-100 text-indigo-800 font-bold px-3 py-1 rounded-full text-xs">
-                ‡¶Æ‡ßã‡¶ü ‡¶®‡¶ø‡¶¨‡¶®‡ßç‡¶ß‡¶ø‡¶§: {safeUsers.length} ‡¶ú‡¶® | ‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞‡¶ï‡ßÉ‡¶§: {filteredUsers.length} ‡¶ú‡¶®
-              </span>
-            </div>
-
-            {/* Filters & Search bar */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 p-4 rounded-2xl border border-gray-100/50">
-              {/* Search Input */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ ‡¶ñ‡ßÅ‡¶Å‡¶ú‡ßÅ‡¶®</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="‡¶®‡¶æ‡¶Æ ‡¶¨‡¶æ ‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶≤‡¶ø‡¶ñ‡ßÅ‡¶®..."
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    className="w-full pl-3 pr-8 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-gray-800"
-                  />
-                  {userSearch && (
-                    <button
-                      onClick={() => setUserSearch('')}
-                      className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600 font-bold text-xs"
-                    >
-                      ‚úï
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Gender Filter */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">‡¶≤‡¶ø‡¶ô‡ßç‡¶ó ‡¶Ö‡¶®‡ßÅ‡¶∏‡¶æ‡¶∞‡ßá ‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞</label>
-                <select
-                  value={userGenderFilter}
-                  onChange={(e) => setUserGenderFilter(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-gray-800 cursor-pointer"
-                >
-                  <option value="ALL">‡¶∏‡¶¨ ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ</option>
-                  <option value="‡¶™‡ßÅ‡¶∞‡ßÅ‡¶∑">‡¶™‡ßÅ‡¶∞‡ßÅ‡¶∑</option>
-                  <option value="‡¶®‡¶æ‡¶∞‡ßÄ">‡¶®‡¶æ‡¶∞‡ßÄ</option>
-                </select>
-              </div>
-
-              {/* Sort Dropdown */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">‡¶¨‡¶æ‡¶õ‡¶æ‡¶á‡ßü‡ßá‡¶∞ ‡¶ï‡ßç‡¶∞‡¶Æ‡¶æ‡¶®‡ßÅ‡¶∏‡¶æ‡¶∞ (Sort By)</label>
-                <select
-                  value={userSortBy}
-                  onChange={(e) => setUserSortBy(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-gray-800 cursor-pointer"
-                >
-                  <option value="createdAt">‡¶®‡¶ø‡¶¨‡¶®‡ßç‡¶ß‡¶®‡ßá‡¶∞ ‡¶§‡¶æ‡¶∞‡¶ø‡¶ñ (‡¶∏‡¶∞‡ßç‡¶¨‡¶∂‡ßá‡¶∑ ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                  <option value="lifetimeAnswered">‡¶Æ‡ßã‡¶ü ‡¶™‡¶†‡¶ø‡¶§ MCQ (‡¶∏‡¶∞‡ßç‡¶¨‡ßã‡¶ö‡ßç‡¶ö ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                  <option value="last7DaysMcq">‡¶ó‡¶§ ‡ß≠ ‡¶¶‡¶ø‡¶®‡ßá ‡¶™‡¶†‡¶ø‡¶§ MCQ (‡¶∏‡¶∞‡ßç‡¶¨‡ßã‡¶ö‡ßç‡¶ö ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                  <option value="approvedPoints">‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶ø‡¶§ ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü (‡¶∏‡¶∞‡ßç‡¶¨‡ßã‡¶ö‡ßç‡¶ö ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                  <option value="pendingPoints">‡¶™‡ßá‡¶®‡ßç‡¶°‡¶ø‡¶Ç ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü (‡¶∏‡¶∞‡ßç‡¶¨‡ßã‡¶ö‡ßç‡¶ö ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                  <option value="officialExamsAttained">‡¶Ö‡¶´‡¶ø‡¶∏‡¶ø‡ßü‡¶æ‡¶≤ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡ßü ‡¶Ö‡¶Ç‡¶∂‡¶ó‡ßç‡¶∞‡¶π‡¶£ (‡¶∏‡¶∞‡ßç‡¶¨‡ßã‡¶ö‡ßç‡¶ö ‡¶™‡ßç‡¶∞‡¶•‡¶Æ)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="border rounded-xl overflow-x-auto">
-              <table className="w-full text-left divide-y divide-gray-100 text-[11px] sm:text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-gray-500 font-bold">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞ ‡¶®‡¶æ‡¶Æ</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold">‡¶Ö‡¶ü‡ßã ‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶Ü‡¶á‡¶°‡¶ø</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold">‡¶á‡¶Æ‡ßá‡¶á‡¶≤ ‡¶ì ‡¶≠‡ßá‡¶∞‡¶ø‡¶´‡¶ø‡¶ï‡ßá‡¶∂‡¶®</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold">‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶ó‡¶§ ‡¶Ø‡ßã‡¶ó‡ßç‡¶Ø‡¶§‡¶æ</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-center">‡¶Æ‡ßã‡¶ü ‡¶™‡¶†‡¶ø‡¶§ MCQ</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-center text-indigo-700 bg-indigo-50/30">‡ß≠ ‡¶¶‡¶ø‡¶®‡ßá ‡¶™‡¶†‡¶ø‡¶§ MCQ</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-center text-pink-700 bg-pink-50/30">‡¶Ö‡¶´‡¶ø‡¶∏‡¶ø‡ßü‡¶æ‡¶≤ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-center text-green-700">‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶ø‡¶§ ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-center text-amber-700">‡¶™‡ßá‡¶®‡ßç‡¶°‡¶ø‡¶Ç ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü</th>
-                    <th className="px-4 py-3 text-gray-500 font-bold text-right">‡¶®‡¶ø‡¶¨‡¶®‡ßç‡¶ß‡¶® ‡¶§‡¶æ‡¶∞‡¶ø‡¶ñ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="text-center text-gray-400 py-8">‡¶ï‡ßã‡¶®‡ßã ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø‡•§</td>
-                    </tr>
-                  ) : (
-                    sortedUsers.map((u, idx) => (
-                      <tr key={u.userId ? `usr-${u.userId}-${idx}` : u.phone ? `usr-${u.phone}-${idx}` : `usr-${idx}`} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-bold text-gray-800 flex items-center gap-2">
-                          <img src={u.avatar} alt="Avatar" className="w-6 h-6 rounded-full bg-indigo-50 border shrink-0 object-cover" />
-                          {u.name}
-                        </td>
-                        <td className="px-4 py-3 font-mono font-bold text-indigo-700">
-                          <span className="bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[11px]">
-                            {u.userId || 'MDH-GUEST'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-mono text-gray-700 font-medium">{u.email || '‚Äî'}</span>
-                            {u.emailVerified ? (
-                              <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 rounded-full w-fit">
-                                ‚úÖ ‡¶≠‡ßá‡¶∞‡¶ø‡¶´‡¶æ‡¶á‡¶°
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-extrabold text-amber-700 bg-amber-50 border border-amber-100 px-1.5 rounded-full w-fit">
-                                ‚ö†Ô∏è ‡¶™‡ßá‡¶®‡ßç‡¶°‡¶ø‡¶Ç
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-gray-600">{u.phone}</td>
-                        <td className="px-4 py-3 text-gray-600 font-medium truncate max-w-[140px]">{u.education || '‡¶â‡¶≤‡ßç‡¶≤‡ßá‡¶ñ ‡¶®‡ßá‡¶á'}</td>
-                        <td className="px-4 py-3 text-center text-gray-600 font-bold">{(u.lifetimeAnswered || 0).toLocaleString('bn-BD')}‡¶ü‡¶ø</td>
-                        <td className="px-4 py-3 text-center text-indigo-700 font-extrabold bg-indigo-50/20">{(u.last7DaysMcq || 0).toLocaleString('bn-BD')}‡¶ü‡¶ø</td>
-                        <td className="px-4 py-3 text-center text-pink-700 font-extrabold bg-pink-50/20">{(u.officialExamsAttained || 0).toLocaleString('bn-BD')}‡¶ü‡¶ø</td>
-                        <td className="px-4 py-3 text-center text-green-700 font-extrabold font-mono text-xs">{u.approvedPoints}</td>
-                        <td className="px-4 py-3 text-center text-amber-700 font-extrabold font-mono text-xs">{u.pendingPoints}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 text-[10px]">
-                          {new Date(u.createdAt).toLocaleDateString('bn-BD')}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
-      })()}
-
-      {activeTab === 'feedback' && (
-        <div className="flex flex-col gap-6">
-          {/* Global Display & System Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Toggle Switch for MCQ Count Display */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between gap-4 animate-fade-in">
-              <div className="flex flex-col gap-1">
-                <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-                  üî¢ ‡¶ï‡¶æ‡¶∞‡ßç‡¶°‡ßá ‡¶Æ‡ßã‡¶ü MCQ ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶™‡ßç‡¶∞‡¶¶‡¶∞‡ßç‡¶∂‡¶®
-                </h3>
-                <p className="text-gray-500 text-[10px] sm:text-xs">
-                  ‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶™‡ßã‡¶∞‡ßç‡¶ü‡¶æ‡¶≤‡ßá ‡¶¨‡¶ø‡¶∑‡ßü, ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶ì ‡¶∏‡¶æ‡¶≤ ‡¶≠‡¶ø‡¶§‡ßç‡¶§‡¶ø‡¶ï ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ì ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ï‡¶æ‡¶∞‡ßç‡¶°‡ßá ‡¶Æ‡ßã‡¶ü ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶™‡ßç‡¶∞‡¶¶‡¶∞‡ßç‡¶∂‡¶® ‡¶•‡¶æ‡¶ï‡¶¨‡ßá ‡¶ï‡¶ø ‡¶®‡¶æ ‡¶§‡¶æ ‡¶®‡¶ø‡ßü‡¶®‡ßç‡¶§‡ßç‡¶∞‡¶£ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className={`text-xs font-bold ${showMcqCount ? 'text-emerald-600' : 'text-gray-400'}`}>
-                  {showMcqCount ? '‡¶™‡ßç‡¶∞‡¶¶‡¶∞‡ßç‡¶∂‡¶ø‡¶§ (‡¶ö‡¶æ‡¶≤‡ßÅ)' : '‡¶≤‡ßÅ‡¶ï‡¶æ‡¶®‡ßã (‡¶¨‡¶®‡ßç‡¶ß)'}
-                </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showMcqCount}
-                    onChange={(e) => onToggleMcqCount && onToggleMcqCount(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                </label>
-              </div>
-            </div>
-
-            {/* Toggle Switch for user explanation submission */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between gap-4 animate-fade-in">
-              <div className="flex flex-col gap-1">
-                <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-                  ‚úçÔ∏è ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶∏‡¶æ‡¶¨‡¶Æ‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡ßÅ‡¶¨‡¶ø‡¶ß‡¶æ
-                </h3>
-                <p className="text-gray-500 text-[10px] sm:text-xs">
-                  ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞‡¶æ ‡¶ï‡ßã‡¶®‡ßã ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∞‡¶ø‡¶≠‡¶ø‡¶â ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡¶Æ‡ßü ‡¶®‡¶§‡ßÅ‡¶® ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶Ø‡ßã‡¶ó ‡¶ï‡¶∞‡¶§‡ßá ‡¶™‡¶æ‡¶∞‡¶¨‡ßá ‡¶ï‡¶ø ‡¶®‡¶æ ‡¶§‡¶æ ‡¶®‡¶ø‡ßü‡¶®‡ßç‡¶§‡ßç‡¶∞‡¶£ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className={`text-xs font-bold ${allowUserExplanation ? 'text-indigo-600' : 'text-gray-400'}`}>
-                  {allowUserExplanation ? '‡¶ö‡¶æ‡¶≤‡ßÅ ‡¶Ü‡¶õ‡ßá' : '‡¶¨‡¶®‡ßç‡¶ß ‡¶Ü‡¶õ‡ßá'}
-                </span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowUserExplanation}
-                    onChange={(e) => onToggleUserExplanation(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 1: Error Reports */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 text-xs animate-fade-in">
-            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5 border-b pb-2">
-              <AlertCircle className="w-4 h-4 text-rose-600" />
-              üö© ‡¶≠‡ßÅ‡¶≤ ‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü ‡¶ì ‡¶ï‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßá‡¶ú‡¶Æ‡ßá‡¶®‡ßç‡¶ü ({questions.reduce((acc, q) => acc + (q.comments?.filter(c => !c.pointsApproved).length || 0), 0)})
-            </h3>
-            <div className="flex flex-col gap-4 mt-1">
-              {(() => {
-                const questionsWithComments = questions.filter(q => q.comments && q.comments.some(c => !c.pointsApproved));
-                if (questionsWithComments.length === 0) {
-                  return <div className="text-center text-gray-400 py-6 font-semibold">‡¶ï‡ßã‡¶®‡ßã ‡¶≠‡ßÅ‡¶≤ ‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø‡•§</div>;
-                }
-                return questionsWithComments.map(q => (
-                  <div key={q.id} className="border border-rose-100 bg-rose-50/10 p-4 rounded-2xl flex flex-col gap-3">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 border-b border-rose-50 pb-2">
-                      <div className="flex-1">
-                        <span className="bg-rose-50 text-rose-700 text-[9px] font-bold px-2 py-0.5 rounded border border-rose-100 mb-1 inline-block">
-                          ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶Ü‡¶á‡¶°‡¶ø: {q.id}
-                        </span>
-                        <h4 className="font-bold text-gray-900 leading-relaxed text-xs">{q.text}</h4>
-                        <p className="text-[10px] text-green-700 font-bold mt-1">
-                          ‡¶∏‡¶†‡¶ø‡¶ï ‡¶â‡¶§‡ßç‡¶§‡¶∞: {q[q.correct.replace('Option ', 'option') as keyof Question] as string}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2 sm:mt-0 shrink-0">
-                        <button
-                          onClick={() => handleStartEdit(q)}
-                          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-1.5 rounded-lg border border-indigo-150 transition text-[10px] flex items-center gap-1"
-                        >
-                          ‚úèÔ∏è ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶è‡¶°‡¶ø‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                      {q.comments?.filter(c => !c.pointsApproved).map(c => (
-                        <div key={c.id} className="bg-white border border-gray-100 p-3 rounded-xl flex justify-between items-start gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="font-extrabold text-gray-800 text-[10px]">{c.userName}</span>
-                              <span className="text-[9px] font-semibold text-gray-400 font-mono">({c.userPhone})</span>
-                              <span className="text-[9px] text-gray-300 font-medium">| {new Date(c.createdAt).toLocaleString('bn-BD')}</span>
-                              <span className="text-[8px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                                Pending point ‚è≥
-                              </span>
-                            </div>
-                            <p className="text-gray-700 font-medium leading-relaxed">{c.text}</p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              onClick={() => {
-                                const updated = q.comments?.map(comm => comm.id === c.id ? { ...comm, pointsApproved: true } : comm) || [];
-                                onUpdateQuestion(q.id, { comments: updated });
-                                showCustomAlert('‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶ø‡¶§', '‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá! ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ ‡ßß ‡¶ï‡¶®‡ßç‡¶ü‡ßç‡¶∞‡¶ø‡¶¨‡¶ø‡¶â‡¶∂‡¶® ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶™‡ßá‡ßü‡ßá‡¶õ‡ßá‡¶®‡•§', 'success');
-                              }}
-                              className="bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold px-2 py-1 rounded-lg border border-amber-150 transition text-[9px]"
-                            >
-                              ü™ô ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®
-                            </button>
-                            <button
-                              onClick={() => {
-                                showCustomConfirm(
-                                  '‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü',
-                                  '‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶è‡¶á ‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?',
-                                  () => {
-                                    const updated = q.comments?.filter(comm => comm.id !== c.id) || [];
-                                    onUpdateQuestion(q.id, { comments: updated });
-                                    showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®', '‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
-                                  },
-                                  'warning'
-                                );
-                              }}
-                              className="p-1.5 hover:bg-rose-50 text-rose-600 hover:text-rose-800 rounded-lg transition shrink-0"
-                              title="‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* Section 2: User Explanations */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 text-xs animate-fade-in">
-            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5 border-b pb-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              ‚úçÔ∏è ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡¶æ‡¶∞‡¶ï‡¶æ‡¶∞‡ßÄ‡¶¶‡ßá‡¶∞ ‡¶∏‡¶†‡¶ø‡¶ï ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶∏‡¶Æ‡ßÇ‡¶π‡ßá‡¶∞ ‡¶∞‡¶ø‡¶≠‡¶ø‡¶â ‡¶ì ‡¶Æ‡¶°‡¶æ‡¶∞‡ßá‡¶∂‡¶® ({questions.reduce((acc, q) => acc + (q.userExplanations?.filter(e => !e.approved).length || 0), 0)})
-            </h3>
-            <div className="flex flex-col gap-4 mt-1">
-              {(() => {
-                const questionsWithExpls = questions.filter(q => q.userExplanations && q.userExplanations.some(e => !e.approved));
-                if (questionsWithExpls.length === 0) {
-                  return <div className="text-center text-gray-400 py-6 font-semibold">‡¶ï‡ßã‡¶®‡ßã ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡¶æ‡¶∞‡¶ï‡¶æ‡¶∞‡ßÄ‡¶∞ ‡¶®‡¶§‡ßÅ‡¶® ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø‡•§</div>;
-                }
-                return questionsWithExpls.map(q => (
-                  <div key={q.id} className="border border-indigo-100 bg-indigo-50/5 p-4 rounded-2xl flex flex-col gap-3">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 border-b border-indigo-50 pb-2">
-                      <div className="flex-1">
-                        <span className="bg-indigo-50 text-indigo-700 text-[9px] font-bold px-2 py-0.5 rounded border border-indigo-100 mb-1 inline-block">
-                          ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶Ü‡¶á‡¶°‡¶ø: {q.id}
-                        </span>
-                        <h4 className="font-bold text-gray-900 leading-relaxed text-xs">{q.text}</h4>
-                        <div className="flex flex-col gap-1 mt-1.5 text-[10px] text-gray-500 font-semibold">
-                          <p className="text-green-700">
-                            ‡¶∏‡¶†‡¶ø‡¶ï ‡¶â‡¶§‡ßç‡¶§‡¶∞: {q[q.correct.replace('Option ', 'option') as keyof Question] as string}
-                          </p>
-                          <p className="text-amber-800">
-                            ‡¶Æ‡ßÇ‡¶≤ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ: {q.explanation || '‡¶Æ‡ßÇ‡¶≤ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶®‡ßá‡¶á‡•§'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2 sm:mt-0 shrink-0">
-                        <button
-                          onClick={() => handleStartEdit(q)}
-                          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-1.5 rounded-lg border border-indigo-150 transition text-[10px] flex items-center gap-1"
-                        >
-                          ‚úèÔ∏è ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶è‡¶°‡¶ø‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      {q.userExplanations?.filter(e => !e.approved).map(e => (
-                        <div key={e.id} className="bg-white border border-gray-100 p-3 rounded-xl flex justify-between items-start gap-4 shadow-2xs">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                              <span className="font-extrabold text-gray-850 text-[10px]">{e.userName}</span>
-                              <span className="text-[9px] font-semibold text-gray-400 font-mono">({e.userPhone})</span>
-                              <span className="text-[9px] text-gray-300">| {new Date(e.createdAt).toLocaleString('bn-BD')}</span>
-                              <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-full ${e.approved ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
-                                {e.approved ? 'Approved ‚úÖ' : 'Pending ‚è≥'}
-                              </span>
-                              <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-full ${e.pointsApproved ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
-                                {e.pointsApproved ? 'Approved point ‚úÖ' : 'Pending point ‚è≥'}
-                              </span>
-                            </div>
-                            <p className="text-gray-700 leading-relaxed font-medium whitespace-pre-line bg-gray-50/40 p-2 rounded-lg">{e.text}</p>
-                          </div>
-                          
-                          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                            {e.pointsApproved ? (
-                              <span className="bg-emerald-50 text-emerald-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-emerald-100 flex items-center gap-0.5">
-                                ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶ø‡¶§ ‚úÖ
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  const updated = q.userExplanations?.map(ex => ex.id === e.id ? { ...ex, pointsApproved: true } : ex) || [];
-                                  onUpdateQuestion(q.id, { userExplanations: updated });
-                                  showCustomAlert('‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶ø‡¶§', '‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá! ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ ‡ßß ‡¶ï‡¶®‡ßç‡¶ü‡ßç‡¶∞‡¶ø‡¶¨‡¶ø‡¶â‡¶∂‡¶® ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶™‡ßá‡ßü‡ßá‡¶õ‡ßá‡¶®‡•§', 'success');
-                                }}
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold px-2 py-1 rounded-lg border border-amber-150 transition text-[9px]"
-                              >
-                                ü™ô ‡¶™‡ßü‡ßá‡¶®‡ßç‡¶ü ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®
-                              </button>
-                            )}
-
-                            {!e.approved && (
-                              <button
-                                onClick={() => {
-                                  const updated = q.userExplanations?.map(ex => ex.id === e.id ? { ...ex, approved: true } : ex) || [];
-                                  onUpdateQuestion(q.id, { userExplanations: updated });
-                                  showCustomAlert('‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®', '‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá! ‡¶è‡¶ñ‡¶® ‡¶è‡¶ü‡¶ø ‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶™‡ßç‡¶Ø‡¶æ‡¶®‡ßá‡¶≤‡ßá ‡¶Æ‡ßÇ‡¶≤ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ‡¶∞ ‡¶®‡¶ø‡¶ö‡ßá ‡¶™‡ßç‡¶∞‡¶¶‡¶∞‡ßç‡¶∂‡¶ø‡¶§ ‡¶π‡¶¨‡ßá‡•§', 'success');
-                                }}
-                                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold px-2 py-1 rounded-lg border border-emerald-100 hover:border-emerald-200 transition text-[10px]"
-                              >
-                                ‡¶Ö‡¶®‡ßÅ‡¶Æ‡ßã‡¶¶‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®
-                              </button>
-                            )}
-                            <button
-                              onClick={() => setEditingExpl({ qId: q.id, explId: e.id, text: e.text })}
-                              className="bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold px-2 py-1 rounded-lg border border-slate-100 hover:border-slate-200 transition text-[10px]"
-                            >
-                              ‡¶è‡¶°‡¶ø‡¶ü
-                            </button>
-                            <button
-                              onClick={() => {
-                                showCustomConfirm(
-                                  '‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü',
-                                  '‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶è‡¶á ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?',
-                                  () => {
-                                    const updated = q.userExplanations?.filter(ex => ex.id !== e.id) || [];
-                                    onUpdateQuestion(q.id, { userExplanations: updated });
-                                    showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®', '‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ‡¶ü‡¶ø ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
-                                  },
-                                  'warning'
-                                );
-                              }}
-                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold px-2 py-1 rounded-lg border border-rose-100 hover:border-rose-250 transition text-[10px]"
-                            >
-                              ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 9. BACKUP & RESTORE MANAGER TAB */}
-      {activeTab === 'backup' && (
-        <div className="flex flex-col gap-5 animate-fade-in text-xs">
-          {/* Header Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-indigo-900/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-3 bg-indigo-600/30 rounded-2xl border border-indigo-500/30 text-indigo-300 shrink-0">
-                <Database className="w-8 h-8 text-indigo-400" />
-              </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                  üì¶ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶ì ‡¶∞‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶∏‡ßá‡¶®‡ßç‡¶ü‡¶æ‡¶∞ (Backup Manager)
-                </h2>
-                <p className="text-xs text-indigo-200 mt-1 leading-relaxed max-w-2xl font-medium">
-                  ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶Ö‡¶∞‡ßç‡¶ú‡¶®‡ßá‡¶∞ ‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶∏‡¶ø‡¶∏‡ßç‡¶ü‡ßá‡¶Æ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú (‡¶®‡¶ø‡¶¨‡¶®‡ßç‡¶ß‡¶ø‡¶§ ‡¶á‡¶â‡¶ú‡¶æ‡¶∞, MCQ ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶¨‡ßç‡¶Ø‡¶æ‡¶Ç‡¶ï, ‡¶≤‡¶æ‡¶á‡¶≠ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ, ‡¶®‡ßã‡¶ü‡¶ø‡¶∂, ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®, ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∞‡ßá‡¶ú‡¶æ‡¶≤‡ßç‡¶ü ‡¶ì ‡¶∏‡ßá‡¶ü‡¶ø‡¶Ç‡¶∏) ‡¶è‡¶ï ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï‡ßá JSON ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßÅ‡¶® ‡¶Ö‡¶•‡¶¨‡¶æ ‡¶™‡ßÇ‡¶∞‡ßç‡¶¨‡ßá‡¶∞ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶•‡ßá‡¶ï‡ßá ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶∞‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-            </div>
-            
-            <button
-              onClick={handleExportBackup}
-              className="bg-indigo-500 hover:bg-indigo-600 text-white font-extrabold text-xs px-4 py-3 rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center gap-2 shrink-0 border border-indigo-400/30 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON</span>
-            </button>
-          </div>
-
-          {/* Database Storage Live Metrics */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
-            <h3 className="font-extrabold text-sm text-gray-800 flex items-center gap-2 border-b pb-2">
-              <HardDrive className="w-4 h-4 text-indigo-600" />
-              ‡¶¨‡¶∞‡ßç‡¶§‡¶Æ‡¶æ‡¶® ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶∏‡ßç‡¶•‡¶ø‡¶§‡¶ø (Current Database Metrics)
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
-              <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-xl text-center flex flex-col justify-center">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">‡¶Æ‡ßã‡¶ü ‡¶®‡¶ø‡¶¨‡¶®‡ßç‡¶ß‡¶ø‡¶§ ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ</span>
-                <span className="text-lg font-black text-slate-800 mt-1">{users.length.toLocaleString('bn-BD')} ‡¶ú‡¶®</span>
-              </div>
-              <div className="bg-indigo-50/60 border border-indigo-100/60 p-3.5 rounded-xl text-center flex flex-col justify-center">
-                <span className="text-[10px] font-bold text-indigo-600/80 uppercase tracking-wider block">‡¶∏‡¶û‡ßç‡¶ö‡¶ø‡¶§ MCQ ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®</span>
-                <span className="text-lg font-black text-indigo-900 mt-1">{questions.length.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-              </div>
-              <div className="bg-emerald-50/60 border border-emerald-100/60 p-3.5 rounded-xl text-center flex flex-col justify-center">
-                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶¨‡¶Æ‡¶ø‡¶∂‡¶® ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶°</span>
-                <span className="text-lg font-black text-emerald-800 mt-1">{attempts.length.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-              </div>
-              <div className="bg-amber-50/60 border border-amber-100/60 p-3.5 rounded-xl text-center flex flex-col justify-center">
-                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">‡¶≤‡¶æ‡¶á‡¶≠ ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶ì ‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®</span>
-                <span className="text-lg font-black text-amber-800 mt-1">{(liveExams.length + routines.length).toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Cards: Export & Import */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* Card 1: EXPORT SYSTEM */}
-            <div className="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-4 relative overflow-hidden">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                    <FileJson className="w-5 h-5" />
-                  </span>
-                  <h3 className="font-extrabold text-sm text-indigo-950">‡ßß. ‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° (Export)</h3>
-                </div>
-                <p className="text-gray-600 leading-relaxed text-[11px] font-medium">
-                  ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶¨‡ßç‡¶∞‡¶æ‡¶â‡¶ú‡¶æ‡¶∞‡ßá‡¶∞ `localStorage`-‡¶è ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶ø‡¶§ ‡¶∏‡¶ï‡¶≤ ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®, ‡¶á‡¶â‡¶ú‡¶æ‡¶∞, ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶≤‡¶ó ‡¶è‡¶¨‡¶Ç ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶á‡¶§‡¶ø‡¶π‡¶æ‡¶∏ ‡¶è‡¶ï‡¶§‡ßç‡¶∞‡ßá ‡¶è‡¶ï‡¶ü‡¶ø ‡¶∏‡ßç‡¶ü‡ßç‡¶∞‡¶æ‡¶ï‡¶ö‡¶æ‡¶∞‡ßç‡¶° JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶Ü‡¶ï‡¶æ‡¶∞‡ßá ‡¶ï‡¶Æ‡ßç‡¶™‡¶ø‡¶â‡¶ü‡¶æ‡¶∞‡ßá/‡¶´‡ßã‡¶®‡ßá ‡¶∏‡ßá‡¶≠ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-                <div className="bg-indigo-50/50 border border-indigo-100/60 p-3 rounded-xl text-[10px] text-indigo-900 space-y-1">
-                  <span className="font-bold block text-indigo-950">üìå ‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶æ‡¶Æ ‡¶´‡¶∞‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ü:</span>
-                  <code className="bg-white px-2 py-0.5 rounded border border-indigo-200 text-indigo-700 font-mono font-bold block w-fit">
-                    orjon_backup_{new Date().toISOString().slice(0, 10)}.json
-                  </code>
-                </div>
-              </div>
-
-              <button
-                onClick={handleExportBackup}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl shadow-md shadow-indigo-200 transition flex items-center justify-center gap-2 text-xs cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßÅ‡¶® (Export Backup)</span>
-              </button>
-            </div>
-
-            {/* Card 2: IMPORT & RESTORE SYSTEM */}
-            <div className="bg-white border border-amber-100 rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-4 relative overflow-hidden">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="p-2 bg-amber-50 text-amber-700 rounded-xl">
-                    <RotateCcw className="w-5 h-5" />
-                  </span>
-                  <h3 className="font-extrabold text-sm text-amber-950">‡ß®. ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶∞‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶∞‡ßÅ‡¶® (Import & Restore)</h3>
-                </div>
-                <p className="text-gray-600 leading-relaxed text-[11px] font-medium">
-                  ‡¶™‡ßÇ‡¶∞‡ßç‡¶¨‡ßá ‡¶∏‡ßá‡¶≠ ‡¶ï‡¶∞‡¶æ `.json` ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡ßá ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶Ü‡¶ó‡ßá‡¶∞ ‡¶Ö‡¶¨‡¶∏‡ßç‡¶•‡¶æ‡ßü ‡¶´‡¶ø‡¶∞‡¶ø‡ßü‡ßá ‡¶Ü‡¶®‡ßÅ‡¶®‡•§ ‡¶∞‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶π‡¶≤‡ßá ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶Ü‡¶™‡¶°‡ßá‡¶ü ‡¶π‡ßü‡ßá ‡¶™‡ßá‡¶ú ‡¶∞‡¶ø‡¶≤‡ßã‡¶° ‡¶π‡¶¨‡ßá‡•§
-                </p>
-                <div className="bg-amber-50/60 border border-amber-100 p-3 rounded-xl text-[10px] text-amber-900 space-y-1">
-                  <span className="font-bold block text-amber-950">‚ö†Ô∏è ‡¶∏‡¶§‡¶∞‡ßç‡¶ï‡¶¨‡¶æ‡¶∞‡ßç‡¶§‡¶æ:</span>
-                  <p className="leading-snug">
-                    ‡¶∞‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶•‡ßá ‡¶∏‡¶æ‡¶•‡ßá ‡¶¨‡¶∞‡ßç‡¶§‡¶Æ‡¶æ‡¶® ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú‡ßá‡¶∞ ‡¶§‡¶•‡ßç‡¶Ø ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ‡¶§‡¶•‡ßç‡¶Ø ‡¶¶‡ßç‡¶¨‡¶æ‡¶∞‡¶æ ‡¶™‡ßç‡¶∞‡¶§‡¶ø‡¶∏‡ßç‡¶•‡¶æ‡¶™‡¶ø‡¶§ ‡¶π‡¶¨‡ßá‡•§
-                  </p>
-                </div>
-              </div>
-
-              <label className="w-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold py-3 rounded-xl shadow-md shadow-amber-200 transition flex items-center justify-center gap-2 text-xs cursor-pointer text-center">
-                <Upload className="w-4 h-4" />
-                <span>‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶® (Import Backup)</span>
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={handleImportBackupFile}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-          </div>
-
-          {/* Usage Instructions Box */}
-          <div className="bg-slate-50 border border-slate-200/70 p-4 rounded-2xl flex flex-col gap-2">
-            <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-              üí° ‡¶ï‡ßÄ‡¶≠‡¶æ‡¶¨‡ßá ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶¨‡ßá‡¶®?
-            </h4>
-            <ol className="list-decimal list-inside text-[11px] text-slate-600 space-y-1 font-medium leading-relaxed pl-1">
-              <li>‡¶â‡¶™‡¶∞‡ßá ‡¶â‡¶≤‡ßç‡¶≤‡¶ø‡¶ñ‡¶ø‡¶§ <strong>"‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON"</strong> ‡¶Ö‡¶•‡¶¨‡¶æ <strong>"‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßÅ‡¶®"</strong> ‡¶¨‡¶æ‡¶ü‡¶®‡ßá ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶ï‡¶∞‡ßÅ‡¶®‡•§</li>
-              <li>‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶¨‡ßç‡¶∞‡¶æ‡¶â‡¶ú‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶•‡ßá ‡¶∏‡¶æ‡¶•‡ßá ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤‡¶ü‡¶ø ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶°‡¶ø‡¶≠‡¶æ‡¶á‡¶∏ ‡¶¨‡¶æ ‡¶ï‡¶Æ‡ßç‡¶™‡¶ø‡¶â‡¶ü‡¶æ‡¶∞‡ßá‡¶∞ Downloads ‡¶´‡ßã‡¶≤‡ßç‡¶°‡¶æ‡¶∞‡ßá ‡¶∏‡ßá‡¶≠ ‡¶ï‡¶∞‡¶¨‡ßá‡•§</li>
-              <li>‡¶≠‡¶¨‡¶ø‡¶∑‡ßç‡¶Ø‡¶§‡ßá ‡¶ï‡ßã‡¶®‡ßã ‡¶ï‡¶æ‡¶∞‡¶£‡ßá ‡¶°‡¶æ‡¶ü‡¶æ ‡¶∞‡¶ø‡¶∏‡ßá‡¶ü ‡¶π‡¶≤‡ßá ‡¶¨‡¶æ ‡¶®‡¶§‡ßÅ‡¶® ‡¶°‡¶ø‡¶≠‡¶æ‡¶á‡¶∏‡ßá ‡¶∂‡¶ø‡¶´‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶á‡¶≤‡ßá <strong>"‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®"</strong> ‡¶è ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶ï‡¶∞‡ßá ‡¶´‡¶æ‡¶á‡¶≤‡¶ü‡¶ø ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶≤‡ßá‡¶á ‡¶™‡ßÇ‡¶∞‡ßç‡¶¨‡ßá‡¶∞ ‡¶∏‡¶ï‡¶≤ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶´‡¶ø‡¶∞‡ßá ‡¶Ü‡¶∏‡¶¨‡ßá‡•§</li>
-            </ol>
-          </div>
-
-          {/* ---------------------------------------------------- */}
-          {/* FIREBASE CLOUD DATABASE INTEGRATION & MIGRATION TOOL */}
-          {/* ---------------------------------------------------- */}
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-xl flex flex-col gap-6 relative overflow-hidden mt-2">
-            
-            {/* Title Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-indigo-800/50 pb-5">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-indigo-500/20 border border-indigo-400/30 rounded-2xl text-indigo-300 shrink-0">
-                  <Sparkles className="w-7 h-7 text-amber-400 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
-                      üî• ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶á‡¶®‡ßç‡¶ü‡¶ø‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® (Firebase Suite)
-                    </h3>
-                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                      ‚óè ‡¶∏‡¶Ç‡¶Ø‡ßÅ‡¶ï‡ßç‡¶§ (Connected)
-                    </span>
-                  </div>
-                  <p className="text-xs text-indigo-200 mt-1 font-medium">
-                    Google Firebase Authentication, Cloud Firestore Database & Firebase Storage ‡¶∏‡¶æ‡¶∞‡ßç‡¶≠‡¶ø‡¶∏ ‡¶Ö‡¶∞‡ßç‡¶ú‡¶®‡ßá ‡¶∏‡¶ï‡ßç‡¶∞‡¶ø‡ßü ‡¶∞‡ßü‡ßá‡¶õ‡ßá‡•§
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={handleRefreshFirestoreCounts}
-                disabled={isCountingFirestore}
-                className="bg-indigo-600/60 hover:bg-indigo-600 text-indigo-100 font-extrabold text-xs px-4 py-2.5 rounded-xl border border-indigo-400/30 transition flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCountingFirestore ? 'animate-spin' : ''}`} />
-                <span>‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶ó‡¶£‡¶®‡¶æ ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-              </button>
-            </div>
-
-            {/* Connection Credentials Overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-xs flex flex-col">
-                <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Project ID</span>
-                <span className="text-sm font-extrabold text-white mt-0.5 font-mono">{firebaseConfig.projectId}</span>
-                <span className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1 font-semibold">
-                  <CheckCircle2 className="w-3 h-3" /> Cloud Firestore Live
-                </span>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-xs flex flex-col">
-                <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Authentication Domain</span>
-                <span className="text-xs font-extrabold text-white mt-0.5 font-mono truncate">{firebaseConfig.authDomain}</span>
-                <span className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1 font-semibold">
-                  <CheckCircle2 className="w-3 h-3" /> Auth Ready
-                </span>
-              </div>
-              <div className="bg-white/5 border border-white/10 p-3.5 rounded-2xl backdrop-blur-xs flex flex-col">
-                <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">Storage Bucket</span>
-                <span className="text-xs font-extrabold text-white mt-0.5 font-mono truncate">{firebaseConfig.storageBucket}</span>
-                <span className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1 font-semibold">
-                  <CheckCircle2 className="w-3 h-3" /> Cloud Storage Ready
-                </span>
-              </div>
-            </div>
-
-            {/* Live Firestore Document Counts Inspector */}
-            {firestoreCounts && (
-              <div className="bg-slate-950/70 border border-indigo-500/30 p-4 rounded-2xl flex flex-col gap-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-extrabold text-xs text-indigo-200 flex items-center gap-2">
-                    üìä Cloud Firestore ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶® ‡¶®‡¶•‡¶ø ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ (Live Counts)
-                  </span>
-                  <span className="text-[10px] text-indigo-300 font-bold bg-indigo-900/60 px-2.5 py-0.5 rounded-full border border-indigo-700/50">
-                    ‡¶Æ‡ßã‡¶ü: {(Object.values(firestoreCounts) as number[]).reduce((a, b) => a + b, 0).toLocaleString('bn-BD')} ‡¶ü‡¶ø
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">questions</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.questions.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">users</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.users.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">bookmarks</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.bookmarks.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">attempts</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.attempts.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">categories</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.categories.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">subcategories</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.subcategories.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">notices</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.notices.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">routines</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.routines.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">live_exams</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.live_exams.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">courses</span>
-                    <span className="text-sm font-extrabold text-white">{(firestoreCounts.courses || 0).toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">upload_history</span>
-                    <span className="text-sm font-extrabold text-white">{firestoreCounts.upload_history.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded-xl text-center">
-                    <span className="text-[10px] text-indigo-300 font-medium block">audit_logs</span>
-                    <span className="text-sm font-extrabold text-white">{(firestoreCounts.audit_logs || 0).toLocaleString('bn-BD')}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ONE-TIME MIGRATION ACTIONS */}
-            <div className="bg-indigo-950/50 border border-indigo-800/50 p-5 rounded-2xl flex flex-col gap-4">
-              <div>
-                <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
-                  üîÑ ‡¶è‡¶ï-‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ü‡ßÅ‡¶≤ (One-time Migration Tool)
-                </h4>
-                <p className="text-xs text-indigo-200 mt-1 leading-relaxed">
-                  ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶¨‡¶∞‡ßç‡¶§‡¶Æ‡¶æ‡¶® LocalStorage ‡¶è‡¶∞ ‡¶§‡¶•‡ßç‡¶Ø ‡¶Ö‡¶•‡¶¨‡¶æ ‡¶°‡¶æ‡¶â‡¶®‡¶≤‡ßã‡¶°‡¶ï‡ßÉ‡¶§ JSON ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶∏‡¶∞‡¶æ‡¶∏‡¶∞‡¶ø Cloud Firestore ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶®‡ßá ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ì ‡¶ï‡¶®‡¶≠‡¶æ‡¶∞‡ßç‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®‡•§ ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ö‡¶≤‡¶æ‡¶ï‡¶æ‡¶≤‡ßÄ‡¶® ‡¶ì ‡¶∂‡ßá‡¶∑‡ßá ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ LocalStorage ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶Ö‡¶ï‡ßç‡¶∑‡¶§ ‡¶•‡¶æ‡¶ï‡¶¨‡ßá‡•§
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                {/* Migration Action 1 */}
-                <button
-                  onClick={handleStartLocalStorageMigration}
-                  disabled={isMigrating}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-950/40 border border-emerald-400/30 transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-                >
-                  <Database className="w-4 h-4" />
-                  <span>‡ßß. LocalStorage ‡¶•‡ßá‡¶ï‡ßá Firestore-‡¶è ‡¶∏‡ßç‡¶•‡¶æ‡¶®‡¶æ‡¶®‡ßç‡¶§‡¶∞ ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-                </button>
-
-                {/* Migration Action 2 */}
-                <label className="bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-950/40 border border-indigo-400/30 transition flex items-center justify-center gap-2 text-xs cursor-pointer text-center disabled:opacity-50">
-                  <Upload className="w-4 h-4" />
-                  <span>‡ß®. ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡ßá Firestore-‡¶è ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    onChange={handleStartJSONBackupMigration}
-                    disabled={isMigrating}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              {/* Live Migration Status Message & Logs */}
-              {isMigrating && (
-                <div className="bg-slate-900 border border-amber-500/40 p-4 rounded-xl flex flex-col gap-2 animate-pulse">
-                  <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ö‡¶≤‡¶Æ‡¶æ‡¶®: {migrationStatusMsg}</span>
-                  </div>
-                  <div className="bg-black/60 p-3 rounded-lg text-[10px] font-mono text-emerald-400 max-h-32 overflow-y-auto space-y-1">
-                    {migrationLogs.map((log, idx) => (
-                      <div key={idx}>{log}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Migration Report Summary */}
-              {migrationReport && (
-                <div className="bg-emerald-950/80 border border-emerald-500/50 p-4 rounded-xl flex flex-col gap-3">
-                  <div className="flex justify-between items-center border-b border-emerald-800/60 pb-2">
-                    <span className="font-extrabold text-xs text-emerald-200 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      ‡¶∏‡¶∞‡ßç‡¶¨‡¶∂‡ßá‡¶∑ ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü (Migration Report Summary)
-                    </span>
-                    <span className="text-[10px] text-emerald-300 font-mono">
-                      {new Date(migrationReport.timestamp).toLocaleTimeString('bn-BD')}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-                    <div className="bg-emerald-900/40 p-2 rounded-lg text-center">
-                      <span className="text-[10px] text-emerald-300 block">‡¶â‡ßé‡¶∏ (Source)</span>
-                      <span className="font-bold text-white">{migrationReport.source}</span>
-                    </div>
-                    <div className="bg-emerald-900/40 p-2 rounded-lg text-center">
-                      <span className="text-[10px] text-emerald-300 block">‡¶Æ‡ßã‡¶ü ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶ü‡ßá‡¶° ‡¶®‡¶•‡¶ø</span>
-                      <span className="font-bold text-white">{migrationReport.totalDocuments.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                    </div>
-                    <div className="bg-emerald-900/40 p-2 rounded-lg text-center">
-                      <span className="text-[10px] text-emerald-300 block">questions</span>
-                      <span className="font-bold text-white">{migrationReport.counts.questions.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                    </div>
-                    <div className="bg-emerald-900/40 p-2 rounded-lg text-center">
-                      <span className="text-[10px] text-emerald-300 block">users</span>
-                      <span className="font-bold text-white">{migrationReport.counts.users.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                    </div>
-                  </div>
-
-                  <p className="text-[10px] text-emerald-200/90 font-medium">
-                    üõ°Ô∏è <strong>‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶∏‡ßÅ‡¶∞‡¶ï‡ßç‡¶∑‡¶æ:</strong> ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶¨‡ßç‡¶∞‡¶æ‡¶â‡¶ú‡¶æ‡¶∞ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú (localStorage) ‡¶™‡ßÇ‡¶∞‡ßç‡¶¨‡ßá‡¶∞ ‡¶Æ‡¶§‡ßã‡¶á ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶ø‡¶§ ‡¶∞‡ßü‡ßá‡¶õ‡ßá ‡¶è‡¶¨‡¶Ç ‡¶°‡¶æ‡¶ü‡¶æ ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ø‡¶æ‡¶ö‡¶æ‡¶á ‡¶ï‡¶∞‡¶æ ‡¶™‡¶∞‡ßç‡¶Ø‡¶®‡ßç‡¶§ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶π‡¶ø‡¶∏‡ßá‡¶¨‡ßá ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡ßÉ‡¶§ ‡¶π‡¶§‡ßá ‡¶™‡¶æ‡¶∞‡¶¨‡ßá‡•§
-                  </p>
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* 10. FIRESTORE MIGRATION DEDICATED SECTION */}
-      {activeTab === 'firestore-migration' && (
-        <div className="flex flex-col gap-6 animate-fade-in">
-          
-          {/* Header Card */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 bg-indigo-500/20 border border-indigo-400/30 rounded-2xl text-indigo-300 shrink-0">
-                <Sparkles className="w-8 h-8 text-amber-400 animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                    üî• Firestore Migration Center
-                  </h2>
-                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full">
-                    ‚óè Cloud Firestore Live
-                  </span>
-                </div>
-                <p className="text-xs text-indigo-200 mt-1 font-medium">
-                  ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ü‡ßÅ‡¶≤ ‡¶¶‡¶ø‡ßü‡ßá ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶¨‡ßç‡¶∞‡¶æ‡¶â‡¶ú‡¶æ‡¶∞ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶¨‡¶æ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ‡¶§‡¶•‡ßç‡¶Ø ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶°‡ßá ‡¶∏‡ßç‡¶•‡¶æ‡¶®‡¶æ‡¶®‡ßç‡¶§‡¶∞ ‡¶ì ‡¶≠‡ßá‡¶∞‡¶ø‡¶´‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={handleRefreshFirestoreCounts}
-              disabled={isCountingFirestore}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl border border-indigo-400/30 transition shadow-md flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isCountingFirestore ? 'animate-spin' : ''}`} />
-              <span>‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶æ‡¶®‡ßá‡¶ï‡¶∂‡¶® ‡¶≠‡ßá‡¶∞‡¶ø‡¶´‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-            </button>
-          </div>
-
-          {/* Step 1: Upload Backup JSON File */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col gap-4">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-              <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-600 shrink-0">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-900">
-                  ‡ßß. ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßÅ‡¶® (Upload Backup JSON File)
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  ‡¶ï‡¶Æ‡ßç‡¶™‡¶ø‡¶â‡¶ü‡¶æ‡¶∞ ‡¶¨‡¶æ ‡¶°‡¶ø‡¶≠‡¶æ‡¶á‡¶∏ ‡¶•‡ßá‡¶ï‡ßá ‡¶™‡ßÇ‡¶∞‡ßç‡¶¨‡ßá ‡¶∏‡¶Ç‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶ø‡¶§ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡ßá ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶®‡ßá‡¶∞ ‡¶ú‡¶®‡ßç‡¶Ø ‡¶°‡¶æ‡¶ü‡¶æ ‡¶Ø‡¶æ‡¶ö‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              <label className="border-2 border-dashed border-indigo-300 hover:border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50/80 transition rounded-2xl p-5 text-center flex flex-col items-center justify-center gap-2 cursor-pointer group">
-                <FileText className="w-8 h-8 text-indigo-500 group-hover:scale-110 transition" />
-                <span className="font-bold text-xs text-slate-800">
-                  {uploadedBackupFileDetails ? '‡¶Ö‡¶®‡ßç‡¶Ø ‡¶ï‡ßã‡¶®‡ßã ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®' : '‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶®‡ßá‡¶∞ ‡¶ú‡¶®‡ßç‡¶Ø ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®'}
-                </span>
-                <span className="text-[10px] text-gray-500">(.json ‡¶´‡¶æ‡¶á‡¶≤ ‡¶∏‡¶æ‡¶™‡ßã‡¶∞‡ßç‡¶ü‡ßá‡¶°)</span>
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={handleSelectBackupFile}
-                  disabled={isMigrating}
-                  className="hidden"
-                />
-              </label>
-
-              {uploadedBackupFileDetails ? (
-                <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex flex-col gap-2">
-                  <div className="flex justify-between items-center border-b border-emerald-200 pb-2">
-                    <span className="font-extrabold text-xs text-emerald-900 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      ‡¶´‡¶æ‡¶á‡¶≤ ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶∏‡¶´‡¶≤
-                    </span>
-                    <button
-                      onClick={() => setUploadedBackupFileDetails(null)}
-                      className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
-                    >
-                      ‡¶∞‡¶ø‡¶Æ‡ßÅ‡¶≠ ‡¶ï‡¶∞‡ßÅ‡¶®
-                    </button>
-                  </div>
-
-                  <div className="text-xs space-y-1 text-emerald-800">
-                    <div>üìÅ <strong>‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶æ‡¶Æ:</strong> {uploadedBackupFileDetails.fileName} ({uploadedBackupFileDetails.fileSizeKB} KB)</div>
-                    <div>‚ùì <strong>‡¶ö‡¶ø‡¶π‡ßç‡¶®‡¶ø‡¶§ ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ:</strong> {uploadedBackupFileDetails.questionCount.toLocaleString('bn-BD')} ‡¶ü‡¶ø</div>
-                    <div>üìä <strong>‡¶Æ‡ßã‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ:</strong> {uploadedBackupFileDetails.totalRecordCount.toLocaleString('bn-BD')} ‡¶ü‡¶ø</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl text-xs text-gray-500 flex flex-col justify-center gap-1">
-                  <div className="font-bold text-slate-700">üí° ‡¶ï‡ßã‡¶®‡ßã ‡¶´‡¶æ‡¶á‡¶≤ ‡¶∏‡¶ø‡¶≤‡ßá‡¶ï‡ßç‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶®‡ßá‡¶á</div>
-                  <div>‡¶Ü‡¶™‡¶®‡¶ø ‡¶ö‡¶æ‡¶á‡¶≤‡ßá ‡¶∏‡¶∞‡¶æ‡¶∏‡¶∞‡¶ø ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶¨‡ßç‡¶∞‡¶æ‡¶â‡¶ú‡¶æ‡¶∞‡ßá‡¶∞ LocalStorage ‡¶•‡ßá‡¶ï‡ßá ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ï‡¶∞‡¶§‡ßá ‡¶™‡¶æ‡¶∞‡ßá‡¶®, ‡¶Ö‡¶•‡¶¨‡¶æ ‡¶â‡¶™‡¶∞ ‡¶•‡ßá‡¶ï‡ßá JSON ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶§‡ßá ‡¶™‡¶æ‡¶∞‡ßá‡¶®‡•§</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Step 2: Migrate All Data to Firestore */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col gap-4">
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-              <div className="p-2.5 bg-amber-50 border border-amber-100 rounded-2xl text-amber-600 shrink-0">
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-900">
-                  ‡ß®. ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶è‡¶ï‡ßç‡¶∏‡¶ø‡¶ï‡¶ø‡¶â‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶® (Migrate Data to Firestore)
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  ‡¶®‡¶ø‡¶ö‡ßá‡¶∞ ‡¶¨‡¶æ‡¶ü‡¶®‡ßá ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶ï‡¶∞‡ßá ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®, ‡¶á‡¶â‡¶ú‡¶æ‡¶∞, ‡¶∞‡ßá‡¶ú‡¶æ‡¶≤‡ßç‡¶ü, ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶è‡¶¨‡¶Ç ‡¶®‡ßã‡¶ü‡¶ø‡¶∂ ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶®‡ßá ‡¶∞‡¶æ‡¶á‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                onClick={handleStartLocalStorageMigration}
-                disabled={isMigrating}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-              >
-                <Database className="w-4 h-4" />
-                <span>‡¶≤‡ßã‡¶ï‡¶æ‡¶≤ ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú (LocalStorage) ‚ûî Firestore ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶®</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  if (uploadedBackupFileDetails) {
-                    showCustomConfirm(
-                      'Migrate Uploaded Backup JSON',
-                      `‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø "${uploadedBackupFileDetails.fileName}" ‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ${uploadedBackupFileDetails.questionCount}‡¶ü‡¶ø ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶ì ‡¶°‡¶æ‡¶ü‡¶æ Firestore-‡¶è ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶ü ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?`,
-                      async () => {
-                        setIsMigrating(true);
-                        setMigrationLogs([]);
-                        setMigrationStatusMsg('‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶æ JSON ‡¶´‡¶æ‡¶á‡¶≤ ‡¶•‡ßá‡¶ï‡ßá ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶π‡¶ö‡ßç‡¶õ‡ßá...');
-                        try {
-                          const report = await migrateDataToFirestore(uploadedBackupFileDetails.parsedData, 'JSON File', (msg) => {
-                            setMigrationStatusMsg(msg);
-                            setMigrationLogs(prev => [...prev, `[${new Date().toLocaleTimeString('bn-BD')}] ${msg}`]);
-                          });
-                          setMigrationReport(report);
-                          await handleRefreshFirestoreCounts();
-                          showCustomAlert('‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®!', `Firebase Firestore-‡¶è ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶•‡ßá‡¶ï‡ßá ‡¶Æ‡ßã‡¶ü ${report.totalDocuments}‡¶ü‡¶ø ‡¶®‡¶•‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá‡•§`, 'success');
-                        } catch (err: any) {
-                          showCustomAlert('‡¶§‡ßç‡¶∞‡ßÅ‡¶ü‡¶ø!', `‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• ‡¶π‡ßü‡ßá‡¶õ‡ßá: ${err?.message || String(err)}`, 'warning');
-                        } finally {
-                          setIsMigrating(false);
-                        }
-                      }
-                    );
-                  } else {
-                    showCustomAlert('‡¶´‡¶æ‡¶á‡¶≤ ‡¶™‡ßç‡¶∞‡ßü‡ßã‡¶ú‡¶®!', '‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶∂‡ßÅ‡¶∞‡ßÅ ‡¶ï‡¶∞‡¶æ‡¶∞ ‡¶Ü‡¶ó‡ßá ‡¶â‡¶™‡¶∞‡ßá ‡ßß ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞ ‡¶ß‡¶æ‡¶™‡ßá ‡¶è‡¶ï‡¶ü‡¶ø JSON ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶´‡¶æ‡¶á‡¶≤ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§', 'warning');
-                  }
-                }}
-                disabled={isMigrating || !uploadedBackupFileDetails}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4" />
-                <span>‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶æ JSON ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‚ûî Firestore ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶®</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Step 3: Migration Progress & Realtime Logs */}
-          {isMigrating && (
-            <div className="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 text-white shadow-xl flex flex-col gap-4 animate-pulse">
-              <div className="flex justify-between items-center border-b border-amber-500/30 pb-3">
-                <div className="flex items-center gap-2 text-amber-400 font-black text-sm">
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶ö‡¶≤‡¶Æ‡¶æ‡¶®: {migrationStatusMsg}</span>
-                </div>
-                <span className="text-xs bg-amber-500/20 text-amber-300 font-mono px-3 py-1 rounded-full border border-amber-500/30">
-                  Batch Operations In Progress...
-                </span>
-              </div>
-
-              <div className="bg-black/70 p-4 rounded-2xl text-xs font-mono text-emerald-400 max-h-48 overflow-y-auto space-y-1.5 border border-slate-800 shadow-inner">
-                {migrationLogs.map((log, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <span className="text-slate-500 shrink-0">‚Ä∫</span>
-                    <span>{log}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Step 4 & 5 & 7: Migration Report Summary */}
-          {migrationReport && (
-            <div className="bg-emerald-950/90 border border-emerald-500/50 rounded-3xl p-6 text-white shadow-2xl flex flex-col gap-5">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-emerald-800/60 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-500/20 border border-emerald-400/40 rounded-2xl text-emerald-400 shrink-0">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-base text-white">
-                      ‚úÖ ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶∞‡¶ø‡¶™‡ßã‡¶∞‡ßç‡¶ü (Firestore Migration Verification Report)
-                    </h3>
-                    <p className="text-xs text-emerald-200 mt-0.5 font-medium">
-                      ‡¶â‡ßé‡¶∏: <span className="font-bold text-white">{migrationReport.source}</span> | ‡¶∏‡¶Æ‡ßü: {new Date(migrationReport.timestamp).toLocaleTimeString('bn-BD')}
-                    </p>
-                  </div>
-                </div>
-
-                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
-                  migrationReport.status === 'success' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                }`}>
-                  ‚óè {migrationReport.status === 'success' ? '‡¶∏‡¶´‡¶≤ (SUCCESS)' : '‡¶¨‡ßç‡¶Ø‡¶∞‡ßç‡¶• (FAILED)'}
-                </span>
-              </div>
-
-              {/* Stat Highlights */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-emerald-900/40 border border-emerald-700/40 p-4 rounded-2xl text-center">
-                  <span className="text-[11px] text-emerald-300 font-extrabold uppercase block">‡¶Æ‡ßã‡¶ü ‡¶∞‡¶æ‡¶á‡¶ü ‡¶®‡¶•‡¶ø (Total Docs)</span>
-                  <span className="text-xl font-black text-white mt-1 block">{migrationReport.totalDocuments.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-emerald-900/40 border border-emerald-700/40 p-4 rounded-2xl text-center">
-                  <span className="text-[11px] text-emerald-300 font-extrabold uppercase block">‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ (Questions)</span>
-                  <span className="text-xl font-black text-amber-300 mt-1 block">{migrationReport.counts.questions.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-emerald-900/40 border border-emerald-700/40 p-4 rounded-2xl text-center">
-                  <span className="text-[11px] text-emerald-300 font-extrabold uppercase block">‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ (Users)</span>
-                  <span className="text-xl font-black text-white mt-1 block">{migrationReport.counts.users.toLocaleString('bn-BD')} ‡¶ú‡¶®</span>
-                </div>
-                <div className="bg-emerald-900/40 border border-emerald-700/40 p-4 rounded-2xl text-center">
-                  <span className="text-[11px] text-emerald-300 font-extrabold uppercase block">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∞‡ßá‡¶ú‡¶æ‡¶≤‡ßç‡¶ü (Attempts)</span>
-                  <span className="text-xl font-black text-white mt-1 block">{migrationReport.counts.attempts.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-              </div>
-
-              {/* Itemized Collection Summary Grid */}
-              <div className="bg-slate-950/60 border border-emerald-800/40 p-4 rounded-2xl flex flex-col gap-2">
-                <span className="text-xs font-extrabold text-emerald-300 mb-1">
-                  üìã ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶® ‡¶Ö‡¶®‡ßÅ‡¶Ø‡¶æ‡ßü‡ßÄ ‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶®‡¶•‡¶ø‡¶∞ ‡¶§‡¶æ‡¶≤‡¶ø‡¶ï‡¶æ (Itemized Breakdown):
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-[11px]">
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">questions</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.questions.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">users</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.users.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">bookmarks</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.bookmarks.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">attempts</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.attempts.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">categories</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.categories.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">subcategories</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.subcategories.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">notices</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.notices.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">routines</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.routines.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">live_exams</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.live_exams.toLocaleString('bn-BD')}</span>
-                  </div>
-                  <div className="bg-emerald-950/40 p-2 rounded-xl text-center border border-emerald-800/30">
-                    <span className="text-emerald-400 block font-mono">upload_history</span>
-                    <span className="font-black text-white text-sm">{migrationReport.counts.upload_history.toLocaleString('bn-BD')}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-black/40 p-3 rounded-xl border border-emerald-800/30 text-xs text-emerald-200 font-medium">
-                üõ°Ô∏è <strong>‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶ì ‡¶°‡¶æ‡¶ü‡¶æ ‡¶∏‡ßÅ‡¶∞‡¶ï‡ßç‡¶∑‡¶æ:</strong> ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶Æ‡¶æ‡¶á‡¶ó‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶∏‡¶Æ‡ßç‡¶™‡ßÇ‡¶∞‡ßç‡¶£ ‡¶π‡¶ì‡ßü‡¶æ‡¶∞ ‡¶™‡¶∞ ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ LocalStorage ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶®‡¶ø‡¶∞‡¶æ‡¶™‡¶¶ ‡¶ì ‡¶Ö‡¶ï‡ßç‡¶∑‡¶§ ‡¶∞‡ßü‡ßá‡¶õ‡ßá‡•§
-              </div>
-            </div>
-          )}
-
-          {/* Step 6: Verify Firestore Collections Inspector */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-600 shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900">
-                    ‡ß©. ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶® ‡¶≠‡ßá‡¶∞‡¶ø‡¶´‡¶ø‡¶ï‡ßá‡¶∂‡¶® (Verify Firestore Collections)
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    ‡¶∏‡¶æ‡¶∞‡ßç‡¶≠‡¶æ‡¶∞‡ßá‡¶∞ ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶ú ‡¶•‡ßá‡¶ï‡ßá ‡¶∏‡¶∞‡¶æ‡¶∏‡¶∞‡¶ø ‡¶∏‡¶ï‡¶≤ ‡ßß‡ß¶‡¶ü‡¶ø ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶®‡ßá‡¶∞ ‡¶®‡¶•‡¶ø‡¶∞ ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶∞‡¶ø‡¶° ‡¶ï‡¶∞‡ßá ‡¶Ø‡¶æ‡¶ö‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={handleRefreshFirestoreCounts}
-                disabled={isCountingFirestore}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition shadow-xs flex items-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCountingFirestore ? 'animate-spin' : ''}`} />
-                <span>‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶∞‡¶ø-‡¶ï‡ßç‡¶Ø‡¶æ‡¶≤‡¶ï‡ßÅ‡¶≤‡ßá‡¶ü ‡¶ì ‡¶Ø‡¶æ‡¶ö‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-              </button>
-            </div>
-
-            {firestoreCounts ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">questions</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.questions.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">users</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.users.toLocaleString('bn-BD')} ‡¶ú‡¶®</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">bookmarks</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.bookmarks.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">attempts</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.attempts.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">categories</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.categories.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">subcategories</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.subcategories.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">notices</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.notices.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">routines</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.routines.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">live_exams</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.live_exams.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-                <div className="bg-slate-50 border border-indigo-100 p-3.5 rounded-2xl text-center">
-                  <span className="text-[10px] text-gray-500 font-extrabold uppercase block font-mono">upload_history</span>
-                  <span className="text-lg font-black text-indigo-900 mt-1 block">{firestoreCounts.upload_history.toLocaleString('bn-BD')} ‡¶ü‡¶ø</span>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl text-center flex flex-col items-center justify-center gap-2">
-                <span className="text-xs text-gray-500 font-medium">
-                  ‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶≤‡¶æ‡¶á‡¶≠ ‡¶°‡¶æ‡¶ü‡¶æ ‡¶ó‡¶£‡¶®‡¶æ ‡¶¶‡ßá‡¶ñ‡¶§‡ßá ‡¶â‡¶™‡¶∞‡ßá‡¶∞ "‡¶´‡¶æ‡ßü‡¶æ‡¶∞‡¶∏‡ßç‡¶ü‡ßã‡¶∞ ‡¶∞‡¶ø-‡¶ï‡ßç‡¶Ø‡¶æ‡¶≤‡¶ï‡ßÅ‡¶≤‡ßá‡¶ü ‡¶ì ‡¶Ø‡¶æ‡¶ö‡¶æ‡¶á ‡¶ï‡¶∞‡ßÅ‡¶®" ‡¶¨‡¶æ‡¶ü‡¶®‡ßá ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                </span>
-              </div>
-            )}
-          </div>
-
-        </div>
-      )}
-
-      {/* Custom Bulk Upload Confirmation Modal */}
-      {showUploadConfirm && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in text-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-indigo-50 p-6 flex flex-col gap-4 animate-scale-up">
-            <div className="flex items-start gap-3">
-              <div className="p-3 bg-indigo-50 rounded-2xl shrink-0 text-indigo-600">
-                <Upload className="w-6 h-6 text-indigo-600 animate-bounce" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">üì§ ‡¶ï‡ßÅ‡¶á‡¶ú ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§ ‡¶ï‡¶∞‡ßÅ‡¶®</h3>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  ‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶è‡¶á ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®‡¶ó‡ßÅ‡¶≤‡ßã ‡¶°‡ßá‡¶ü‡¶æ‡¶¨‡ßá‡¶∏‡ßá ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ï‡¶∞‡¶§‡ßá ‡¶ö‡¶æ‡¶®?
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl space-y-2 text-[11px] text-slate-700">
-              <div className="flex justify-between border-b border-dashed pb-1.5">
-                <span className="font-semibold text-gray-500">‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ‡¶ß‡¶∞‡¶®:</span>
-                <span className="font-bold text-slate-900">{pendingCSVFile ? 'CSV ‡¶´‡¶æ‡¶á‡¶≤' : '‡¶∏‡¶∞‡¶æ‡¶∏‡¶∞‡¶ø ‡¶ü‡ßá‡¶ï‡ßç‡¶∏‡¶ü ‡¶™‡ßá‡¶∏‡ßç‡¶ü'}</span>
-              </div>
-              {pendingCSVFile && (
-                <div className="flex justify-between border-b border-dashed pb-1.5">
-                  <span className="font-semibold text-gray-500">‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ‡¶®‡¶æ‡¶Æ:</span>
-                  <span className="font-bold text-slate-900 max-w-[180px] truncate" title={pendingCSVFile.name}>{pendingCSVFile.name}</span>
-                </div>
-              )}
-              <div className="flex justify-between border-b border-dashed pb-1.5">
-                <span className="font-semibold text-gray-500">‡¶Æ‡ßã‡¶ü ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ:</span>
-                <span className="bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-md text-[10px]">
-                  {pendingQuestions.length} ‡¶ü‡¶ø
-                </span>
-              </div>
-              <div className="flex flex-col gap-1 border-b border-dashed pb-1.5">
-                <span className="font-semibold text-gray-500">‡¶ü‡¶æ‡¶∞‡ßç‡¶ó‡ßá‡¶ü ‡¶ó‡¶®‡ßç‡¶§‡¶¨‡ßç‡¶Ø:</span>
-                <span className="font-bold text-indigo-950 bg-indigo-50/60 p-2 rounded-lg mt-0.5 leading-relaxed">
-                  üéØ {uploadDestCat} 
-                  {uploadDestSubcatChain.length > 0 && ' ‚ûî ' + uploadDestSubcatChain.filter(x => x !== 'ALL').join(' ‚ûî ')}
-                </span>
-              </div>
-              <div className="flex justify-between border-b border-dashed pb-1.5">
-                <span className="font-semibold text-gray-500">‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ì‡¶≠‡¶æ‡¶∞‡¶∞‡¶æ‡¶á‡¶° ‡¶Æ‡ßã‡¶°:</span>
-                <span className={`font-bold px-1.5 rounded-md text-[10px] ${overrideCSVCategory ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                  {overrideCSVCategory ? '‡¶∏‡¶ï‡ßç‡¶∞‡¶ø‡ßü (‡¶Ö‡¶®)' : '‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü (‡¶Ö‡¶´)'}
-                </span>
-              </div>
-              <div className="flex justify-between border-b border-dashed pb-1.5">
-                <span className="font-semibold text-gray-500">‡¶¨‡¶ø‡¶∑‡ßü‡¶≠‡¶ø‡¶§‡ßç‡¶§‡¶ø‡¶ï ‡¶Ö‡¶ü‡ßã-‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç:</span>
-                <span className={`font-bold px-1.5 rounded-md text-[10px] ${enableSubjectAutoMap ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                  {enableSubjectAutoMap ? '‡¶Ö‡¶® (‡¶â‡¶≠‡ßü ‡¶∏‡ßç‡¶•‡¶æ‡¶®‡ßá ‡¶Ø‡ßÅ‡¶ï‡ßç‡¶§ ‡¶π‡¶¨‡ßá)' : '‡¶Ö‡¶´ (‡¶∂‡ßÅ‡¶ß‡ßÅ‡¶Æ‡¶æ‡¶§‡ßç‡¶∞ ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶ø‡¶§ ‡¶ó‡¶®‡ßç‡¶§‡¶¨‡ßç‡¶Ø‡ßá)'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-gray-500">‡¶∏‡ßç‡¶ü‡ßç‡¶∞‡¶ø‡¶ï‡ßç‡¶ü ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç ‡¶≠‡ßç‡¶Ø‡¶æ‡¶≤‡¶ø‡¶°‡ßá‡¶∂‡¶®:</span>
-                <span className={`font-bold px-1.5 rounded-md text-[10px] ${enableStrictMappingCheck ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
-                  {enableStrictMappingCheck ? '‡¶∏‡¶ï‡ßç‡¶∞‡¶ø‡ßü (‡¶Ö‡¶®)' : '‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü (‡¶Ö‡¶´)'}
-                </span>
-              </div>
-
-              {enableStrictMappingCheck && nonMatchingPathDetails.length > 0 && (
-                <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-rose-800 font-bold text-[10px] flex items-center gap-1.5 mt-1">
-                  <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>‚ö†Ô∏è {nonMatchingPathDetails.length}‡¶ü‡¶ø ‡¶≤‡¶æ‡¶á‡¶®‡ßá ‡¶Ö‡¶Æ‡¶ø‡¶≤ ‡¶∞‡ßü‡ßá‡¶õ‡ßá! "‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ì ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç ‡¶∞‡¶ø‡¶≠‡¶ø‡¶â" ‡¶®‡¶ø‡¶∞‡ßç‡¶¨‡¶æ‡¶ö‡¶® ‡¶ï‡¶∞‡ßá ‡¶§‡¶•‡ßç‡¶Ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2.5 mt-2">
-              <button
-                type="button"
-                onClick={() => setShowUploadConfirm(false)}
-                className="flex-grow px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-              >
-                ‡¶¨‡¶æ‡¶§‡¶ø‡¶≤ ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  prepareMappingReview();
-                  setShowUploadConfirm(false);
-                }}
-                className="flex-grow px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-indigo-600/15"
-              >
-                ‡¶π‡ßç‡¶Ø‡¶æ‡¶Å, ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶ì ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç ‡¶∞‡¶ø‡¶≠‡¶ø‡¶â
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Category & Subcategory Mapping & Mismatch Confirmation Modal */}
-      {showMappingReviewModal && (
-        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-[999] animate-fade-in text-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border border-indigo-100 p-5 sm:p-6 flex flex-col gap-5 my-8 max-h-[90vh] animate-scale-up">
-            
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-start gap-3">
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl shrink-0">
-                  <FolderTree className="w-6 h-6 text-indigo-600" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
-                    üìã ‡¶°‡¶æ‡¶á‡¶®‡¶æ‡¶Æ‡¶ø‡¶ï ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ì ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ü‡ßç‡¶∞‡¶ø‡¶Æ/‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç ‡¶∞‡¶ø‡¶≠‡¶ø‡¶â
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                    ‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶∏‡ßá ‡¶•‡¶æ‡¶ï‡¶æ ‡¶¨‡¶ø‡¶¶‡ßç‡¶Ø‡¶Æ‡¶æ‡¶® ‡¶∏‡¶ï‡¶≤ ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ì ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø‡¶∞ ‡¶∏‡¶æ‡¶•‡ßá ‡¶°‡¶æ‡¶á‡¶®‡¶æ‡¶Æ‡¶ø‡¶ï‡¶≤‡¶ø ‡¶Æ‡¶ø‡¶≤ ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶§‡¶•‡ßç‡¶Ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§ ‡¶ï‡¶∞‡ßÅ‡¶® ‡¶¨‡¶æ ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ ‡¶∞‡¶ø-‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowMappingReviewModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Standard & Dynamic System Categories Banner */}
-            <div className="bg-gradient-to-r from-indigo-50/80 via-purple-50/50 to-blue-50/80 border border-indigo-100/80 p-4 rounded-2xl flex flex-col gap-2.5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="font-extrabold text-indigo-950 text-xs flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-                  ‡¶∏‡¶ø‡¶∏‡ßç‡¶ü‡ßá‡¶Æ‡ßá ‡¶Æ‡ßã‡¶ü ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ì ‡¶¨‡¶ø‡¶∑‡ßü ‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ: {allSystemCategories.length}‡¶ü‡¶ø
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMismatchMappings(prev => prev.map(m => {
-                        const dbSub = findSubcategoryInDatabase(m.rawSubcategory, m.targetCategory);
-                        return {
-                          ...m,
-                          action: dbSub ? 'map_existing' : 'create',
-                          isMismatch: !dbSub
-                        };
-                      }));
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-[11px] transition shadow-xs flex items-center gap-1 cursor-pointer"
-                  >
-                    ‚ö° ‡¶Ö‡¶ü‡ßã-‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ö ‡¶™‡ßç‡¶∞‡ßü‡ßã‡¶ó ‡¶ï‡¶∞‡ßÅ‡¶®
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMismatchMappings(prev => prev.map(m => ({ ...m, action: 'create' })));
-                    }}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-1.5 rounded-xl text-[11px] transition shadow-xs flex items-center gap-1 cursor-pointer"
-                  >
-                    ‚ûï ‡¶∏‡¶¨ ‡¶®‡¶§‡ßÅ‡¶® ‡¶§‡ßà‡¶∞‡¶ø ‡¶ï‡¶∞‡ßÅ‡¶®
-                  </button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-1 max-h-[70px] overflow-y-auto">
-                {allSystemCategories.map(cat => (
-                  <span
-                    key={cat}
-                    className="bg-white/90 text-indigo-900 border border-indigo-100 font-bold px-2.5 py-0.5 rounded-lg text-[10.5px] shadow-xs"
-                  >
-                    {cat}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Mismatch & Mapping Table / List */}
-            <div className="flex flex-col gap-3 overflow-y-auto max-h-[50vh] pr-1">
-              <div className="flex items-center justify-between px-1">
-                <span className="font-bold text-slate-700 text-xs">
-                  CSV ‡¶´‡¶æ‡¶á‡¶≤‡ßá‡¶∞ ‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶§‡¶æ‡¶≤‡¶ø‡¶ï‡¶æ ({mismatchMappings.length}‡¶ü‡¶ø ‡¶ü‡¶™‡¶ø‡¶ï)
-                </span>
-                <div className="flex items-center gap-2 text-[10.5px] font-bold">
-                  <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    ‚úÖ ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ö‡¶°: {mismatchMappings.filter(m => !m.isMismatch).length}‡¶ü‡¶ø
-                  </span>
-                  <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                    ‚ö†Ô∏è ‡¶®‡¶§‡ßÅ‡¶®/‡¶Æ‡¶ø‡¶∏‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ö: {mismatchMappings.filter(m => m.isMismatch).length}‡¶ü‡¶ø
-                  </span>
-                </div>
-              </div>
-
-              {mismatchMappings.map((item, idx) => {
-                const existingSubcatsUnderTarget = subcategories.filter(s =>
-                  s.parentCategory && normalizeName(s.parentCategory) === normalizeName(item.targetCategory)
-                );
-                const availableSubcats = existingSubcatsUnderTarget.length > 0 ? existingSubcatsUnderTarget : subcategories;
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`p-4 rounded-2xl border transition-all flex flex-col gap-3 ${
-                      item.isMismatch
-                        ? 'bg-amber-50/40 border-amber-200/80 hover:border-amber-300'
-                        : 'bg-emerald-50/30 border-emerald-200/80 hover:border-emerald-300'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/50 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-black flex items-center justify-center">
-                          {idx + 1}
-                        </span>
-                        <span className="font-extrabold text-slate-900 text-xs">
-                          {item.rawSubcategory}
-                        </span>
-                        <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-md text-[10px]">
-                          {item.questionCount}‡¶ü‡¶ø ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶®
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!item.isMismatch ? (
-                          <span className="bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-md text-[10px] border border-emerald-200 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> ‚úÖ ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶ö‡¶° (‡¶°‡¶æ‡¶ü‡¶æ‡¶¨‡ßá‡¶∏‡ßá ‡¶¨‡¶ø‡¶¶‡ßç‡¶Ø‡¶Æ‡¶æ‡¶®)
-                          </span>
-                        ) : (
-                          <span className="bg-amber-100 text-amber-900 font-extrabold px-2.5 py-0.5 rounded-md text-[10px] border border-amber-200 flex items-center gap-1">
-                            ‚ö†Ô∏è ‡¶®‡¶§‡ßÅ‡¶® / ‡¶Ö‡¶Æ‡¶ø‡¶≤ ‡¶∞‡ßü‡ßá‡¶õ‡ßá
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* Column 1: Editable Subcategory Name */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-600">
-                          ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ ‡¶ï‡¶æ‡¶∞‡ßá‡¶ï‡¶∂‡¶® (‡¶®‡¶æ‡¶Æ ‡¶∏‡¶Ç‡¶∂‡ßã‡¶ß‡¶®):
-                        </label>
-                        <input
-                          type="text"
-                          value={item.correctedSubcategory}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setMismatchMappings(prev => prev.map(m => m.id === item.id ? { ...m, correctedSubcategory: val } : m));
-                          }}
-                          className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 text-slate-900"
-                          placeholder="‡¶∏‡¶æ‡¶¨-‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶®‡¶æ‡¶Æ"
-                        />
-                      </div>
-
-                      {/* Column 2: Target Category */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-600">
-                          ‡¶ü‡¶æ‡¶∞‡ßç‡¶ó‡ßá‡¶ü ‡¶¨‡¶ø‡¶∑‡ßü/‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø:
-                        </label>
-                        <select
-                          value={item.targetCategory}
-                          onChange={(e) => {
-                            const newTarget = e.target.value;
-                            setMismatchMappings(prev => prev.map(m => {
-                              if (m.id === item.id) {
-                                const newExist = subcategories.filter(s => s.parentCategory && normalizeName(s.parentCategory) === normalizeName(newTarget));
-                                return {
-                                  ...m,
-                                  targetCategory: newTarget,
-                                  existingSubcategoryChoice: newExist.length > 0 ? newExist[0].name : m.correctedSubcategory
-                                };
-                              }
-                              return m;
-                            }));
-                          }}
-                          className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 text-indigo-950"
-                        >
-                          {allSystemCategories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Column 3: Action Choice */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-600">
-                          ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶® / ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™‡¶ø‡¶Ç ‡¶∏‡¶ø‡¶¶‡ßç‡¶ß‡¶æ‡¶®‡ßç‡¶§:
-                        </label>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <label className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition ${
-                            item.action === 'create' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                          }`}>
-                            <input
-                              type="radio"
-                              name={`action-${item.id}`}
-                              checked={item.action === 'create'}
-                              onChange={() => setMismatchMappings(prev => prev.map(m => m.id === item.id ? { ...m, action: 'create' } : m))}
-                              className="sr-only"
-                            />
-                            ‚ûï ‡¶®‡¶§‡ßÅ‡¶® ‡¶§‡ßà‡¶∞‡¶ø
-                          </label>
-
-                          <label className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition ${
-                            item.action === 'map_existing' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                          }`}>
-                            <input
-                              type="radio"
-                              name={`action-${item.id}`}
-                              checked={item.action === 'map_existing'}
-                              onChange={() => setMismatchMappings(prev => prev.map(m => m.id === item.id ? { ...m, action: 'map_existing' } : m))}
-                              className="sr-only"
-                            />
-                            üîó ‡¶¨‡¶ø‡¶¶‡ßç‡¶Ø‡¶Æ‡¶æ‡¶® ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶™
-                          </label>
-                        </div>
-
-                        {item.action === 'map_existing' && (
-                          <select
-                            value={item.existingSubcategoryChoice}
-                            onChange={(e) => {
-                              const choice = e.target.value;
-                              setMismatchMappings(prev => prev.map(m => m.id === item.id ? { ...m, existingSubcategoryChoice: choice } : m));
-                            }}
-                            className="bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-[11px] font-semibold text-slate-800 mt-1"
-                          >
-                            {availableSubcats.length > 0 ? (
-                              availableSubcats.map(s => (
-                                <option key={s.id} value={s.name}>{s.name}</option>
-                              ))
-                            ) : (
-                              <option value={item.correctedSubcategory}>‡¶ï‡ßã‡¶®‡ßã ‡¶¨‡¶ø‡¶¶‡ßç‡¶Ø‡¶Æ‡¶æ‡¶® ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø ({item.correctedSubcategory})</option>
-                            )}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Footer buttons */}
-            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowMappingReviewModal(false)}
-                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-              >
-                ‡¶¨‡¶æ‡¶§‡¶ø‡¶≤ ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-              <button
-                type="button"
-                onClick={handleFinalizeUploadWithMappings}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶ï‡¶®‡¶´‡¶æ‡¶∞‡ßç‡¶Æ ‡¶ì ‡¶´‡¶æ‡¶á‡¶≤ ‡¶Ü‡¶™‡¶≤‡ßã‡¶° ‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Universal Custom Alert / Confirmation Modal (No iframe blocks!) */}
-      {customModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] flex-col animate-fade-in text-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 p-6 flex flex-col gap-4 animate-scale-up">
-            <div className="flex items-start gap-3">
-              <div className={`p-3 rounded-2xl shrink-0 ${
-                customModal.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
-                customModal.type === 'warning' ? 'bg-rose-50 text-rose-600' :
-                customModal.type === 'error' ? 'bg-rose-100 text-rose-700' :
-                'bg-indigo-50 text-indigo-600'
-              }`}>
-                {customModal.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
-                {customModal.type === 'warning' && <AlertCircle className="w-6 h-6" />}
-                {customModal.type === 'error' && <AlertCircle className="w-6 h-6" />}
-                {customModal.type === 'info' && <BookOpen className="w-6 h-6" />}
-              </div>
-              <div className="flex-grow">
-                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">{customModal.title}</h3>
-                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed whitespace-pre-line font-medium">
-                  {customModal.message}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2.5 mt-2">
-              {customModal.showConfirmButton && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (customModal.onCancel) customModal.onCancel();
-                    else setCustomModal(prev => ({ ...prev, isOpen: false }));
-                  }}
-                  className="flex-1 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition"
-                >
-                  {customModal.cancelText || '‡¶¨‡¶æ‡¶§‡¶ø‡¶≤ ‡¶ï‡¶∞‡ßÅ‡¶®'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof customModal.onConfirm === 'function') {
-                    customModal.onConfirm();
-                  } else {
-                    setCustomModal(prev => ({ ...prev, isOpen: false }));
-                  }
-                }}
-                className={`px-4 py-2 text-white font-bold rounded-xl text-xs transition shadow-md flex-1 text-center ${
-                  customModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/15' :
-                  customModal.type === 'warning' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/15' :
-                  customModal.type === 'error' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/15' :
-                  'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/15'
-                }`}
-              >
-                {customModal.confirmText || '‡¶†‡¶ø‡¶ï ‡¶Ü‡¶õ‡ßá'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Editing user explanation modal */}
-      {editingExpl && (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-xs animate-fade-in">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const q = questions.find(q => q.id === editingExpl.qId);
-              if (q && q.userExplanations) {
-                const updated = (q.userExplanations || []).map(ex => {
-                  if (ex.id === editingExpl.explId) {
-                    return { ...ex, text: editingExpl.text };
-                  }
-                  return ex;
-                });
-                onUpdateQuestion(q.id, { userExplanations: updated });
-                showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®', '‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ‡¶ü‡¶ø ‡¶∏‡¶´‡¶≤‡¶≠‡¶æ‡¶¨‡ßá ‡¶∏‡¶Ç‡¶∂‡ßã‡¶ß‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
-                setEditingExpl(null);
-              }
-            }}
-            className="bg-white rounded-3xl w-full max-w-lg p-6 relative flex flex-col gap-4 text-xs animate-scale-up shadow-2xl"
-          >
-            <button
-              type="button"
-              onClick={() => setEditingExpl(null)}
-              className="absolute top-4 right-4 p-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="font-extrabold text-sm text-indigo-700">‚úèÔ∏è ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡¶æ‡¶∞‡¶ï‡¶æ‡¶∞‡ßÄ‡¶∞ ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ñ‡ßç‡¶Ø‡¶æ ‡¶∏‡¶Æ‡ßç‡¶™‡¶æ‡¶¶‡¶®‡¶æ ‡¶ï‡¶∞‡ßÅ‡¶®</h3>
-            <textarea
-              required
-              rows={5}
-              value={editingExpl.text}
-              onChange={(e) => setEditingExpl(prev => prev ? { ...prev, text: e.target.value } : null)}
-              className="w-full p-3 border rounded-2xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingExpl(null)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-2xl font-bold"
-              >
-                ‡¶¨‡¶æ‡¶§‡¶ø‡¶≤
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-2xl font-extrabold shadow-md shadow-indigo-100"
-              >
-                ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶£ ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* AUDIT LOG SECTION */}
-      {activeTab === 'audit-logs' && (
-        <div className="flex flex-col gap-4 animate-fade-in">
-          {/* Header Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-indigo-900 rounded-2xl p-5 text-white shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="bg-purple-500/30 text-purple-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-purple-400/30 uppercase tracking-wider">
-                  ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶®‡ßç‡¶° ‡¶ü‡ßç‡¶∞‡¶æ‡¶®‡ßç‡¶∏‡¶™‡¶æ‡¶∞‡ßá‡¶®‡ßç‡¶∏‡¶ø ‡¶∏‡¶ø‡¶∏‡ßç‡¶ü‡ßá‡¶Æ
-                </span>
-                <span className="text-xs text-purple-200 font-medium">‡¶π‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞‡¶ø ‡¶ü‡ßç‡¶∞‡ßç‡¶Ø‡¶æ‡¶ï‡¶ø‡¶Ç</span>
-              </div>
-              <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
-                üìú ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó (Audit Log)
-              </h2>
-              <p className="text-xs text-purple-200/90 mt-1 max-w-2xl">
-                ‡¶™‡ßç‡¶∞‡¶∂‡ßç‡¶® ‡¶°‡¶ø‡¶≤‡¶ø‡¶ü, ‡¶¨‡¶æ‡¶≤‡ßç‡¶ï ‡¶Ü‡¶™‡¶°‡ßá‡¶ü, ‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø ‡¶Æ‡¶°‡¶ø‡¶´‡¶ø‡¶ï‡ßá‡¶∂‡¶®, ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ ‡¶ì ‡¶∏‡¶ø‡¶∏‡ßç‡¶ü‡ßá‡¶Æ ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶®‡¶∏‡¶π ‡¶∏‡¶Æ‡¶∏‡ßç‡¶§ ‡¶™‡ßç‡¶∞‡¶∂‡¶æ‡¶∏‡¶®‡¶ø‡¶ï ‡¶™‡¶∞‡¶ø‡¶¨‡¶∞‡ßç‡¶§‡¶®‡ßá‡¶∞ ‡¶∏‡¶Æ‡ßü‡¶≠‡¶ø‡¶§‡ßç‡¶§‡¶ø‡¶ï ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶°‡•§
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setShowAddLogModal(true)}
-                className="bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ ‡¶®‡ßã‡¶ü ‡¶Ø‡ßã‡¶ó ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-              </button>
-              {onClearAuditLogs && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    showCustomConfirm(
-                      '‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó ‡¶ï‡ßç‡¶≤‡¶ø‡ßü‡¶æ‡¶∞ ‡¶ï‡¶®‡¶´‡¶æ‡¶∞‡ßç‡¶Æ‡ßá‡¶∂‡¶®',
-                      '‡¶Ü‡¶™‡¶®‡¶ø ‡¶ï‡¶ø ‡¶®‡¶ø‡¶∂‡ßç‡¶ö‡¶ø‡¶§‡¶≠‡¶æ‡¶¨‡ßá ‡¶∏‡¶Æ‡¶∏‡ßç‡¶§ ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶§‡ßá ‡¶ö‡¶æ‡¶®? ‡¶è‡¶ü‡¶ø ‡¶™‡ßÅ‡¶®‡¶∞‡¶æ‡ßü ‡¶´‡¶ø‡¶∞‡¶ø‡ßü‡ßá ‡¶Ü‡¶®‡¶æ ‡¶∏‡¶Æ‡ßç‡¶≠‡¶¨ ‡¶®‡ßü‡•§',
-                      () => {
-                        onClearAuditLogs();
-                        showCustomAlert('‡¶∏‡¶´‡¶≤!', '‡¶∏‡¶Æ‡¶∏‡ßç‡¶§ ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá‡•§', 'success');
-                      },
-                      'warning'
-                    );
-                  }}
-                  className="bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-200 font-bold text-xs px-3 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                  <span>‡¶≤‡¶ó ‡¶π‡¶ø‡¶∏‡ßç‡¶ü‡ßã‡¶∞‡¶ø ‡¶Æ‡ßÅ‡¶õ‡ßÅ‡¶®</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Search and Filters Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 text-xs">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={auditSearch}
-                onChange={e => setAuditSearch(e.target.value)}
-                placeholder="‡¶≤‡¶ó ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶®, ‡¶°‡¶ø‡¶ü‡ßá‡¶á‡¶≤‡¶∏, ‡¶Ü‡¶á‡¶°‡¶ø ‡¶¨‡¶æ ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶¶‡¶ø‡ßü‡ßá ‡¶ñ‡ßÅ‡¶Å‡¶ú‡ßÅ‡¶®..."
-                className="w-full pl-9 pr-3.5 py-2.5 border rounded-xl bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white font-medium"
-              />
-              <span className="absolute left-3 top-3 text-slate-400">üîç</span>
-              {auditSearch && (
-                <button
-                  type="button"
-                  onClick={() => setAuditSearch('')}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Type Filter Buttons */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 shrink-0">
-              <span className="font-bold text-slate-500 text-[11px] mr-1">‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞:</span>
-              {[
-                { id: 'all', label: '‡¶∏‡¶¨‡¶ï‡¶ø‡¶õ‡ßÅ' },
-                { id: 'delete', label: '‡¶°‡¶ø‡¶≤‡¶ø‡¶ü' },
-                { id: 'bulk', label: '‡¶¨‡¶æ‡¶≤‡ßç‡¶ï ‡¶Ü‡¶™‡¶°‡ßá‡¶ü' },
-                { id: 'category', label: '‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø' },
-                { id: 'update', label: '‡¶Ü‡¶™‡¶°‡ßá‡¶ü' },
-                { id: 'create', label: '‡¶§‡ßà‡¶∞‡¶ø' },
-                { id: 'exam', label: '‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ' },
-                { id: 'routine', label: '‡¶∞‡ßÅ‡¶ü‡¶ø‡¶®' },
-                { id: 'other', label: '‡¶Ö‡¶®‡ßç‡¶Ø‡¶æ‡¶®‡ßç‡¶Ø' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setAuditTypeFilter(f.id as any)}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition text-[11px] shrink-0 cursor-pointer ${
-                    auditTypeFilter === f.id
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Audit Logs List View */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center text-xs font-bold text-slate-700">
-              <div className="flex items-center gap-2">
-                <span className="text-base">üìú</span>
-                <span>‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶°‡¶ï‡ßÉ‡¶§ ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶®‡¶∏‡¶Æ‡ßÇ‡¶π ({filteredAuditLogs.length} ‡¶ü‡¶ø)</span>
-              </div>
-              <span className="text-[10px] text-slate-400 font-normal">‡¶∏‡¶∞‡ßç‡¶¨‡¶∂‡ßá‡¶∑ ‡¶ï‡ßç‡¶∞‡¶Æ‡¶æ‡¶®‡ßÅ‡¶∏‡¶æ‡¶∞‡ßá ‡¶∏‡¶æ‡¶ú‡¶æ‡¶®‡ßã</span>
-            </div>
-
-            {filteredAuditLogs.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
-                <span className="text-3xl">üì≠</span>
-                <p className="font-extrabold text-slate-600">‡¶ï‡ßã‡¶®‡ßã ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø</p>
-                <p className="text-[11px] text-slate-400">‡¶´‡¶ø‡¶≤‡ßç‡¶ü‡¶æ‡¶∞ ‡¶™‡¶∞‡¶ø‡¶¨‡¶∞‡ßç‡¶§‡¶® ‡¶ï‡¶∞‡ßá ‡¶¶‡ßá‡¶ñ‡ßÅ‡¶® ‡¶¨‡¶æ ‡¶®‡¶§‡ßÅ‡¶® ‡¶ï‡¶æ‡¶ú ‡¶∏‡¶Æ‡ßç‡¶™‡¶æ‡¶¶‡¶®‡¶æ ‡¶ï‡¶∞‡ßÅ‡¶®‡•§</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-                {filteredAuditLogs.map(log => {
-                  let badgeBg = 'bg-slate-100 text-slate-700 border-slate-200';
-                  let icon = 'üìå';
-                  if (log.type === 'delete') {
-                    badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
-                    icon = 'üóëÔ∏è';
-                  } else if (log.type === 'bulk') {
-                    badgeBg = 'bg-amber-50 text-amber-800 border-amber-200';
-                    icon = 'üì¶';
-                  } else if (log.type === 'category') {
-                    badgeBg = 'bg-purple-50 text-purple-800 border-purple-200';
-                    icon = 'üóÇÔ∏è';
-                  } else if (log.type === 'update') {
-                    badgeBg = 'bg-blue-50 text-blue-800 border-blue-200';
-                    icon = '‚úèÔ∏è';
-                  } else if (log.type === 'create') {
-                    badgeBg = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-                    icon = '‚ú®';
-                  } else if (log.type === 'exam') {
-                    badgeBg = 'bg-indigo-50 text-indigo-800 border-indigo-200';
-                    icon = '‚è±Ô∏è';
-                  } else if (log.type === 'routine') {
-                    badgeBg = 'bg-teal-50 text-teal-800 border-teal-200';
-                    icon = 'üìÖ';
-                  }
-
-                  return (
-                    <div key={log.id} className="p-3.5 hover:bg-slate-50/70 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-start gap-3 flex-1">
-                        <span className={`p-2 rounded-xl border text-sm shrink-0 ${badgeBg}`}>
-                          {icon}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-black text-slate-900 text-xs">
-                              {log.action}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-extrabold border ${badgeBg}`}>
-                              {log.type ? log.type.toUpperCase() : 'ACTION'}
-                            </span>
-                          </div>
-                          <p className="text-slate-700 font-medium text-[11.5px] break-words leading-relaxed">
-                            {log.details}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 shrink-0 text-[10.5px]">
-                        <span className="font-extrabold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                          üë§ {log.admin || '‡¶è‡¶°‡¶Æ‡¶ø‡¶®'}
-                        </span>
-                        <span className="text-slate-400 font-semibold mt-0.5">
-                          üïí {formatBengaliDateTime(log.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-        </>
-      )}
-
-      {/* MANUAL ADD AUDIT LOG MODAL */}
-      {showAddLogModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              if (!manualActionInput.trim() || !manualDetailsInput.trim()) {
-                alert('‡¶Ö‡¶®‡ßÅ‡¶ó‡ßç‡¶∞‡¶π ‡¶ï‡¶∞‡ßá ‡¶∂‡¶ø‡¶∞‡ßã‡¶®‡¶æ‡¶Æ ‡¶ì ‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶§‡¶•‡ßç‡¶Ø ‡¶™‡ßç‡¶∞‡¶¶‡¶æ‡¶® ‡¶ï‡¶∞‡ßÅ‡¶®‡•§');
-                return;
-              }
-              if (onAddAuditLog) {
-                onAddAuditLog(manualActionInput.trim(), manualDetailsInput.trim(), manualTypeInput);
-              }
-              setManualActionInput('');
-              setManualDetailsInput('');
-              setManualTypeInput('other');
-              setShowAddLogModal(false);
-              showCustomAlert('‡¶∏‡¶´‡¶≤!', '‡¶®‡¶§‡ßÅ‡¶® ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶®‡ßã‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá‡•§', 'success');
-            }}
-            className="bg-white rounded-3xl w-full max-w-md p-6 relative flex flex-col gap-4 text-xs animate-scale-up shadow-2xl border border-purple-100"
-          >
-            <button
-              type="button"
-              onClick={() => setShowAddLogModal(false)}
-              className="absolute top-4 right-4 p-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-2.5 border-b pb-3">
-              <span className="p-2.5 bg-purple-50 text-purple-600 rounded-2xl border border-purple-100">
-                üìú
-              </span>
-              <div>
-                <h3 className="font-extrabold text-sm text-gray-900">‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßÅ‡ßü‡¶æ‡¶≤ ‡¶Ö‡¶°‡¶ø‡¶ü ‡¶≤‡¶ó ‡¶Ø‡ßã‡¶ó ‡¶ï‡¶∞‡ßÅ‡¶®</h3>
-                <p className="text-[11px] text-gray-500 font-medium">‡¶¨‡¶ø‡¶∂‡ßá‡¶∑ ‡¶∏‡¶ø‡¶∏‡ßç‡¶ü‡ßá‡¶Æ ‡¶®‡ßã‡¶ü ‡¶¨‡¶æ ‡¶Ö‡¶´‡¶≤‡¶æ‡¶á‡¶® ‡¶∏‡¶ø‡¶¶‡ßç‡¶ß‡¶æ‡¶®‡ßç‡¶§‡ßá‡¶∞ ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶°</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶® ‡¶ü‡¶æ‡¶á‡¶™ (Type):</label>
-              <select
-                value={manualTypeInput}
-                onChange={e => setManualTypeInput(e.target.value as any)}
-                className="w-full px-3.5 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
-              >
-                <option value="other">‡¶Ö‡¶®‡ßç‡¶Ø‡¶æ‡¶®‡ßç‡¶Ø (Other)</option>
-                <option value="delete">‡¶°‡¶ø‡¶≤‡¶ø‡¶ü (Delete)</option>
-                <option value="update">‡¶Ü‡¶™‡¶°‡ßá‡¶ü (Update)</option>
-                <option value="bulk">‡¶¨‡¶æ‡¶≤‡ßç‡¶ï ‡¶Ü‡¶™‡¶°‡ßá‡¶ü (Bulk Update)</option>
-                <option value="category">‡¶ï‡ßç‡¶Ø‡¶æ‡¶ü‡¶æ‡¶ó‡¶∞‡¶ø (Category)</option>
-                <option value="exam">‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ (Exam)</option>
-                <option value="routine">‡¶∞‡ßÅ‡¶ü‡¶ø‡¶® (Routine)</option>
-                <option value="create">‡¶§‡ßà‡¶∞‡¶ø (Create)</option>
-                <option value="user">‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶∏‡¶Æ‡ßç‡¶™‡¶∞‡ßç‡¶ï‡¶ø‡¶§ (User)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡¶∂‡¶®‡ßá‡¶∞ ‡¶®‡¶æ‡¶Æ (Action Title):</label>
-              <input
-                type="text"
-                required
-                value={manualActionInput}
-                onChange={e => setManualActionInput(e.target.value)}
-                placeholder="‡¶Ø‡ßá‡¶Æ‡¶®: ‡¶∏‡¶æ‡¶∞‡ßç‡¶≠‡¶æ‡¶∞ ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶¨‡ßç‡¶Ø‡¶æ‡¶ï‡¶Ü‡¶™ ‡¶∏‡¶ø‡¶ô‡ßç‡¶ï"
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶¨‡¶ø‡¶¨‡¶∞‡¶£ (Details):</label>
-              <textarea
-                required
-                rows={3}
-                value={manualDetailsInput}
-                onChange={e => setManualDetailsInput(e.target.value)}
-                placeholder="‡¶Ø‡ßá ‡¶™‡¶∞‡¶ø‡¶¨‡¶∞‡ßç‡¶§‡¶® ‡¶¨‡¶æ ‡¶ï‡¶æ‡¶ú ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá ‡¶§‡¶æ‡¶∞ ‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶≤‡¶ø‡¶ñ‡ßÅ‡¶®..."
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
-              />
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowAddLogModal(false)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-2xl font-bold transition"
-              >
-                ‡¶¨‡¶æ‡¶§‡¶ø‡¶≤
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-2xl font-extrabold shadow-md shadow-purple-100 transition"
-              >
-                ‡¶∏‡¶Ç‡¶∞‡¶ï‡ßç‡¶∑‡¶£ ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ADMIN CHANGE PASSWORD MODAL */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <form
-            onSubmit={handleChangeAdminPassword}
-            className="bg-white rounded-3xl w-full max-w-md p-6 relative flex flex-col gap-4 text-xs animate-scale-up shadow-2xl border border-amber-100"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setIsPasswordModalOpen(false);
-                setCurrPassInput('');
-                setNewAdminPassInput('');
-                setConfirmAdminPassInput('');
-              }}
-              className="absolute top-4 right-4 p-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-full transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-2.5 border-b pb-3">
-              <span className="p-2.5 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100">
-                üîë
-              </span>
-              <div>
-                <h3 className="font-extrabold text-sm text-gray-900">‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶™‡¶∞‡¶ø‡¶¨‡¶∞‡ßç‡¶§‡¶®</h3>
-                <p className="text-[11px] text-gray-500 font-medium">‡¶®‡¶ø‡¶∞‡¶æ‡¶™‡¶§‡ßç‡¶§‡¶æ‡¶∞ ‡¶∏‡ßç‡¶¨‡¶æ‡¶∞‡ßç‡¶•‡ßá ‡¶Ü‡¶™‡¶®‡¶æ‡¶∞ ‡¶®‡¶§‡ßÅ‡¶® ‡¶ó‡ßã‡¶™‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶∏‡ßá‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶¨‡¶∞‡ßç‡¶§‡¶Æ‡¶æ‡¶® ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶°:</label>
-              <input
-                type="password"
-                required
-                value={currPassInput}
-                onChange={e => setCurrPassInput(e.target.value)}
-                placeholder="‡¶¨‡¶∞‡ßç‡¶§‡¶Æ‡¶æ‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶¶‡¶ø‡¶®"
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶®‡¶§‡ßÅ‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° (‡¶®‡ßÇ‡¶®‡ßç‡¶Ø‡¶§‡¶Æ ‡ß¨ ‡¶°‡¶ø‡¶ú‡¶ø‡¶ü):</label>
-              <input
-                type="password"
-                required
-                value={newAdminPassInput}
-                onChange={e => setNewAdminPassInput(e.target.value)}
-                placeholder="‡¶®‡¶§‡ßÅ‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶¶‡¶ø‡¶®"
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-bold mb-1">‡¶®‡¶§‡ßÅ‡¶® ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶™‡ßÅ‡¶®‡¶∞‡¶æ‡ßü ‡¶¶‡¶ø‡¶® (Confirm):</label>
-              <input
-                type="password"
-                required
-                value={confirmAdminPassInput}
-                onChange={e => setConfirmAdminPassInput(e.target.value)}
-                placeholder="‡¶™‡ßÅ‡¶®‡¶∞‡¶æ‡ßü ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶¶‡¶ø‡¶®"
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-gray-100 mt-1">
-              <label className="block text-gray-800 font-extrabold mb-1 flex items-center gap-1.5 text-xs">
-                <span>‚è±Ô∏è</span>
-                <span>‡¶á‡¶®‡¶Ö‡ßç‡¶Ø‡¶æ‡¶ï‡ßç‡¶ü‡¶ø‡¶≠‡¶ø‡¶ü‡¶ø ‡¶∏‡ßá‡¶∂‡¶® ‡¶ü‡¶æ‡¶á‡¶Æ‡¶Ü‡¶â‡¶ü (Inactivity Timeout):</span>
-              </label>
-              <select
-                value={sessionTimeoutMinutes}
-                onChange={e => {
-                  const mins = parseInt(e.target.value, 10);
-                  if (onUpdateSessionTimeout) {
-                    onUpdateSessionTimeout(mins);
-                  }
-                }}
-                className="w-full px-3.5 py-2.5 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold text-xs bg-slate-50"
-              >
-                <option value={5}>‡ß´ ‡¶Æ‡¶ø‡¶®‡¶ø‡¶ü ‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü‡¶§‡¶æ</option>
-                <option value={15}>‡ßß‡ß´ ‡¶Æ‡¶ø‡¶®‡¶ø‡¶ü ‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü‡¶§‡¶æ (‡¶°‡¶ø‡¶´‡¶≤‡ßç‡¶ü)</option>
-                <option value={30}>‡ß©‡ß¶ ‡¶Æ‡¶ø‡¶®‡¶ø‡¶ü ‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü‡¶§‡¶æ</option>
-                <option value={60}>‡ß¨‡ß¶ ‡¶Æ‡¶ø‡¶®‡¶ø‡¶ü (‡ßß ‡¶ò‡¶£‡ßç‡¶ü‡¶æ) ‡¶®‡¶ø‡¶∑‡ßç‡¶ï‡ßç‡¶∞‡¶ø‡ßü‡¶§‡¶æ</option>
-              </select>
-              <p className="text-[10px] text-gray-500 font-medium mt-1 leading-snug">
-                ‡¶¨‡ßç‡¶Ø‡¶¨‡¶π‡¶æ‡¶∞‡¶ï‡¶æ‡¶∞‡ßÄ ‡¶¨‡¶æ ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶®‡¶ø‡¶∞‡ßç‡¶¶‡¶ø‡¶∑‡ßç‡¶ü ‡¶∏‡¶Æ‡ßü ‡¶ï‡ßã‡¶®‡ßã ‡¶Æ‡¶æ‡¶â‡¶∏ ‡¶¨‡¶æ ‡¶ü‡¶æ‡¶ö ‡¶ï‡ßç‡¶≤‡¶ø‡¶ï ‡¶®‡¶æ ‡¶ï‡¶∞‡¶≤‡ßá ‡¶∏‡ßá‡¶∂‡¶® ‡¶∏‡ßç‡¶¨‡ßü‡¶Ç‡¶ï‡ßç‡¶∞‡¶ø‡ßü‡¶≠‡¶æ‡¶¨‡ßá ‡¶∏‡¶ø‡¶ï‡¶ø‡¶â‡¶∞‡¶° ‡¶≤‡¶ó‡¶Ü‡¶â‡¶ü ‡¶π‡¶¨‡ßá‡•§
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPasswordModalOpen(false);
-                  setCurrPassInput('');
-                  setNewAdminPassInput('');
-                  setConfirmAdminPassInput('');
-                }}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-2xl font-bold transition"
-              >
-                ‡¶¨‡¶æ‡¶§‡¶ø‡¶≤
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-2xl font-extrabold shadow-md shadow-amber-100 transition"
-              >
-                ‡¶™‡¶æ‡¶∏‡¶ì‡ßü‡¶æ‡¶∞‡ßç‡¶° ‡¶Ü‡¶™‡¶°‡ßá‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* CLOUD SYNC DETAILS MODAL */}
-      {showSyncModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-slate-900 border border-indigo-500/30 text-white rounded-3xl p-5 sm:p-6 w-full max-w-2xl shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex justify-between items-center border-b border-indigo-800/40 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 bg-indigo-600/30 rounded-2xl text-indigo-300 border border-indigo-500/30">
-                  <Cloud className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                    <span>‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶¨‡¶ø‡¶∂‡¶¶ ‡¶¨‡¶ø‡¶¨‡¶∞‡¶£ (Cloud Sync Status)</span>
-                  </h3>
-                  <p className="text-xs text-indigo-200">
-                    ‡¶è‡¶°‡¶Æ‡¶ø‡¶® ‡¶¶‡ßç‡¶¨‡¶æ‡¶∞‡¶æ ‡¶§‡ßà‡¶∞‡¶ø ‡¶ì ‡¶Ü‡¶™‡¶°‡ßá‡¶ü ‡¶ï‡¶∞‡¶æ ‡¶§‡¶•‡ßç‡¶Ø‡ßá‡¶∞ ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶° ‡¶∏‡ßç‡¶ü‡ßã‡¶∞‡ßá‡¶ú ‡¶≤‡¶æ‡¶á‡¶≠ ‡¶∏‡¶æ‡¶Æ‡¶û‡ßç‡¶ú‡¶∏‡ßç‡¶Ø
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="p-1.5 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 hover:text-white rounded-xl transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Overall Percentage Card */}
-            <div className="bg-gradient-to-r from-indigo-950 to-slate-950 p-4 rounded-2xl border border-indigo-800/40 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-                <span className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider">‡¶∏‡¶æ‡¶∞‡ßç‡¶¨‡¶ø‡¶ï ‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶∂‡¶§‡¶æ‡¶Ç‡¶∂</span>
-                <span className={`text-3xl sm:text-4xl font-black font-mono mt-0.5 ${
-                  adminSyncStats.overallPercent === 100 ? 'text-emerald-400' : 'text-amber-400'
-                }`}>
-                  {adminSyncStats.overallPercent.toLocaleString('bn-BD')}%
-                </span>
-                <span className="text-[11px] text-indigo-200/80 mt-1">
-                  ‡¶Æ‡ßã‡¶ü ‡¶Ö‡ßç‡¶Ø‡¶æ‡¶°‡¶Æ‡¶ø‡¶® ‡¶°‡ßá‡¶ü‡¶æ: {adminSyncStats.totalLocal.toLocaleString('bn-BD')} ‡¶ü‡¶ø | ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶°‡ßá: {adminSyncStats.totalSynced.toLocaleString('bn-BD')} ‡¶ü‡¶ø
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={handleSyncAllAdminData}
-                  disabled={isSyncingAllAdminData}
-                  className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>{isSyncingAllAdminData ? '‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶π‡¶ö‡ßç‡¶õ‡ßá...' : '‚ö° ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶°‡ßá ‡¶∏‡¶ï‡¶≤ ‡¶°‡ßá‡¶ü‡¶æ ‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶ï‡¶∞‡ßÅ‡¶®'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRefreshFirestoreCounts}
-                  disabled={isCountingFirestore}
-                  className="px-4 py-2 bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/50 text-indigo-200 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isCountingFirestore ? 'animate-spin' : ''}`} />
-                  <span>‡¶ï‡¶æ‡¶â‡¶®‡ßç‡¶ü ‡¶∞‡¶ø‡¶´‡ßç‡¶∞‡ßá‡¶∂ ‡¶ï‡¶∞‡ßÅ‡¶®</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Sync Progress Bar if Active */}
-            {syncProgress && (
-              <div className="bg-indigo-950 p-3 rounded-xl border border-indigo-700/50 flex flex-col gap-1.5">
-                <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-indigo-200">{syncProgress.currentCollection}</span>
-                  <span className="text-emerald-400 font-mono">{syncProgress.percent}%</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-emerald-400 h-full rounded-full transition-all duration-300"
-                    style={{ width: `${syncProgress.percent}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Collection breakdown list */}
-            <div className="space-y-2 text-xs">
-              <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider block px-1">
-                ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶®‡¶≠‡¶ø‡¶§‡ßç‡¶§‡¶ø‡¶ï ‡¶¨‡¶ø‡¶¨‡¶∞‡¶£ ({adminSyncStats.items.length}‡¶ü‡¶ø ‡¶ï‡¶æ‡¶≤‡ßá‡¶ï‡¶∂‡¶®):
-              </span>
-
-              {adminSyncStats.items.map(item => {
-                const isSingleSyncing = syncingSingleKey === item.key;
-                return (
-                  <div
-                    key={item.key}
-                    className="bg-indigo-950/40 border border-indigo-800/40 hover:border-indigo-700/60 p-3 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 transition"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-[140px]">
-                      <span className="text-xl">{item.icon}</span>
-                      <div>
-                        <h4 className="font-extrabold text-white text-xs">{item.name}</h4>
-                        <span className="text-[10px] text-indigo-300/70 font-mono uppercase">{item.key}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 w-full sm:w-auto px-1 sm:px-3">
-                      <div className="flex justify-between items-center text-[11px] mb-1 font-medium">
-                        <span className="text-indigo-200">
-                          ‡¶≤‡ßã‡¶ï‡¶æ‡¶≤: <strong className="text-white font-mono">{item.local.toLocaleString('bn-BD')}</strong> | ‡¶ï‡ßç‡¶≤‡¶æ‡¶â‡¶°: <strong className="text-emerald-400 font-mono">{item.cloud.toLocaleString('bn-BD')}</strong>
-                        </span>
-                        <span className={`font-bold font-mono ${item.isFullySynced ? 'text-emerald-400' : 'text-amber-400'}`}>
-                          {item.percent.toLocaleString('bn-BD')}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-indigo-900/50">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            item.isFullySynced ? 'bg-emerald-400' : 'bg-amber-400'
-                          }`}
-                          style={{ width: `${item.percent}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSyncSingleAdminCollection(item.key)}
-                      disabled={isSingleSyncing || isSyncingAllAdminData}
-                      className="w-full sm:w-auto px-3 py-1.5 bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/50 text-indigo-200 hover:text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
-                      title={`‡¶∂‡ßÅ‡¶ß‡ßÅ‡¶Æ‡¶æ‡¶§‡ßç‡¶∞ ${item.name} ‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶ï‡¶∞‡ßÅ‡¶®`}
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isSingleSyncing ? 'animate-spin' : ''}`} />
-                      <span>{isSingleSyncing ? '‡¶∏‡¶ø‡¶ô‡ßç‡¶ï ‡¶π‡¶ö‡ßç‡¶õ‡ßá...' : '‡¶∏‡¶ø‡¶ô‡ßç‡¶ï'}</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="border-t border-indigo-800/40 pt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowSyncModal(false)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition"
-              >
-                ‡¶¨‡¶®‡ßç‡¶ß ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ENROLLMENT INVOICE / RECEIPT MODAL */}
-      {selectedEnrollmentForModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 relative flex flex-col gap-4 text-xs shadow-2xl border border-slate-200 animate-scale-up">
-            {/* Modal Controls Header */}
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black">
-                  üßæ
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900">‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶ì ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∞‡¶∂‡¶ø‡¶¶</h3>
-                  <p className="text-[11px] text-slate-500 font-mono">Invoice #{selectedEnrollmentForModal.id.slice(0, 8).toUpperCase()}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[11px] flex items-center gap-1 transition"
-                  title="‡¶™‡ßç‡¶∞‡¶ø‡¶®‡ßç‡¶ü ‡¶ï‡¶∞‡ßÅ‡¶®"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>‡¶™‡ßç‡¶∞‡¶ø‡¶®‡ßç‡¶ü</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedEnrollmentForModal(null)}
-                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Printable Receipt Card */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4">
-              {/* Slip Header */}
-              <div className="flex justify-between items-start border-b border-dashed border-slate-200 pb-3">
-                <div>
-                  <div className="font-black text-base text-indigo-950 tracking-tight">ORJON ACADEMY</div>
-                  <div className="text-[10px] text-slate-500">‡¶Ö‡¶®‡¶≤‡¶æ‡¶á‡¶® ‡¶è‡¶ï‡ßç‡¶∏‡¶æ‡¶Æ ‡¶ì ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßá‡¶ú‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶™‡ßç‡¶≤‡ßç‡¶Ø‡¶æ‡¶ü‡¶´‡¶∞‡ßç‡¶Æ</div>
-                </div>
-                <div className="text-right">
-                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    ‚úì ‡¶™‡¶∞‡¶ø‡¶∂‡ßã‡¶ß‡¶ø‡¶§ (PAID)
-                  </span>
-                  <div className="text-[10px] text-slate-400 mt-1">
-                    {formatBengaliDate(selectedEnrollmentForModal.enrolledAt)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Student Information */}
-              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞ ‡¶§‡¶•‡ßç‡¶Ø (Student Info)</div>
-                <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-                  <div>
-                    <span className="text-slate-500">‡¶®‡¶æ‡¶Æ:</span>{' '}
-                    <span className="font-extrabold text-slate-800">{selectedEnrollmentForModal.userName || '‡¶®‡¶æ‡¶Æ ‡¶®‡ßá‡¶á'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">‡¶á‡¶â‡¶ú‡¶æ‡¶∞ ‡¶Ü‡¶á‡¶°‡¶ø:</span>{' '}
-                    <span className="font-mono font-bold text-indigo-700">{selectedEnrollmentForModal.userId || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤:</span>{' '}
-                    <span className="font-mono font-bold text-slate-700">{selectedEnrollmentForModal.userPhone || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">‡¶á‡¶Æ‡ßá‡¶á‡¶≤:</span>{' '}
-                    <span className="font-bold text-slate-700 truncate">{selectedEnrollmentForModal.userEmail || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Course & Transaction Details */}
-              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶ì ‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶¨‡¶ø‡¶¨‡¶∞‡¶£</div>
-                <div className="text-[11.5px] space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">‡¶ï‡ßã‡¶∞‡ßç‡¶∏‡ßá‡¶∞ ‡¶®‡¶æ‡¶Æ:</span>
-                    <span className="font-black text-slate-900 text-right max-w-[260px]">{selectedEnrollmentForModal.courseTitle}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶ó‡ßá‡¶ü‡¶ì‡ßü‡ßá:</span>
-                    <span className="font-bold uppercase text-slate-800">{selectedEnrollmentForModal.paymentMethod || 'Free'}</span>
-                  </div>
-                  {selectedEnrollmentForModal.trxId && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">‡¶ü‡ßç‡¶∞‡¶æ‡¶®‡¶ú‡ßá‡¶ï‡¶∂‡¶® ‡¶Ü‡¶á‡¶°‡¶ø (TrxID):</span>
-                      <div className="flex items-center gap-1 font-mono font-black text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                        <span>{selectedEnrollmentForModal.trxId}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyTrx(selectedEnrollmentForModal.trxId!)}
-                          className="hover:text-indigo-950"
-                        >
-                          {copiedTrxId === selectedEnrollmentForModal.trxId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Amount Breakdown */}
-              <div className="space-y-1.5 bg-white p-3 rounded-xl border border-slate-100 text-[11.5px]">
-                <div className="flex justify-between text-slate-600">
-                  <span>‡¶Æ‡ßÇ‡¶≤ ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶´‡¶ø:</span>
-                  <span>‡ß≥{selectedEnrollmentForModal.originalPrice}</span>
-                </div>
-                {selectedEnrollmentForModal.couponCode && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
-                    <span>‡¶ï‡ßÅ‡¶™‡¶® ‡¶õ‡¶æ‡ßú ({selectedEnrollmentForModal.couponCode} / {selectedEnrollmentForModal.discountPercent}%):</span>
-                    <span>- ‡ß≥{selectedEnrollmentForModal.discountAmount}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-black text-sm text-indigo-950 pt-2 border-t border-slate-100">
-                  <span>‡¶Æ‡ßã‡¶ü ‡¶™‡¶∞‡¶ø‡¶∂‡ßã‡¶ß‡¶ø‡¶§ ‡¶Ö‡¶∞‡ßç‡¶•:</span>
-                  <span className="text-emerald-700">‡ß≥{selectedEnrollmentForModal.finalPrice}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setSelectedEnrollmentForModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
-              >
-                ‡¶¨‡¶®‡ßç‡¶ß ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STUDENT PROFILE & ALL ENROLLED COURSES MODAL */}
-      {selectedUserForProfileModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl w-full max-w-xl p-6 relative flex flex-col gap-4 text-xs shadow-2xl border border-slate-200 animate-scale-up max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-sm">
-                  {(selectedUserForProfileModal.user?.name || selectedUserForProfileModal.enrollment.userName || 'U')[0].toUpperCase()}
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                    <span>{selectedUserForProfileModal.user?.name || selectedUserForProfileModal.enrollment.userName || '‡¶®‡¶æ‡¶Æ ‡¶®‡ßá‡¶á'}</span>
-                    {(selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId) && (
-                      <span className="bg-indigo-50 text-indigo-700 font-mono font-black text-[10px] px-2 py-0.5 rounded border border-indigo-200">
-                        {selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId}
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞ ‡¶¨‡¶ø‡¶∏‡ßç‡¶§‡¶æ‡¶∞‡¶ø‡¶§ ‡¶§‡¶•‡ßç‡¶Ø ‡¶ì ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶á‡¶§‡¶ø‡¶π‡¶æ‡¶∏</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedUserForProfileModal(null)}
-                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Profile Information Grid */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-              <div className="text-[11px] font-black text-slate-700 flex items-center gap-1.5">
-                <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                <span>‡¶¨‡ßç‡¶Ø‡¶ï‡ßç‡¶§‡¶ø‡¶ó‡¶§ ‡¶ì ‡¶Ø‡ßã‡¶ó‡¶æ‡¶Ø‡ßã‡¶ó ‡¶§‡¶•‡ßç‡¶Ø</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11.5px] bg-white p-3 rounded-xl border border-slate-100">
-                <div>
-                  <span className="text-slate-400">‡¶Æ‡ßã‡¶¨‡¶æ‡¶á‡¶≤ ‡¶®‡¶Æ‡ßç‡¶¨‡¶∞:</span>{' '}
-                  <span className="font-mono font-bold text-slate-800">
-                    {selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone || '‡¶™‡ßç‡¶∞‡¶¶‡¶æ‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡¶®‡¶ø'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400">‡¶á‡¶Æ‡ßá‡¶á‡¶≤ ‡¶è‡¶°‡ßç‡¶∞‡ßá‡¶∏:</span>{' '}
-                  <span className="font-bold text-slate-800">
-                    {selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail || '‡¶™‡ßç‡¶∞‡¶¶‡¶æ‡¶® ‡¶ï‡¶∞‡¶æ ‡¶π‡ßü‡¶®‡¶ø'}
-                  </span>
-                </div>
-                {selectedUserForProfileModal.user?.gender && (
-                  <div>
-                    <span className="text-slate-400">‡¶≤‡¶ø‡¶ô‡ßç‡¶ó (Gender):</span>{' '}
-                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.gender}</span>
-                  </div>
-                )}
-                {selectedUserForProfileModal.user?.institution && (
-                  <div>
-                    <span className="text-slate-400">‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ ‡¶™‡ßç‡¶∞‡¶§‡¶ø‡¶∑‡ßç‡¶†‡¶æ‡¶®:</span>{' '}
-                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.institution}</span>
-                  </div>
-                )}
-                {selectedUserForProfileModal.user?.district && (
-                  <div>
-                    <span className="text-slate-400">‡¶ú‡ßá‡¶≤‡¶æ / ‡¶∂‡¶π‡¶∞:</span>{' '}
-                    <span className="font-bold text-slate-800">{selectedUserForProfileModal.user.district}</span>
-                  </div>
-                )}
-                {selectedUserForProfileModal.user?.createdAt && (
-                  <div>
-                    <span className="text-slate-400">‡¶∞‡ßá‡¶ú‡¶ø‡¶∏‡ßç‡¶ü‡ßç‡¶∞‡ßá‡¶∂‡¶® ‡¶§‡¶æ‡¶∞‡¶ø‡¶ñ:</span>{' '}
-                    <span className="font-bold text-slate-800">{formatBengaliDate(selectedUserForProfileModal.user.createdAt)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Performance Stats if Available */}
-            {selectedUserForProfileModal.user?.stats && (
-              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-2">
-                <div className="text-[11px] font-black text-indigo-900">üìä ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ‡¶∞ ‡¶∏‡¶æ‡¶∞‡ßç‡¶¨‡¶ø‡¶ï ‡¶™‡¶æ‡¶∞‡¶´‡¶∞‡¶Æ‡ßç‡¶Ø‡¶æ‡¶®‡ßç‡¶∏ ‡¶™‡¶∞‡¶ø‡¶∏‡¶Ç‡¶ñ‡ßç‡¶Ø‡¶æ‡¶®</div>
-                <div className="grid grid-cols-4 gap-2 text-center text-[10.5px]">
-                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
-                    <div className="font-black text-indigo-950 text-sm">{selectedUserForProfileModal.user.stats.totalExams || 0}</div>
-                    <div className="text-slate-500 mt-0.5">‡¶Æ‡ßã‡¶ü ‡¶™‡¶∞‡ßÄ‡¶ï‡ßç‡¶∑‡¶æ</div>
-                  </div>
-                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
-                    <div className="font-black text-emerald-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeCorrect || 0}</div>
-                    <div className="text-slate-500 mt-0.5">‡¶∏‡¶†‡¶ø‡¶ï ‡¶â‡¶§‡ßç‡¶§‡¶∞</div>
-                  </div>
-                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
-                    <div className="font-black text-rose-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeWrong || 0}</div>
-                    <div className="text-slate-500 mt-0.5">‡¶≠‡ßÅ‡¶≤ ‡¶â‡¶§‡ßç‡¶§‡¶∞</div>
-                  </div>
-                  <div className="p-2 bg-white rounded-xl border border-indigo-100">
-                    <div className="font-black text-purple-600 text-sm">{selectedUserForProfileModal.user.stats.lifetimeScore?.toFixed(1) || 0}</div>
-                    <div className="text-slate-500 mt-0.5">‡¶Æ‡ßã‡¶ü ‡¶∏‡ßç‡¶ï‡ßã‡¶∞</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Enrolled Courses for this User */}
-            <div className="space-y-2.5">
-              {(() => {
-                const userPhone = selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone;
-                const userId = selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId;
-                const userEmail = selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail;
-
-                const userCourses = (courseEnrollments || []).filter(e => 
-                  (userId && e.userId && e.userId.toLowerCase() === userId.toLowerCase()) ||
-                  (userPhone && e.userPhone && e.userPhone === userPhone) ||
-                  (userEmail && e.userEmail && e.userEmail.toLowerCase() === userEmail.toLowerCase())
-                );
-
-                return (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-black text-xs text-slate-800 flex items-center gap-1.5">
-                        <GraduationCap className="w-4 h-4 text-indigo-600" />
-                        <span>‡¶è‡¶á ‡¶∂‡¶ø‡¶ï‡ßç‡¶∑‡¶æ‡¶∞‡ßç‡¶•‡ßÄ‡¶∞ ‡¶∏‡¶ï‡¶≤ ‡¶è‡¶®‡¶∞‡ßã‡¶≤‡ßç‡¶° ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ({userCourses.length}‡¶ü‡¶ø)</span>
-                      </h4>
-                      <span className="text-[11px] font-bold text-emerald-700">
-                        ‡¶Æ‡ßã‡¶ü ‡¶™‡ßç‡¶∞‡¶¶‡¶æ‡¶®: ‡ß≥{userCourses.reduce((acc, c) => acc + (c.finalPrice || 0), 0)}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {userCourses.length === 0 ? (
-                        <p className="text-slate-400 text-center py-4">‡¶ï‡ßã‡¶®‡ßã ‡¶ï‡ßã‡¶∞‡ßç‡¶∏ ‡¶™‡¶æ‡¶ì‡ßü‡¶æ ‡¶Ø‡¶æ‡ßü‡¶®‡¶ø‡•§</p>
-                      ) : (
-                        userCourses.map((c, idx) => (
-                          <div key={c.id || idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                            <div>
-                              <div className="font-black text-slate-900 text-xs">{c.courseTitle}</div>
-                              <div className="flex items-center gap-2 text-[10.5px] text-slate-500 mt-0.5">
-                                <span>‡¶§‡¶æ‡¶∞‡¶ø‡¶ñ: {formatBengaliDate(c.enrolledAt)}</span>
-                                <span>‚Ä¢</span>
-                                <span>‡¶™‡ßá‡¶Æ‡ßá‡¶®‡ßç‡¶ü: {c.paymentMethod || 'Online'}</span>
-                                {c.trxId && <span className="font-mono font-bold text-indigo-700">Trx: {c.trxId}</span>}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="font-black text-indigo-950 text-xs">‡ß≥{c.finalPrice}</span>
-                              {c.couponCode && (
-                                <div className="text-[9.5px] text-emerald-600 font-bold">üè∑Ô∏è {c.couponCode}</div>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="border-t pt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSelectedUserForProfileModal(null)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition"
-              >
-                ‡¶¨‡¶®‡ßç‡¶ß ‡¶ï‡¶∞‡ßÅ‡¶®
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                                        async () => {
+                                          if (onDeleteEnrollment) {
+                                            const ok = await onDeleteEnrollment(enr.id);
+                                            if (ok !== false) {
+                                              showCustomAlert('‡¶∏‡¶Æ‡ßç‡¶™‡¶®‡ßç‡¶®!', '‡¶è‡¶®‡¶∞‡ßã‡¶≤‡¶Æ‡ßá‡¶®‡ßç‡¶ü ‡¶∞‡ßá‡¶ï‡¶∞‡ßç‡¶° ‡¶Æ‡ßÅ‡¶õ‡ßá ‡¶´‡ßá‡¶≤‡¶æ ‡¶π‡ßü‡ßá‡¶õ‡ßá!', 'success');
+                                            } else {
+               xúÏ}{s«ïÔˇ˚)⁄*ó	&ﬂ‘É+…EQ¥√]Ω"R…n˘∫‚!0$h0…bXe;◊÷z≥^ÔÆ"ª÷q]EΩ"À∂Æ∂ Qn›íøä _‡˙#‹>˝öÓû”=3 HKñPâLfz˙q˙Ùy¸Œ9Ñx?…F¥π–K∫Qkæ∆› »ì€7ü‹˘Ë…ÌOÓº˚‰ˆı'∑ø}i‰ °ó?~r˚.ª¸ª'∑>π˝’ì;W‡
+‹{ù∞Ë˜kÏzÈa∑–&˛¿ZºBøﬂgø|-oπE/˝ı…ùÎÏ¡?–Ÿã¬8é‚ë—ø˝øÕœnâªãﬂª{∞≠#õA‹n¥◊G
+>Qp|ª≈:[kIr6hÖ«t™ìc≥$ézÌzXØ6◊…Íz5éí∞:;A∫·Vó941A6¢∑√xN˛<©Æ§w°◊∫q–N›F‘&µ^úDqµ5⁄›0&´Q\Wˇ·LMLåô8P®œ›F∑I˚;]¡øwãºÌD°[âÉdcJüÕÕÍ4ùÕ¯˜ /“Ã±Ò’^∑µÛÔÕ[€c„ı∆€˛véçwÎæ;ËÔ±˚w'Ó:˙Fõ[çÍ€XãÙß`µfBGaµüπá˛Æ}€ˇ	Yæx≤˙ã•≈_íô9r~˛œ,û]!ó~±HñWVñŒææL~2Æ∑ªSã(≈ÜÀΩ’ï`ï?~úåtÇÌVÿÓVì∞€•ª5!ØºB*f_hWtXèuˇTkQ3©NíV}N˚:E÷ÉNı–{Ñ–ÁÖ®Ω÷XÔ≈€>ØEqÀÍ!ˆ>⁄<mπötÇvı0ÏﬁÕçF7$ùÍ,IZsÙUjsOm5≠M∏€l''A=⁄¨&-B€©Ö’ÌÍl¶áŸWãVV3ÕuV´”»Û¥ÖçiΩÅµàŒÌj3®]‚ºf5HB˛W“∫ú°¨5√-BG‘J™µê1ò¿)¥y˙Ç_Õfÿ5˜$Ï»Yﬁn–Z•ùùòpnœc0ì'æø˛ˇM9«=∆LlÛ©8Ëit˚OÑ±£Øÿ•˚Ù*˝~ï_˚VÚ†€Ï˘oÿ≈«Ñ1'˙◊ÏéOÈ%…¥‡éc„Ï˝ËéŸòFØwÙ—j≥7;!X¯VBZ›Í§c ÿ{øÖ^A_ˇ"˚Óì;Ô∞qÚN√Â?<‚Á≥¡ââ`∫Ïq˜¿§\WOﬁe:‹ÛÕA>KtnÛü3Ó∑_·ÛlÃ+%L[h‚èÏﬂ˚¸óõº⁄ßOÿÂª¸Ú#’⁄5)£‹}rÎ&:ø'7 ^_É›µ)≥h5∫«w6ÇvΩ.oáÁ9ÀXÉﬂ∞´/ë‹b3ËÇ #X˝{z∞XÏ À	X?¨-Ÿ©Œ Ë4⁄óË˙è”C‹‹ÒÏzÏLAvﬂ≥Ÿód∑‰Ø©DÿX€ÆÆÜ›Õ0l;⁄)“íosc-lR¶∑AˇoJ0lòá$˝séh3∫+‹·_=˝ d’›GˇA|lc&√iá‚`5j÷mˆ«ø∂ú∞v©0"u2)A¯Ïô˜ËW >fúÀ‚Î0càÛ∆‰dgÎM1©™ﬂlﬁ”nÀ5`ß¡Vuät∂´ö†Ÿ™{Ê÷*„∏|0Wπ¸Ôáãy∫w2˚-Ôß'i˙uö©k≥d[£´⁄K⁄Õ`5ll3¢‘jÕ1ßç√í6ƒB¥Vùﬁ3©∆1ˆ„”˜ŸÔW8G7O6úÑ∂0q‡ƒO|Ûœ◊Ä—sC£›Èu=£Ënwƒ{}r¸€A≥ﬂYΩDw»Ÿ˘>Ÿ9j/PˆΩN®Ñ£‰¯	B•ΩìÈ£ïp¨ƒÎawå5Î√;îΩÑt©¬¯¯Åpl}åLLûúúööûûôÒıÿ‡hkΩfvÕ4Ïö©T¶CX˘¥∆ )'WåH¶µ#úxéÇ\’z…\‘Î6Ì∞⁄é⁄°∏”cãæU˚"NØ¢áó{ç8¨;oqjCæç…7”∑e>ñ˚ÂCùµﬁaªÊÓ dûÑÕ∞Ê£sùÇW(Õ˜Eø†EΩ$HH–ﬁˆÒ^–"v¥ıAÅñM¡Mê^%7Í0âäœÒÅÛ!m≤4úêëäf{‚bÒM)¨ﬂ=6Œü/Òä3a\£K‘=pB˛Ø¯Jµ?”OÔ~^1øB˚Ï?–8•‹œK∂Iπ7#À>§ÁOÓÕrÓŸ`=®"ÁJu.+ËÚ_~¸í.Áã∫~f∑'¬Æ‘+åFû21óO˙.ÁÚ/}
+∫©¸Bƒ¬ymLÁè[∏m√æËO∏=õ>:®p{dèÑ[æ©ˆE∫MMÇ/ƒ€}o˜#ﬁûïÓèxõOç ∑ä_∏ÆW<ìÓ∫[√Ó@ñ‹^‹iÜ∏-óˇÙ„óq≈@˜X»Ω∞ﬂ"ÆÊÎ®pBy ƒ\1ÔBŒﬂ˙t«ŒYwá∑=£?nq7f§?y˜ÇˆÏ†Ô—Ω≤ÊÚ›µ?ˆ\y¶ºy˜]‰Ât‹èÃ{A=πO6›|ä‘™´ËÖÿÎz≈3)ˆ.µìn‹´A∑ÄRb≤‹Ì’È èÏÎË@_Ï  />Vêy·Ä@±|.'˙k"ì≤è˚∏ûÛ·0 8áπ‹ˆçcä=¨Â'à√¿1¡TLMüv3¿8À˘Ï„EèI„àd}Ã¨“·ÛÄ_Öˇ\ó˚Q–Ù5>}ÑÕ0˝~–>ïïxkÈ‘(Á›Tvyèˇ|èœ3o-W‹ë+ıG›ìoøÕ;`√É\(é6ì„;”ÆŸ»·≤ñe1Z~y
+Á≥˝s◊FªﬁXè‹ßºˇñÖìâ”UÎ ÌäR&⁄+DÆ……lÛÕ`„…àîe”%MÒc∏Ftè˝Ô˛≥µ§ºUæ«o2‘8Câ·∏/Ú+è«÷ãÃ◊ hÙ]X†>µÌc&Ïòn.J'kÊ¢]Ω'[’YFïT[UîbÄº≈µ√àŒùÍ∂ò\Ä€ 4Ñ©!éw‹yj-lÑÙ 0∂‹Ÿ®ŒxÄ◊
+€˘∏∞¢Õ)Ò=©nÒ„‚Oø´©ﬁç˛,97”rØVì$ã0∂˙üŸûa+åÉfù≠ïu.:d÷]>8;°¯î`0*yˇ(ànqÉ-ÃB#Æ5√)d}à—ÈC(n∫dlæ`xˇ/u–gvi‘é◊„D¸∫¨ÔWÙ‡sHE«∆j_«πpê” AŒ«·€çp”êíFõB Â…‚V'åaªñÑÇœ¶ŒQsBÜß'éÿ∏≠:ß$¯Ï&6€">T´Kæ+mä$6‰<Ì'`ŒAÍ√QµÉ+è-wÇ¯R3Lú$Õç¯3^Ç.b+lÈ'Ì$ÏµÔØ_˝ﬂú7}ƒ$ßwA42˘"õ™Ò[∂kËø∫ÕÜ>%¿a2ú0MÜ´∫»1>%hN\-“§0ÌﬁÈ“E∆	∏¨˜%>R« ›‡z◊YÔÑ◊Oõ⁄ÜãÓˆ^ˇ5[yÉ-⁄‚±Æ•‹=êú?ÀÜ4Ôü®–Ω{™;sËlwπ∂M≠“ïë2≥#,dåÄw$è{vS)∆~9huö!9m9Ñ8Ã13≠‡ÕGg'∆gPå=Ùs÷êËÛ≥˜°8¸1,¢Gk≈ﬁ‰∂{Öçj&•y'"=œpåº+çXHáÇ‚‹Ü2êUÀòí”å-g0ﬁ±SÇ(¥Ã7âó[(À®õŒµ<ÑûÍZ9®£ù…o~∏ˆ&Êõî˘\ÿ¶eB€÷#Óa˚ΩI˝∏öÿJ:Ç4‰90©K°j’Ω¶kåÎ|kàÊCv,•ò≈˛˘óP∆°`e?.Œ°‰"ùuX¯æ˛òÜÇM(Æë"5˙gi´˘|£Çeﬂ˘F
+I,¬84$Ÿ≥¡8PÃÎ”œ9d ëÉ˚Kp°C˘Í\ÃCåÀ‚t¢O±Cπ†R¡#ı{ z§ÌÊ3ëb>¡˝ó>R¿G6¢{Ëü>Ç„äûF‚¸≥H#. ∑%1c8ÍRu™c´Yá>‚–∞‡.\).√|yS®kˇ˚ÎWˇ´Ñ˜ŒæÕ˘i%WÕiÜA‹+qÿ∂BJ®˜Õ·R¨-bitü„«C∫r3π+wƒïÂ€)c;∂º—õuó9ﬁ4˜Œ0ãbíøÀL&-æÔKO˝cÊ¸ä≠‚]e¢ˇ±à<f$p˘rçõP|Ñ√-7˘Æ-lq>û‹∫È⁄‰( ±<'Ëoi˛4f∆»ÖsWñŒ..ì3ÛgÁ__dÈORic'†d˙v®“úPbÈ6⁄°ùﬁ§ø‘&Ë˛gÈM‚ê“ÉÿÀ∞¸&˝Á6ô.í€ƒ4`CgÌ#≠TÜì>D´¬˘OÑuîäz%ˆ‚±Ö†∂ÎAÏLíz˙–ÕGŸÎ˚àkˆ€5•sÓ#¢'¸‚˚Â™DWq&‹ˆï⁄r7∏UV⁄mdh?õ€§≥≥1»√® EµIç#"S'˚ÕŸÕ#)^ÚnøGd∂ñá¬oÚú{⁄|qØ”çÃ¯≤å „ÓxZæqƒæ)òJÑÁÇ|Fdô°¢ÿ·ABË»∫a≥À∂ Ã-ú»tn5…Ë˚Îˇz!›nÃ…Á3r1ÁD¡∏Åu
+P«¶Öèu©é…ë)Ê%TX:„°"h€1ñ˙—9˜—ç“È|ı›Hô^:œôŒ°ß®	#;pB´≤ˇˇ)≥á+˙Qi;$l<îx∂S·π¥Pﬁxst¨t*5ò|á@*z{)‹>æSk‘wÂÚ≤/.°çΩÖÂÜ€%˙g“∫ΩÑk¸î!ØÇ.Úô»«>#dé»{wGÇö{x£®∞Ü£Ï‹˛ﬂË5yÖú
+ªA£âa„ Ÿßú@vßˇµF◊∑πM6„’≈ÑoC∂RÏü;±∏CÍ´9ÚËç√∆	∫&bø¡ãY6õ}\ÎtÚˆL1húå˚Zìî’1∏öﬂ>$Úƒx$%Ã;T¢ºC™
+:ı?3â]},%ﬂ?âcó'˚˜Èqó;ﬂ’qÆé9Û26õ≠â´q„CXoÙZhØŸƒ∫2isó÷#Øñ∫JmâG®ó¿7ˇçy‡?bŸKa˙G›'Za/@ƒÇuî$cÒ‘ôJ>øÖ›#ˇ#ßRKA∫Û•ËÍì;Ù⁄ƒÙ—®Ám>üN‘ÂMüêßõ˜W´U≤0øº0jÈÏÎd˘Oüû?yqô¨ú;ø¥∞L^[:Ω≤xaô›ï*PÅ∑ﬁÄDï›®∫ìµ8j•√?L„Hã$<úÁ?èNr_ªÚ¬£¿·Ñb∏M1“‘°\õ”JyÏ5F√+q:≠9Í|®äÙôÔº√u%á\Yí3'ëÂÌ&ÂTr·“:<0±ƒÖﬂ¡L€¬Œ·‘ï™T[“a8lÀ	%⁄i’£íÿ◊DÓ¸ØÂÖÓ§‡9ﬂ∞?(Áê¸ÎL–≠m–·ˇº&Ãp6FÿıÓ∆X7:’®6ª‹Ö≠YYmWOû›%úˇ¢S„µµdÆ3o7Ïê…9r!ä∫dÅÍXÎQºùÆ ÍüAvü¥JLk≥VpO9Ljÿû≤°p:Ìªh>s⁄Ã£∫áòä]⁄°ì°Bi{0H…kîiË˜9ëºö”Çû⁄wÓ¯ù#RÎπGœ£;\ ªÛûRs≈rΩ˛S~Jyv≠A.£¿)'¨Cí?ß¥∞*Ú+çˇÕòDl+àa"È/IMv@&öÛéƒÂ“ﬁ÷±OòÅo3:yﬁq«)»ﬁkΩnÑ	SVc~	ß«8jî_uI#ëc'«âo]A%≠∫ÚhÛ·¶3µÀtq∫D=√9≥sv9yC\}Ï	W{qÿÌ≈m'9ÂE¿ái‰‚e>Ô$ó[ysæ®R*î6µK«w*£æπÂüTd≈fTÆQNn¸l#ÈRWﬁx≥Ù”ÀΩ’⁄@úÉµ‚]¶ÙOiÁ-¬ü	ÿ‰"UÅ!Œ(+Uøìıìó˝¶mÔ}l2ŒÉ¿<1ô˘…A*†,olbÍÕëºóÃ±ó∞„n6€"ÖI•ÍF˛©â	_mÜ›∑‹ÀíãA8±£ÕùàÔ>ø
+©*[˛À»nA √	µ+Ûÿ1X 	2·;d¥wÙeIäYƒºlMJG
+]¡æçË+√ã@òK1BÁ◊ö∞ÂùÚ¢6‘‹˘ÛÑVÁ’opÏmºbÇ3∞$GÑùö√§◊ ©Ìv–j–Yinì”Q¿P*ABˇ•?r—wÙÖà˚¨à∏ﬁ03Sƒe¶∑`;N§ôÎ/<Ç¿≠ù
+ök‰ˆmÔˇ*CÆ≤4>dÜ∞√Ö51å´ÇyÏ*OÑ)&òîKë'î&ì%<íD1ï¬*ÉYÕ5≠>ù‚Å¥≥r_.8º4yÿ«f1ø’K>	˛’Çp*È=k ìèx≤i$a´·Öò}˝ﬂˇâ 0,œÔÍIî3’àÑæ≈·+¶˙K8,Ü{∏•À^e§Áóÿ¡ü®H Ê~˛Ì†—Ñ‚@Y^ :‘DŸuêÚ_z0Ã˙≤Ïp´on`{Å©‚¡˜a˙¡T(*íàr(ÙﬂúiÊP¢-…ÓíÄ…æ&∏ÿ¥!Z4{≠`´∫Qù>D`ÛØ5©8æ]z›»ß`ß¸[TÊˆÎÿE¥l≠≈Fª÷Ï’)#§ÕéQ·'Ù∞√\Â∏àz,d˘:âÆ¢:rI-ô™]k§íŒ–hÓ˝9áX'ﬂÜ◊¬«÷M*åpÁ}çºD7†ö€EÈVüÒF ©–Ÿ%a3	á53oåçç¡ﬂ’dËÅ˜˜ú }ñ¢èÄöîl)D€ÙËÓS€œ”ıÀh˚}Í˚[IÆäÔTÚTØoﬂØÂÁU	ti˙Ñ)ø?%E}’ä‚/Eûaw◊ä´˙neˇ®FK¸\döøäy(°Ìáoıû úG$GΩw…Üj|fÕõ>-øJcµÇ+¿Ù°|µZÎ«0ı¬∞WF <¿d #¿üã˛<ß©˜´≈Õæò£oI≈ ™}¥B¬≥cx°Ã£ <∂ö˚§œÁZó˙“(ShÕ°,Ê<OΩÔó·ú ı?'ìQö,)w€gCW≤+‹µÌ
+É€-{B_sòYe.OÉe¡Èg/odx$#£©Â6Ï≈(ƒkÅpq˘π«¨!ºÎ ±k )ù 9í7ı•ae&¿Ø`5˙Ã⁄@L
+3H“[‘b6™,!¥Â˝¥Ñ¿Îu@%»?√6Û<«Ã"	C÷2≥àöËßﬂ¢Åè+5j»°º0j¯?\Â≈•|3¿£F∂≈ 
+5‡ÓÖQC‰ÖQ√o‘òô#¿…J‘i‘›¶qéEfM™íÊö7¶_ò7ˆ º·@ò`ﬂ∏W‹æqoŒíòoKïBDÍsë¯#%µ2Ω„:œ–ãäN\`€»∆n»0èı“íQD‰xÜl
+Ëƒ˛0FÖ˝◊'Íêˆé–àﬂ–Œ„
+o⁄⁄˝ümÌæò˛∏_@|ó=Ì*}Å9ƒï˚‰Zi
+=ª'ç[ºã1@ﬁ ¿|™{±•}ˆï¯©ïxãË@ãáÉnP5ﬁjVÈÒ–ˆ~*ÚÍ}œ∞˛nùpòﬂÑM¶¿ß3ºó∫∑£O©Ú≠∫ÒÙhﬂOØÓÌA≠Ç/¥o§µø?Ñ)”2`_‘Á
+Ôı‡⁄sÅãßW9fu#Tºœî∆„⁄∆69P°G÷ì¿tﬁùäõıÚÉ©ﬁkµ∂√öSô∫é;]£N±√_8rΩÖefQÀüÅﬂXÁ9	‘≠"G~síqÁÕë7<»›ÉÑrWß+Myúå¢f¥G˝/5ƒ˝9ØﬁﬂêydZ2∆õ™±ÃPı˘Ói”E?EøTFÈŒXZ>'∂∂v1 Â–§¥tî–Eá\TÅ:æΩ±+:ù0s±6f¢ˇ}Yv£ªŒxıFClï≤Lª◊lbèzEƒ∏ì∫lè:*QÿuîA!êˆ≈2U&≥en=,:œLx‡´¥ìIû€_^Wf0Ñm∞ãfG‡ë#OÖ¿}ä∑HEYVÊ∞º∞ŒÊe¡ıÖH€Æz,ã\_ıç	ë5ËÆìõ¢e“ûÈ1sπ?ÓsÄ˛¶N˝GÊ;ÙUG’˙∫L•Cˇ<H:Kı≠Qw‚.Ì≈LkÄ€wQª™ÀåöÕw®'ZñR©#¶’ß™¥æú‹À8πhHT›>	ÒôÖ|0ucIßŸËV∆ˇGÚìÙˇ„<Z%	◊)√§≥têqú;≥¨è¬†÷{-÷!œ¨≥¬DÁª2r<«X,}ª‰∏U2I%µ¯B∞°SiÌÄµyÏûÿ°É)$=≤Iao>fø˜ïW¸k0£o”'æ{Áˇà˙ïÿ)Ê¥Â8Jr<%ﬁ‘⁄Óá˚)≠äúîª£ïÃ+¸πÖŒ_X\^\!À?[<uÒÙ‚)≤¯Ûg»¬π≥Ø-Ω~Ò¬¸ “π≥E≥;+gL\‘åñ6KîÒh∏Í»dUtg‹¬%Tf¿®Aˆ‚’hÀëÇ
+~Î*Ì÷b@ã[A´dÊ≠Ù¡4˘ñh‹AC˘©äîÊU∏ˆß'ÌÚw?HCúp7>~®*πfºﬁ¿$≠∫‚ÃÆ¨ŸÅIÖj.	îG†ÛQÔ5Èx`öúi˝ï&´Âd…ÂkqñõÇCß´íãUª»©¥-»ñΩ‘CzΩ`—π~8¶≠y$ü>3ﬁ·+ı[æ8zΩ± 2%€.”4»+d•—
+G˝˘EÁ‹ê¯6¨”fª¥ÕjT˚"’ÈÔI˛1”Á¡›l<0ébıÿÌ≠∑P¥h2|º•Çss⁄ib´ÃÍ5¥∫¿q◊/Ãì?˜ë>Ø0ﬂ÷ã>∑:çx€$–˝'œ,ùÒ~Dhiœ7•˘
+Ì‰p‹)ì„Œp)√ÜÿöV‘™Í∞ØèT€¨ãèD[çˆÒìÂàhÔt£’¶ÇÚ“∞j°¬+≈ÿî‹')Of3p ÊgÉ~Ãà‰ë¨µbë•è?Q.⁄ßúr~>Ÿ¸ºoö©7ÍfoÑY2≈î±Ñ·≠†›öûZD√'A’?›¡Ùl–•4xY9ürB\â∫AÛL_rdMÊ?SMº`b%§∏4Ó3C,ÁÈ(£’¬èèTÚÍJ&´!wœDu¨êΩhœGî•Kí(<,ß>3±e‹∏¶íësûvÉT≤ùœïÕPÛª_£/n	3J≠X]¿ ¶^ó∑õ‰~ÇÑ‚ë–”f›ΩÃ'V÷{∆àÊ>áçÂ=ÖıMg√[—v+ºMÔnÛ˙¥ÑyÏ≥D¢ÏÓ≥H∏˜§^ ‡z “œ”µÇn£F∏[ôec'âprÂ÷©Ãgà/(¶/…≠ö≠J5ﬂ_ˇ‰ﬂ˛ﬂ£è≠¸Ë,÷V‹?$ïÂNXk¨Q™QúÁ|£viPrÄ}üaÉ7ªbE§ƒ#Ö…}˜Ñe‰, ∑Ñ?$KøÅ¢5¥Ü≠èa˚-x›≈Ô§âVïõR¸∞”<èx~ª 2å2√zsRë´æT∑=ﬂ>0V(VQ‰Æö"?V1dñ>aÉ*]±YÛ7i
+çÊL,á g( î,Èk™å›œuÄß%76◊úÁfu∆£z˘]…
+ƒá=s$É√÷Q7ÙôFù~ë§c/öÅ∏kLxÁLb¡.√bº‰YUqæ<3«êàõaº$ÄæRàmœ√Ê#£~∞"\>Häë£ï Û~~¶s|Ø™_k‘s1«0Ê¸#‰ÜV∏,b¬:Dì\ÊWJSˆ”µ∑`≈&J5ösx©ËT>/ëü"éa˚£$5˘y0˛±%ì|`9ˇpêºxUåº¸ò¢OÜ&P®<]BzÖ˛`yF+"›˘ß0^ælˇRÿ<t®H2A—°B˜Â ËÂ«¨§Ö“<ÊïÂ«fô≈E’B'#ô ˙ ÛÂ–˚Z"∂√˘öªàuÊ%8ËÓ®¬‹±)(ON‘î˝°›ë9®v…wÔ¸\H!ßÙ‹êº≠•È}ÓzŸºº˚@Œs45†Ç†¶‹3/Ω-G´„ü˙u!Às;‚˘±L"˙Ç $cîç≥‡,5a≈m≥{$kÌ23F⁄ı{[QQ«‘¥∞ÂÕNÊßë∫¥:å`Rñ;A|©&y®ù)Ñv»•óïx{ç]˙∆Ô3+â≈;∏~-ª‚†+ûÔ≠6…ï5◊N»+í'!ßT*)^{÷,¯-ó≤P•oW]‰“äü|ZÛÁT¯¶}K‚QJ *˝≤VŒ¢ìéµæ¶U≥ø!ÃÔA
+/:ùFIgÀm£≈®=(.ªøAœ‡Òô@JL6ﬂ©HqöU∂:%aˇX∏ÆyÜô
+›ÊG¯îÍ	‰	c…⁄sÈ⁄ aÚW=◊6r‚q®}å≤Ú1ﬁÙÀÔ\fﬂX¡à!˝{!jØ5÷¡fb]‚©ÓÊ‡™¢®~ú»íÃØ ø®`◊ÆãÃŒ †óAê5Q∆ ™+€?¬Z¿¿¶§Õ@7ê~‰Gi§±¶{+ÓV_ñﬂw·O™1¿…-~ÄoÜ!êßB%Äús%fÙ” çÊH-F 2õç.‚ÅsM£…±Ey’Xk“ÀóÓ9–h3˘é{Lÿ+ B?¨é»Ô\û”8ZØ”	„Uaô„%Wû„’∫≠·¯Â±ÅJÛ¥™hé]é“C3d%9´IªGïJﬁa^a‹U~Sv÷o˛pIEÈß\q¥çhsÅ^ƒ˘A‹ S…G≤Ü/¯Hôπ5Ï3YNZ‘övD¯π€WQ/H´»ªç‘üq˘´π/íÌvç’ö9_å.Qnl˙g˚Tÿª°[*ÇÛ–#Aı¶Å.ºPÂ∂òˆù.⁄|3åªï#É»úpWû> ı˝Å˛˚“»A˜Ï>bπ<≤™ èyRÁÏ>F[NzµZò$#F]BëGÜzSú∑rÿ∏Ú(CUAÁ≤Œ-tDaGq°Ò‰‹±õKÙõA‹¶‹¬ı=å
+∞;È5”„ülƒçˆ•ÍÑn⁄u[%¸¡|ü˛ªr^ΩÀÊQ“O^‡¥œÌƒïâ_@¸≤åÑ‘^‰Ã¬œ2ÔÆ…+Zﬁ£¥I–∫¬*:QÁ≈R&e‘Y§·‰Ñ'.’>è≥∫.+«∑•©º¶∆kÂQ,¢¯"X-÷1lœÒ˜z‘{Ùf!Ëò≥”_†©tÆ˛ÎUo¬ízAn]»ó…qÄ~È±ˆm^§•§c©û?ıUn;ïÛr…≥ú óüß•î∞¿>˛r•¢Oï0a‚ç°•8ïˇQç ÷Å©~∂K)®›åÇ˙Çﬁ:ë{~Ë´F≤„∞†º^Wr^UÜ¬É÷XRóü¢l:›Ï‹xÅî-¥œÕ Â‚[ºÃÔÔH8vJ,·–¬≈o·¶/<Aï).¿îu	>drë®C–˜	Ey∫gÀ3˝\(Â'É˙∫œFÔó˙º´g1Î ¶°+UÌFU Rπl Ω⁄É¶ùı¶√Uÿî:,sø Â^Ms‚¯Òù`#’`M{y7,A8GvxRäìa{=h6 »áÖ√X¶ëW«ìï◊Îup v'π
+ì•|(ÜNúz∑/3ò;pæ©	ï6‡7r3∞∫ÿc]Të>	a%cÏQc˚∞@≥BõQ∏f—NøSÁ’Ñ˝€K%É`Ÿl“‰6ûMÊ…j√?¸KÙ&˛Ù&‹\7‡â
+¢ÒŒr	N¯ßHF7áôvR∑üOÃi{t¢HûÒb_™O‹∂ÉÉ‰⁄è‹yJ‡ÿ)yË¿«ìß$õùƒììÑuÆH≠ÅÚsœéIRe3uhqÊÎH£¯ªEU≤€ôπ√Ã&ßPFGs“N›!Ü≤	<ƒT7çáËÔ …<ˇp)=ƒ4Ìsb1•“{è?ÿB∂[¿üü◊Pn#y	E‹©Â*û„ìË"ëZé»È®)ÅRrÏ¯‡J'´‡FPÊqpïlÖı¬ßå
+nÀ˜và1¯¿NÈ£tÚ=,›äÌÍ3€Ã¥e]0æ¶Î‚ÕÏ˘≈“‚/…Ö≈ÂãßWñ5±fáRs„Ìp%XÂ`È8LzÕnb°•=¯ËY>qëgüY4Ω¥ÂÈøò–Vπ?πt	w*ô“.ëq)¨GüüÔ“EÓtì√ßÇmêƒÒ]Z!Lúì†FË¿O{è2v©Œ˛‰óçÓFRv~52
+B,˙˚Ø£Uﬂœ5f¥ˆ›Q[—Ø≤Êeê¯^2z®§<Ê"∞Ôr)É√–õA]°CRâ¸Ç1ı”|wtl=‰I&2ØÕÑoámò–˘ıà∂-åµ£M∫Urò¸ÑLÕ–M»(1Lÿâæö:q‹h⁄|fw‘r˚:‰’b*nj °◊D·óµÑA0™3Õõ$ù¥Êÿﬂq¥	{”˘œ»È“ØÁïùuqm+Ø¬pÎæ[fl⁄¨∂Ç-ÕK©]&ΩŸ®;£4_ }p¢àËÖ$yG¡J…,Ò_93˚\óÆﬂ"⁄¡f√)_ÙÁ∞mπÛvSâÔüâ,7˜)s<ﬁ˘í»‘¯"ü˙7Y√1˜-±aﬁVA∑µ8·Lª˘‰Œ?©úËi@4≤èÃ:;∏ì9≥ı¥ÜÍ¸6ãZßµìd§À¯/=u7˘ Ô≤Nﬂ‰ÉTUe1∏;Ô‰#æ°íY(´ªät∫1NVJ—iWTzMvJ≠%[å¬d õ„Œ“«‚èÙ%¢‹Ñ∂h√ªœ›‡D+ú®j‚IØ++âzÎ¶ ütá˝ÀM.¬˘Id˚È "JµŒÿ©Ìg¥ïˆœ∑è
+Tô)?À)z’√≠Í¨â«Ùò tüpb/Æ£X1˜ã6÷7∫ÆÃ\Â Àl/π˘´æ˜ëeÛñÆD;2•¨∑ !èΩìØÑJÊÃñ-ååôŸ…ß]“¥s4†|ˇ˛ñ;õ“r—ê}2 êü$ty¿ÿ≤eAÃ2\ßà3ØJÉb@’f@@ô3∑p÷ﬁcÛõAly]4tq 	X∫•¨ÌãÑˇTÇÁ*ßÈc˘˜M"‚˜“\µ9™‚oÂÈ˜"	ﬂógæ·q“"ÏU>I_˚%æwL]AÆ‚FYN©™‚ãyä¶ú»ùŸPO' +Ó§pÎ9úÙèÒd‡YPò+îπ¬ôÚZ_‡jaV…Õ∆.;ûÕ"4=	'ã∑3Oÿ9¬
+ÄÁ#V‘M¸ ÃtÅ ’±±±c„¸…lì;Yçôæ˙&¬Æ∆í(ÓV*¡A≤ÍÒ!4-’ÜÊM˝L•_Áö¢r:¡◊	è∆f7{Rov’lvµl≥B„ÌVy∑±;—bY‹∫ŸS∞≤\f®lÜ¶K53zΩ˙2øb u’O¨+(ôﬂx˛À¡î¿“Õ?™ñ	2·ª E¨g.xŒÉ,˝*‡˙Æ€|º kƒ∑œ®ΩÆu›·©∫çû(Æ¬]«∫°ÈGO¡Ãò˛Ÿç—S∑ªaÌŸ.o!<M¶Dy›;i‚"‰±86ﬁ›VÛ˛ÉÊÅîïo5Ãór!Ïæ$™áv∂°aΩK80“ÀßÂæºöû;‰S=.+m=ÓªÑm™Eüà£_$2ƒﬂHØf»Ó§ü›´Q}[Ôùkg!ª¬yJrKÍà£úc3¡tGFÕez^ﬂ9¥õÑ\ëDÅY∫≠™•ÛS
+‘¬•‘pE·\DD
+ã‰ëHﬁ˛$ù“ÕÃ®kx‡
+76√|â©*R4oo&L$õ∆¥›;¬ñÚâ¥)§Ó]µÕÆ±ô˘êõ&ﬁ„Q<Ã‚`ÑÔîù l¸ôIC'√ñ)Ë^ã‚ê≈ˇèˆ7ÖË˘‰˜Â“•0Bgå9œ ß(1_ J∑és,hîå;÷QÚS29ÍT0]S_Ó•z=>f–tE˘™˛_–ä⁄ëi>”õ?øA%◊~€œæÌì÷îÒW2‚ˆ<‚˚o∂|…•(QΩYü0⁄˘ò2·®Õ%=»d‹Òt÷	±g7„®Ωn<ÈÒ¸ı?Ï$≥∏êéè˜:&ï|Œ◊J˜Ã∏ñ¨ØA‡,	>HöDVf©-*3A∂?èÂ°1raÒı•Âï≈ãß»≈Â≈À‰4˝Íq]¬ﬁéK€8> :Âáa;n@Ñ0i6í4#ápfk!∏—¿;»Z„—îk›&õê∑™«3ÌŸ}˘B–¨ıöêúa⁄uﬁª$Ëtb <ÎÁŸè¥E√Gwt¬6ÿ”Ò,ll-äÉ⁄O#cjï‡%ºL∑K`I6l(˝MµR√uSh©ñr*6˘Ω±¸çG#Ò¯»Á≈P]qK÷T¸Ù8ôDµH_@ê9YŒ&≤xÎ Æ•ÍÓ"
+”∞∏’iÌÄ#ÛêâµÔQ∫'8,;¡·èlÇ-Ø±âNt&Ãèf·Á⁄mCqJßê∞eKª∂1‡+|(◊ßnªπG≥›†«Jóô‘œ‘.∂§˜jåûiΩZX©$=*¡<x®◊¢¬Q¿Åµ*ˇ‘A2·ô“skkçZ#hr†9m=ÄËÍLo"q3m…ª\3c¨≠göå˚^Úb+ä›-ê≈nNqØºR‡v¬–ÓJå1π¬fÓü±±±ûŸgÓFÛ7cóô?ÈDa˛Ç.êæ≠R
+3v%Ü◊ÿ“Yg_œÙ¨3Œ>π⁄ô#è?+ÈK>6FÖñV°˜‰MëÌÏ∏πÇ=V:÷ï˘Ï2@g¨˚ë˘n©Ùa.’Å\‰ﬂÓ7`œá≠†—‰è≥?=O;«˚:]l*+€„•Ω·ø≈·ÇŒ¸È”# ôXC]M?ûyÓo≥îiŒ3Ìº—7ï,S5”õË•îB¿˙mPÕõ>s7]åFË-'∑˘¯öç5VÔdæùlB+#ˆY&Ü∞:fﬂ…¥]˚¢·º„«˙VmOyﬁ®≥cˆ6ÌB¡7ôõﬁ˝.Î®Ü∑ôó
+æœ`$Ó◊ôß:ºÕ∏Re(rø?P‡ÂË/H'ÃÜ)Öû
+◊Ç^≥;óñ©%t˜’¯X∞^`>˝êÆ¢ŒáGdﬂ9B-’5õÉEÈBj6HæGõ›2ﬂö€›F-…ÑØÉ€¯]‡ufZŒÒ•¡ÏÇ◊|d°ü”(Ù≥ü|I≠UÃ◊∫Wq1ëπ	∑\Ò ﬂ_ˇ˜[<¢
+d|M!@◊ıtJ}¯Õ¡ƒ˚ÖÓá∞}‚Ω›ˆk#Üó¸R,wãï1mFe§ﬁ,4⁄«™Ò¡APwe2bë8U∫”§øüÉ¡ˆ7D˙¸s
+”¯[˛¨q<Yœgf(k¬r	¿V‰g-ÀA∆O’’ õ∏:∑6_´ÆUäöNAMi˙—ô˚nq‰±@7ﬁ≥%»GZ†g1§i67|&&ÀÇS*s†‹‰£~íÕôÏLvh õm)∑fß;›≥ïÊ˘Æ í&‡Çy~B"wÍ'9I†Öo;ï≠ÛÍÅVBôU‚¢z¶XRg§H∂s\=¬kπ˘/ ∫º`∑IºÜõU´<ìD¥p•Qm∫‹Q*˛¸Ÿ$⁄té∏MØ⁄$´I‘Ï—…`VaÜ¨ÓF*›£≤kiVLÑm:Æl.Ôwü_√áÏâKGF‰√Ã!¸FË5B}y ﬂ}ˇ…6‰ß:Ë¯ë‰>W√≈Õz∏èôZmÎöFBÆ}¨?Wd7˚J2˛–€ÿÆíÈ> ´M’ã6·~éÏ‰oee¬ï™I˚ÅªH/îjÍÆ
+r@3ÒÕ›éBÚÌ8P∆»©8Í@∆ìß}«Ò√‚H˘¥≠∫ÕWi’πIÖçÒ‰ˆË`˚é´≠ev¬⁄k$H®û∂˝\n9•ß¿I]Vø´Ë(û
+[K±Uuu -∫Ú£%ˆñmÙ…Ä„ˇ(‚*Œ,¸‹z=‹Ùœ8P4Cº›ˆ≥}1ÕD–uîÒIπ≠¢LÓ…]wWÄ|ˆ§CÜ%IPıNûÇÂΩ}ÎjYìÙÖ–∆M¥∏%$∞?∞⁄¢3Ö`ùat;áÛ#ó¸võí(‘}¡°ñF¢z—`? \¥ø◊æœ"ß àwÖ°Ù>W1V∞K7Xö∏aæÒ
+€¯Wîﬁ	  /9sfSÖúà+º&·pﬂﬁ/@vXã*¢ˆæf›¯Tb˘n≤©aΩŸF»∫üΩyc&ÖõëPe"HÚN¢ΩÏX¬XD∑ÿﬂ≤S•XÓ^ˆêÀ Iô√r/{ƒ√™Dèäó√Óé¬`#íù-”9—ﬂ(∞ÃÅ«ëòÏ‘Y[Ï9O,|Ò‰dIÄ±∏Œ1eÚ2≈WÜ[9Áâ›∏=òòËﬁZ˛Ì•Q7π∏_Â,ïº’K‚ÍÀÍäå#±⁄MÏÇ∞√…¶÷ﬂ±€€„Kô∂·÷:I‚ÃCv@ï¿]4ª«Ã≥/LYÈŸ†ˇ7|ò+EÂLéVM≈=™Ö”ÒÁ§€·@à˛†ûÖ–…8˙pNù>}G¥ìô%
+V¶d	…[œú˙YııããÀ+ﬁ™K{É¯ıœNÆÂeu6m†U?-@π ·*q÷;§ÛÛ›;ø)îlK>ıã0n¨5¬∫ìáz∫góp∞åD2±•ê“l£±Ë	0µXôH÷Æò{˝Û›ÁÔg%_.ï∫3∑ä°ò17◊Ìäî $c≠≠È·óûúœ˛»SÆ#“∆0&«ø˝U,Üm!O§AÄ˝¶gÜÔ5zZı⁄ê≥ì’*⁄§¸kÜÉ¸a3’{5Ü 9¶?î^eıâå ∫}ed∏qáLiß“À"ßxêØ+¶Äã9&E±©î‚µejBÙU«\Ìg?ï⁄íÌ•‘bdq”~vVi0vo≠M fê_·–Ë-ÂVÖzaÿÍƒp¢lz:æKÆ¸≤ˇA6Ô+hÉÜ⁄∏C’—Ø
+√f§7±Cl÷¬∞æ‘.Â§Ã
+6áå˘gé·f¥4…©F“i€ÄôŸN®49Œªq‘¥±kÂ`3S<µó[â÷◊õ!Yﬁltkêåô·YòÍKdgX∏˛“¡ıÈø€;,‡Ÿ~ˇ_*ñ,»LL“
+ìåfêR÷€Ú…o∞2/Pç8ÛâŒö{ﬂoÅ&àˆûV@ò§d êÜ˛BuÛÉŒ»i†.ÏX_äzVi±k Ω…s \ó6Jëä+}˛~’ßg¬≥UÊKL?aŒ	ûLÔæó5µ-Cõ∞Ÿ›ï5N>RŸ åHqd=3âøp`Inö{u∫t˜´¥I˘I`3yçﬂ ∫M_ﬁÅ™RT˙‡|‚U2b(/TºÅ*ø∆·3≤˚ö[9”îcò≈±"KíQÚ{wîΩÑˇ-◊ûôó*∫in—zù˘Ø2N}	ç#¢x_væ-ßq_:usUÕ\ü©Ç∑®Õºö`zNŸ◊R˜ΩxS>Ù-â´QªπM:!Ê'w Œl⁄›¨NN2ìê¥mÅãZ¨"Ó}CÅÉõ¯ù¢«s¡Za`É≠ÍVz£uèÿ¸¿‚ójî∞!Í##oäK
+ñ&é:’7¶ÄuÚÔ‡Ï3.®#–x	’4ï~U|1ƒ/m ¿ù˝µ©˛Jç}’¿êf `Jú+Q 
+)Ë7≈Ö0/ë0ç·‰Ÿjì´ΩÙB\»æ˚¸#ng(ùäÛ±u|âcRf ’* îï¿*˘°}À{∫«rEéY&l—ˆ©M§ùÍKïœ’!ÀÑ√c^dÏÆo∆ÑT5sSππ+Á≈q«=e=—ÊE3l[˚ipGâSﬂ’¢~¿sˇ?Tì'}z™k?˝héwlJJÛ÷”/Nˆg˜d◊”ÃÎ`œ\∞lÀ!Øû89G°t+πBQ≈<€√ûÑ¿Â‰√:êeÁVIôcEsqÕF~i—m≤,öÔı≥?ïN^Ü>-T‹kítW]˛J;µÓ ‡8Û¶ NöÌD¶>jµÉ‰2cÙOÚS=—…´2Fù%3y)ìÜDÇò•R$Ïˆï˘’X”<5ºªbòóóÉD¢ˇ‰∏ûﬁÖÖewIá:éñΩ%âZ°k¥HÓNñ∆{≥U7À"ÇZÌÒb#ô9n3Hâ<“…áJ¿NG™´dÆàﬁ„Édƒe$"-duŸNÇf≤ ∂S&πÎé˝=;1>ôWAÇ±W˛¬π¶Èﬂ∂¨§RLÛå”ÔêÚΩÀfà±_7ºUƒ0`Ä|S S+˘:ıÜÖΩtxÄc¶[´’I)ﬁ∞*1^À?*pß Ã9¬WÿcÌœA ï%,0 Q⁄iª∏QÍ"π<Ô∫™3à∑‰’h0<CÏ˝û‚rf“üÑôGïÛLÀóeÓ5 áY‰ce‰áYC)téjÖ‡∫S¢5"—º	óÊNÈ´“í◊S\0-7
+ˆ˝ÔÑ?·øh∑l]d*Ø÷¡„G7⁄bΩ—≠\ˆzø]à¨Zwé5-◊¢„ öÎÙçÅØ )ÊÀçŒa¯®Èªœ?V–{ª},AfÇQm*ı^Úß>ÿ≠0∂SBÅ”¶ÊØÊóû9µÃô#ÂQá¸Ÿ1K`x≤)§Cy$Sn…b{®xx~]N	Ö°±]¡;<}›Yû«≥H’¡\–é Ÿo
+< Î}‡DeGKö∑;:¯{”7M€xØﬂh.ÌÊ“Œ¶˘†7GË
+ÈS Hc≤N8™© vÈ<¸ä‰ªèˇ{Ä•E]ñBÅó≠áDâAÏ˛Z–π%o™ßk0˜§Éèu⁄πã Àè»©◊©ã
+z:sd‹è~Éñ‡øêÏ¥éœ˙øy”‡˙AbÚÕ9 [ÖdóÃ±«FÌlùÓŒ_d˝êIdºÉÙ=≤Ks™£vÜBÏn™ñDé)œï$éÕS ¢z˚#Yﬂ‰KΩ–S∂UóÇ)CïÅ••\‹˘ù;¸iÒZy4+MÊ*w0“√{"Ÿµ|7˝¬Äí^≠&I∂R°˝ŸÕ+åjräk(±(≈=˙¡Gha`îŸ`Úp[∑ÿü<˛Ù˝ı{ˇâœ¢gE˝R|Ú$!q◊ﬁÏËîÏY!˜∏U§ÒàK≠ø!í*09p‰`±¶>`ÊÄª
+Ò≠tRÈÚ3ÅΩ07ë»¸éÙC•ƒ7zc˚J∏¡˛Ó´ÖzYt6·„„ëRÄ¥ÿ‰KÇMÊ}2ˇÉ¬I{ﬁ=IÔw9∑ÛM<ŒˆÂ»2ºRÃ>ªÖm3à€Ù…Ωw®èü⁄ä’e≠%áÃ<1Ïà∫zÌÛîï©„?ß¨J‰™(∞Ocä«V‚ Ÿò2ÕÃ”0f¯7'¶ÛÀEï{~vU€v°√»]9ƒ“˚®ﬂ_15'"ßI•ücü≈xë∏œb È¥–ë#Y“RêÑú⁄¥:*¡∞è˘ 
+îæ«Xïx–vË_eÆÿZèeR@&vıuÿ˘≈’i¡Úãø*¨˜SÎÌÄﬁ˚\ˆπÀ#ìWùπ>2É.‚Ù`¯Å<π$˜†0∫coù#|íÜ„—öFÃ«ÏSÌI-≥{Ô— í[ﬂ>]$⁄î?óNí| „dêë/ÎA¡Ís˙M§òeHÂJ6?¨Î≈Î|qåå+œG
+ååüÖùLåì¥‰°ryè•°s`ÉË{p~ﬂ“«”«”`éßΩp2ïê˛‡Ëã∫ô¬˝p3ÕHEc Å°ıM“ê<NSÏ8§4À⁄‹åÉŒ0}O≥∂Ô)¸A|O·˙ûLS∏w˛&÷-Îpzy'›Äπ5dÛ∏20TnyÔïl~¨>Jd,`ÔïÆÔ>˛oÔ˘∆Êmøg◊ÙÀ<ÕsúÌ©˙[∏≠˘V≈°Ã˙Ä.E[÷]åå7”‘¬j'´ €ki„«gÄAOiÁ2cECÒAñuO¢*gÀt“SM¨?&∂»•sr‰êØ;eGOìûÀ?ëÚ”¿¿ßÑõ®z‘[(ΩI!oS˛&Ã?íï}òà≥-Ü[“èj~‰pÀ„EÜÍ∑Ö˝(N/ä›©≤ﬁî˛‰~˝…,œéO9ﬂÅ≤g~Â¢ûÂ4Q˛Ÿ—¥wÕÌ≠O?Ôû!ÆÅ”Ä”/ã[Vr\≥•9HZW˝c’4í~¡äy®≤xÕ@ V˛-À∏|≈ï·@§Û¸+∆>∞MòPåFó2∆`bÖxá˘•·&ó¡—˛1o#˝ ]íê ®X€Ø≤C./—›Õ∑%"·[»æ¡å¡ﬂ_∫+ÀÅóx4üæ˛¸äZ}˛µøµOõ2Vû_Ów›ÛV]7†˝¯`JN;Û˛#ïrÛ”Vr"µ3ı%q¶∞4Ë°Y∏‘◊:¸»QJ2…Ñ*)æ¶"ª ≥5’ê¡’ÿ’)ßˇ`P¶f,„sè@Bøj	‚∆BééëìÛÒ<yÖ\X\^9waëúô?;ˇ˙‚≤2R&ŸÈ‰ ï\ØS:ô\¶,*ZK∫ˆ≥0 r:¥€ôÍcBj=ÍàüÔF’ò¨≈QK°‡~~ªHÁ’Q æH˚çΩ«W	ˇFÀ·çßOÉiŒmÛyP0KôùÙŒ„ÒE˚ÿèâ"îiî˛¯ÙÑGñV!Ç˚tœ·ÙÑ◊ÔyÏT–V°Xî‰:B6ËˇıvfPó3´ñ‚f*che/ñY](;‚PÑ&%”¥vU7M4)ä3ï»$˛˝ı´∑âÑz]Wg=U~¨s˛ó:Ï¡ΩF,Cd2çL”˘ei¨ìlOë3ÙH\„lZ…c„SÖ2ﬁl%∆|É	àåöÁπeH=	º&	MÌ}©ì}Æ◊ä“`P˜¯"¢FD:WxuMl2+Æ ±∂∂yP§&D‹√˙r–n\Éåe∂Ë/	ö˛Ô "¸é¥µÉDj@¸¬]Gﬁ@âI´ÉD&Ñ_x¥3èFπxòÊî5~©‘˜wÀÁŒ:…âœ÷ál~≤ûﬁ0Ù4æ*∑T—R}Ó£ô“∂ç“√∑ÿÕ◊Ç!xú¨áëJπd˛é*Jπ‡ 
+*YBΩ7∂°Ïìÿú»"'ô«Ê(¶;-Mf´y–≈—A˘ê¯À‰æö¯„rl´⁄(wû·Ì¯ ¿e¶˙T¥ŸnFf≈&Å≥≈ÿ1Û)∏à#"†]ºÊrV÷¬A“Í YÓF1ÂÅ‰4$<:v„lEÙ=EI@C[ÑP≠·q@ÙœÇ∏~*Üaª––ﬁÂº(ìÑúâåDÆ‹5ï⁄ﬂ‘èÑC@(¥ﬂí B/é°FΩZ±ˆÿ+ªdí˛“£ZO˙k‰ ûXıÜNF^h\¶ïN–ˆßé˙≈Sı…rPY.Üc+¥jö†√UHìg~›Ùé3ë⁄[K>JmXGÑ® æµB<N0·Á?˛ˆBy‚Ò!w•¯ÌáZFçy)≤ñTÿ˘_∫m»!®ºf©""-E·Á/œ`?»¬•¶ÒÏ i6ÌrÈt√|˛¬9•;+[Â72Ω#óìdÁÅTˆV€ÜAóû!ùÓ˛,®t©fóSπV»≈L∫˘Kô'Ó+ıL^?¶ñ´Wi“£úñê*?ÖyÎ6⁄°º‚F⁄ï]“Ç°hÛ<mÅJ…·í2yÖ,µÿ√œ›o|Å¿õY‚æ8Ó¬
+Y˛«Âï≈3≈sÒ:C#t©§¿rŸxUÇMU\u£QØá˝§Â≈≠x⁄Nõ˛ò Èä39§M≈V”pÛZ£˛]µM9"8]ÒõnòQ	˘85√A]À;c>õAS¶¶T8mè:2;2U:0|á\a,¢Tny })<÷≠BO´	,AËAoUü‹˛ò»* 46&$√Gl*"2∆¡¨’+Lê'˛òùqÔ˘ÏWd-ÔˆH3“ú¬“˝uMÉò"ænüÈ§›√∞B|†Ö“âƒ∆ π√I◊’œ„¨Ãª¢l._ˆcí»Q=≈ƒ—ò9ıp$Md„Äœm«©ÛFp∆e∑”˜◊Ø˛ã=á¢2ø¸¿L”y}Œ≥£kQ=ƒ’Î¢¡jSÆ∏´H!çØ–Yˇ:jˇä{~ï¢’·‡\Z>'NÕ—±§Ÿ®ÖïâÉdrbtwÏ◊	Íê>6#+»–ó∑ªÑ	äò\◊*0y±Eˆ⁄¢ÊßV›2?Yxwén√d!-]>kÊû+iqJmN}ö?ø'|Œ°∏ÁœUNÄâ*SsdÈUR/Ÿ`BK
+T|ÓdWt@æƒr!Í“møP€‹gëÖ˜QH,w«˙6âìä±)Q-=ä√ßE2±ŸîÍKo1ñ˙V1¬#·â~ÑèÙ@=∑S·V‚˝är0›◊Líèy©^q¸Å(g¿⁄˙@¬◊‡Ñ˜x‹2–#¯ƒbR.√›‡ùBd·ÕîRïB˚?
+ËÂπíá „!	⁄¶PµGÒ8g6π◊∏J3F?ˆâiKbN⁄Ωu3Ó6”hsK¥ˆ7í#KÆ®Ò&{»æ¿¿ü∫-ˆóHa‘∫©çÜ◊Ô∫á@]QáQP	a&Shb”JıhH#)ø@·çS—Pÿ9v±3<1ƒñØøM9'¸ôçûUlﬂ+ñwm^ôcçÍÎ>*®’¬N˜¯∆ùùïA¢n.`O§%9∏† ª«{Vπ§Õúê027!Ä§ÊCñ
+q#’≈¸KÌ§˜j<qÃ…h+ﬂËuQí?\$áª-“¯”\§ÆIù≈ã*}˝?∏∫∂Å -@}âX0∞ªØ⁄é:+Õ∆±»ÿ¸ÕF“≠÷√Z£4	˚“†î™Ç∫@°˙ê~ú¯“¶íNÛÂ5'ÿ Ó)…@´¨[Î¡èQBà⁄Î'îıH†˚ç?j¬#¥˚S7åÜÔÀ£„Æ¥Uh¿€
+A7Füâb&¢ú£-ÁlíV˚]7dj+~„#¢p$>√<+’ºÑH+_¡4+"Pä#Õ=_j%;˘àn™πM30I—Ì?ŸÇ•.#(iM+* b•©ôÏ	‡wrßÎN|∂åp…•ß≤ÁÜA_;iÍäoum¶¿%ì+à»Ø»Íö-˛jB∑∑yñÔÿxd∞|úΩW˚¯XÃöymÈ¬‚…˘ÂE≤p˙‹≈S‰‘¸ <˚∫tveÒıÛ+KÁŒRmÎÃí¸{Â‹π”H3CËM$uµ&’»î◊43“Â0!^°'⁄!ß≠ÄÂµ…sŸ¨@jIâ…Õ3zÎJ„E€qû +{§≥Z`ô»¸»YXÄ)?Kó*J gÈõó;A|©&¶åzò ®áuÖ∞$A›È5ì`ˆ| 3O∆í“7◊6ˇ˝ıﬂﬂ“Ÿ?o8utX˚-≥(|dÊf|≠áf÷£Ô≈ ∑KH˙ã7· #√ó?ÌÃô°C¨3Ô4'ìù∂√9Qﬂ}ö:âæïÜôíK*Qª÷∫a›5ZßfÓX(;Œ3@ÚzA’Vµ0ÛΩÓ•<°…$Õ®Wg?3ªY
+G{%}Fb•<ƒœ∂/π@≤Äey‹©Hwf_z`ƒ±Ôç ]Ãp!\£√›PÉfêì¨rVo$¡j™26v›\Í!Ø„¡
+8‰¿jNˆÏî	Ò1À2 XK›ócûã®Ó—ËBñîÓ1£∫yÁ--q1yõC»4#yn“i¥Yé»Z„≥|¡-ñR:µÌTÜxı)HØ≤`k* ≈¡˜=√{ƒaˆT–L»9∫Œo7¬Õ‹£‹€ú.Å"Ω „≥A´ì6¢à¡vÈ1Qè£=6z±“©•T1@ﬂ¥It‡ƒ˘8˙5ù;≤t™.|7»&·2$Ñ|eiÇØù5¡¡XêÎ˙Xáøv©ÓÃ¥Â©qˆÃ(å$
+$≈Ù§hûÜ]HÜ?naëÉ@”ûA2O1™&∑ÇFª‹¢ ‚∆Öh	ÚZ¥ÈÀ¬,Q¥+¸˝œU¡¸ëTÁÿ~AKR∫9Ÿ´]
+ª?%ººœqÓ$gp@Çrù¥,TEìP£Z
+r.∂Å%ªCπzî’ûŸ,kñm«iË>:À,⁄>ÉAIπQùWﬂùnó/1+=⁄jC9Ù˚ÎWˇ9s)_ÆƒhÃˆ]‡¢%-ADÖ≠!_LOÚhIπ4ØmrÕü∫Æ·¡zÃ©Ù·K|òôAú>RS2Gv*ÁVA®{;hˆ¬§bëÀ7›ÓÅÖ·ç7G”Ç…*/W@~JV°Ê@Tπƒ§π“Í84´{	π∑ßK'¬Ô(œ∑àŒˆë	ôã—â~wŸHJ”á¢8ª
+Î•˙+/ç
+ØQ¬X@R>ˇ´€VåM7}⁄Û©ÊVœÒ4ØF—•V_⁄˚©Vozûß[FÌ˘l´ê•Áx≤AÇ^è‚F∏˜”ùæÍyû§∑∫èsnºÌyûˆv‘m‘ˆa¬≈{ûÁ©ñqÉ{>◊*@Ò9ûlà€¸UÅõ{>›È´ûÁ	ØEΩ8Ÿ‚∂u›1Ò"^HÔyûÒ≈˛j£≥≥Ω˜ÍéÒ∫Áy‚É^Ω—˝U3ZﬂjOﬂ5lÇ˜yºıKv¶q0ñû;ªX]Y:≥®A≥Ê‡?ÀE"™¥≈uEcJ|êï)Åâ:/ë—"`GºP?©Â~ˇ?E–l5ãÛ+„J˛J"3®ˆ»ª Ó´úká’n£í3çıò˚¶V¢®â&úC™ÚıüpÆp`t6:„¥Õß*_a‰>C–ªlfpoñ5;éâ£o˘ﬂ33+†§¡ºJDÖÅ1M+3Ë‡úU¸Lb†‘{ﬂ·?\e`U∏Û/˙˚Â¥Zàè›äˇæ=º%,Ÿ‰@√î¥˜z2CqﬁíµHt1ô·)ÏΩŒú’á’„”gOΩ î–—8‚Fºb# 3Çm4úX&‹ÜÉÈ ‘¸[öèÀ>'[BœCÕóÀ)ìS §É'ıu$uÏ(ÿ$î∞]Àe®v≠JßêÜ[›ˇ
+∂cFn∫}ãSåßpJÃÑ`˘C¡'á“—∞âAì™P¬@µ\ÿVJ,H◊Ç∞xO®™M3(ÆﬁK$ƒŸï€’OtW6æã109ÒÚ≤Ø¨PPF¿0◊˘†|ÎÈn¢Íˆr&LXêÿ+tÀØ€È!Ÿ£⁄6nø∫£^›¨TåÜêY(Ì`◊:¸{⁄	¿tÕ#òGïORG5:∂TähÃJÑ¨6GvZr≠¯RùI÷á§◊1>gÁY°å-Ø·Pñ⁄$ÿ™nTßß“àÌj–ÎF9!—D–+7T°J’A“®oç˙ ≤¶EYÈùª'vËCªûÃÒxﬁ¯2X∂∞ìy]Y0ÍrØ’
+‚ml◊®°ä[ãÓ]»8‚√ºœÿ@x°¯“®îL¸àñaèëëª|)Ïä^®ßx≈ãa““æjdÏ‹™Dj,"¨L®9èíª«Jq V\S6~†,5ó0`¨cài ãP«@ßM∫A´ìZ9VË%€“QrÓ˙œC»qõUÒoµ	§:hVŸUQY?|rÁ_!ú¢≤ı‚ZòSéÿìJ¬∞ZŸô∞∆ΩïÜ}ªü¢˘J≥˙¢;êáö‹Hai{3ü›®4%"—Ìe æ|ìœ–¥BKı?õµ¢H©À|Ê¬°ûK?jêyÙpÔ¨õ»q‘0„;Q®∏ypd ∏€∆Í¢ûƒëe∆Q°ﬁ∂5‘NL‰Ã	Ä”–”Hé:„æøbAÌø„°·Œ,ìFl—≥E6Ë¸‚h_Àà˜«¸çiπ≠{≤o_+cå”X˘W-∫ﬂŒôqü•f˙≠J†sS&iFÙa$‘¡À0˝çÛ)O¶…â1À.*0)ß»©≈SKÛ+ãß»Ú"Ûèx*2)œOUm≤“ÂôŸÂôZ◊˛‘*4±y{Wüi»±˚TüI4G≤æ¸PÅÊé0s≠DSÒ0Û2ıö…#à‘zK¶.óµã¥$‹ú Ã8s'œ˛˝-Õôì*=¨[({¿j0!‡–£¬C£¸^©–p/¢ó◊œ\^x1Á•(óÆÂ˛ﬁa©úáÖL«xí∑g≠ùƒ@Â∆Ò9"¿≥˜%ùLF£ú√©∑d^+Rc©XÄz©ÙÅ| Y”Ã`AÈiﬁ∫°áßgñ≈öŒ@ÉÜ•Jø&Iœò £º¡J>-w√‘ÆQèm6»EW¥Ëì-	∏≤øQÖüÏ ŒAN¯åïQ´<¥Z®B#P®ë–øPëùœ 9˘1_ö+un©RåÖÛË*ôgˇº@QØù€G*ZBÒ-X˙]˜ô∆ÚÌŒÚmëÎÿ@‹˘“àO±ì≠E˜–åº¨z†K9l‚Æ¯é_u“}.¶Ømù’Ëˆ‚`Í-2„èSE‹Ô|”©Zmı ŸPYÓuI€®m¨ùLF¡ÄÏÙF§5vp›[nr©|ºu≠”∂;CÄ-±Bﬂ„T¥±F™|	òh™ìì˙ ‹iT=6!π©T˙Lt;Ìp‹hXOîû
+ªA£ô¿»êI)M©=;¬ÁÛ¢egiÈQtH˛7Ç¿D˙é∑ó\Î¿â
+√ à«ñà€•üæ\µÀa3¨Â‰™ÌÇU>©≠Ì5ıëi)˜iÊ◊}ãÂS◊‚ÔÎﬂq:5a{Mˇ?   ˇˇÏ}{s«µﬂˇ˘MF◊Xî	 AäÑE™@ îÛÇ¥}ã•
+óª`Æˆ•ŸABï‰î¬8ä£rhââ.cZ1MÚJ≈0U2î?®Ø¢“∏˙È”ØÈ«ÈûûŸHZû≤)ÏÓ<zNü>}ûøc>®J‘Ù∏7jäAÊ™Gïäõ‚˝2ÂQ∞IÓ∞ﬂüñè}zì·PˆTç•Ùì¡e’:‘∫˜Ñ.âoÒ[Ú6ÎˆÕò& Zi')ËÎ¡?·∏eò…-≥·éá\~ï¸-6‘*Ÿ(«6&€∑ô-ˆáª∑ﬁ◊¸ÙX«Õ%Ô_⁄ì Ë`@€§Vp÷r˙NÚãS€‰ß∆b>'øˇ_∑¥¡}*ö-±éJ€Cz^€pqo £XÃº,é¿ÑGŒÄ8Ú°Á¡OªQbÂ·≤HÊ≈§Ae“p#.ïRCµÅπcÒcÆ«ÌãPE.„ƒ<T˛Ík%q«sÖ)6-RDyîp0yKG¥˛ñÿà…Hv}Uáû–«¸©øaÁ¢Î¸πvK÷>Õ®+XÂÊ›Éı83ˆ0Üß\*”+xN¿·rhV¯∫2◊j18M2Ëjﬁ·ó€Eı$äÈ“§ÖIä|.x˚ãÂuaπ“£*1˙H ä—™Z˙?,çd>áÒˆÃG√∑“Oï!‡Ÿz—ãOD˚Q¢‘ƒ/ﬁVí/è¶?‰˚&£#AÉò0Éß&Èâú<ßÏË9;iê’ì[¶<'“2,QöS‹	á◊còeàyda/ãm¢TqgúòfYµ3FÍ…˜¸ÉQ6Á#E∞∑eŸÑW[àHWHÕ´jé£ó:w›çy:1›6CEÃ⁄æÃÔ1)‰§Qß;§«xÆ∫j©L B…˛Wblê˝Xx2t•°˚o´÷àmqÀ‹Ï¢<∑—÷u∏ˆ˜ı´æwØ˜7;‚ü/1…`)_ΩµA∂ûåˇ,tˆY=uøvÂÕ»≥UÈBmÃßƒ=C›{—jÁ7l˙œßöúúålêmhBeV∑”êåÁjü ıçz: <(ÅU~©´&ÕœÛìΩz÷Oöp˛2¶'cH≠›_-ò?˝‡Zˇõ°≥‘ÀíÎ∏+î,˜rı +fÎWÇ˜õîÎÈ3∑ØÜ¶öêÌ‡Ø˙êx≤bçS7xß{(>^?UIóπVBrB¥©·>:[W(æΩR#Jû-ˆÂ&¸+[ñJúVÛ¶≠)æ§Z(*ƒ˝´îı˙ÎçF“Ôáƒ6i‘ç5RK≤lñ‘;õ>ÅÌ%¨jX˝>Fπ0Ω˘∏„/ˆg)°Ëx^ülã⁄¥wﬂ%Ç;È◊„€nı¨Cøø€J⁄©∑Z·%o	¬ïz´íÑ>Á!˛=z£mí–gnåä¬_…mÂWSÔ^-‡ØE∂ÏÉ˜s¶·:ÆhJÃ˛apf|,£+pÍ‡∞Zì«„ DÑl(ÎéMØKÎÌH-8iüWp«∑y®–X˙Ö÷`´uv,ÿŒ1Üô˛j~Ô≥9<´Â'^»∫´t,}÷K∏ﬁbhHl∏∂RıÎë -®f
+jbáèQÂ£<ÏqU™∫ùQ†ÕyíiObÙ’€2üOLΩÌ.W€˙¸ã>‹xÕ9ñÁ∞Zµ»¨‘ñJà√ -¶C®’˙¸†‰;≈∂ÙÛΩÑø¿¶+Vßö`dL<hDU#AÂÎñœÛóO⁄Ú>°
+á°É÷ÍT™66+ç=,Œì€ÉÌºpÿ)Ÿ–˝ùﬂø˜ˇ
+Î>e¡s…⁄o∑⁄Ôz“Æ⁄FÁíGËˇ_ùç-É..Å.(>^P˛\,AÒ‡~d≥ªëT;∏Óu∑v⁄EœävﬁG≈ØîáﬁJ•˜ÿÃ Œz}Ÿªs
+éR~‘'µÉQ0¸Ià_€_òı¶óŒy¥˜ÔÔ|PÏ.]˝çïD¸2…“ŸÀÜØã“≠Û¸^{=ΩƒhI*π#DU$œé®ÿòº´ÃjËõ∞KµÊHâYQH∫pœﬁ∫ÍŸÉçÕå≥òØœå\XØ`&ûC8√¬äœ§¡9y—ï/∆i3S,Èé^ÃÚTÙ+Ÿ⁄eÍzçkP]›∆à%0Ó‘{ﬁ@91Hm˘Ú¸¸‚ÚÚ∏»t µ”sKg∆£ˆ¸(7†Ωëüß´k-®X¬ mF 8£ªï∆∏º}’√9†ÈKXúˆB‰iŒπHçΩ›í©⁄%pYACû~ Æ¿£˚™ÀXEì¡.ï€ö∏æƒìë∏Djˇ^ñ÷èb¬rk%8i£™Íˇ€ú∂õnˇykŒ.C	ˇ-∞X‘Ä;AÏæø≈y‚~–˜tp>aHB©ÕâF{;mÖÌA™¨0ˇ∂∫Düñæì4…|∑’ΩP•Ÿ˜l†≈˚¨—nÌ®èé·,ó¢]™süŒÌkû\¿Óﬁ˙O!≤j‚}·‰ó¸{<	Ê[i=‹ì∆Ñ»8€©*y}¶≤cÿÚWT>ï%ı∑®€üç‘àÜ‘kÜË˘e¡¢Íx*Ê⁄Ã∏«ìÂõQ›eÎDGº™÷ÊÀSˇ.Ωî’w∫—@ˆΩhD.ﬂ‹´"Å˜¢ø◊ãF‹j-Ω*xØ∫zΩhDÆ‘»´"ç˜®ó◊ãF‚ä≠§*yœZIΩhdÆﬁ¥´"•˜≤o◊ãFÏ*≠∫*íyo∫uΩhÆ‘†´"Ö˜®G◊ãF‚ämπ*yœ:sΩhd¢5TUeyó∫CïpxfL∏qA»úÖ 0t0†ãiÂbJ"Â#ë9•fòoË≥Uêë®:∏
+mf∏»'"EÔ˛}Òäv«ô'VöËËÚéŒÚÿÊ¶ñﬂï˚ä •ﬂ£w≥±*nóB˝%+È‚c¸œ˙(’˜„ƒË3FUíEyˇQîá;ˆ,¥Æoy&∑¯π‚s,òÔÂY~'pÍüIÈ¢˙aâbºí zû$+ï)6ﬁaî{
+Y√ﬂ=∏ØrŸÒÍ9˛l√ÍDA$ÂM`•r‡Hû¸Ä2Y\Â\~_Iøëe`¯π8}RÜéßM9ˆaıA¢Ù˚wXºæ<¥`% ∑Mòe•OŸ«˜%ˇﬁ€©ü+‰+ﬂŸç>ºõ¯˜#Û<⁄&¬ yG£sñ
+t%]˝¯s[´NËMB'€!nªË∆∂_öy(àå|ˆ(f˝“–?"`0Ú9(é¸¯÷AqLa‰”∞+y /˜,ƒ8√G>ÒﬂLDF&F>qäﬂ|/F>E1åﬂ«7F>	Öaéﬂ,ƒÑ@F>ëêﬂLƒFIFoDƒKÜ»£‘ø¬‡+ÉıM[YúÎ29î»ëx]û Ë…óv,„ˆw˜ˇÃc!ïÄÊÖì√¿mˆÔâsg?âÖ6Û√Ä™X61b#ñ£(–˚äcFêSÎ≠∑dÅ¨ƒKÕŒvõıñﬁ˜
+Ä&¯â‚ºÇ.WÈç§I“N?L0hvÂ~á ﬂktÒ5≥nè.√ı˜!Z‹˘ΩÔ ü[≠≤§«“‡©®î3,Ö^∞•ïÄz∫_±Ö™∞Á Ì{ nìW« 'öÌ™,h·lµB4±M)Xù•ﬂë/vç>©Q™ï˝æ‡nt{éâ„(ê÷ë›®†j∞Uo›#r•äPÑç8Å4…≥º≤ë∞áz≠@^•›JÍM®ÍÀíVù≤øGŒπHc1›˚>‚B∆Æ‰a¡d.ö>$ºµëëŸ	!YaàaÃVu‘M„ó<c$ö;∞∫1qR;:k«^Eªâﬁ5˙9ûr—O⁄iŒ¢9‰?⁄≤Í£˘√ŸËû(ê0ã`nıí∞⁄¸Ú/Y√û◊…˝”¿œµìH ÓÆ/º√˜≥œ%Ø¿^8ÊI¯@ª=í®æÂ#ôëëÃâ<´G˙fEÏ(W¶èq˝6£2ì˛¥ü“A+9aj≤ËÅˆDÚoKÈé.h√ã¿˛yyh$hz‹ä»˜øÈ)sØ;Ê–±œÓ◊◊nÕ¡{üà)Qıêì≠§≥:Xìö}ue≠(õÑAåÔ˙‘H’®[i¥∑µˆw"®≤†“∫äÌwé:›ìË@Ã∆˘√›ˇˆï©_†33_ll˙ÚSñô[o~≠ûvƒíìd
+D‘Cñ#?%¯Ÿ+iãjùµ ˚rÉÏÉRıπ3g∆∆'ˇ©õvj‚jh`XVÿÎeÇFæïßà‰5ﬁü)x¬œ¢ŸcÎjŒtMN{ó#ye≤≤¥ôPy8œ=≤õ∫ÅZ¯Z†1»±√Ÿ¸#¸Ó¡'=N$©¡ç/IçóÔIHÆ∞˝ïùÇù¯EilÇê;…óºÀX·[âﬁxOY±p”yBf/~%
+ÈÔøŸI:ê<B◊Í?%ç¡‹˙†{∂ﬁ+¡!≈Bù¿>Ö¯√˜4Œ0◊øeŸ_wâ›OT‰ ÅnŒ˘CÙƒ≠\2	‹É√->`ˇÚ$QÅíÈ√@Ü"≥Ÿ›wùÛF¿[ Ô"óé÷Ô·%ûdßªdæï÷Œ◊etÍ
+¨6»“∆ÄŒ{‘4HiÏÊ6Ç’ÚlN”^)b6ÙyœC"Ÿöæw|tCÌt;gFé~w°>Xì–∆ÊÆ’ŒE‡ÃXV"˚ñ˜‚≤s“ÙÖlw_í=ô|mÆò«∑-ñ◊“§’d®™¶´Dks•ö;©Dÿæ‡˜ü˛	RÕ∑Ç¥ ¡}ï√Sìòp¯ñC£âŸ˚¿Øi[¯∑ºÈâlÉ	m"ˆ„¨ﬁ$VªÂ"7
+k©R›ÑâÒ'∞e.i>âÆg⁄óè…õÂÒ›Æ[nw∞e€Ò)0É9òL•_Ö¨pïIÈs{‰ö Ab çßm∂/{ﬁ≤0âRŒÓ=≈Fﬁ∂aæÜa#°*Üs’Àí^=KÑ\πò\Oìµ;0'ÓÈ“o—4ïNü-ûπWÅP Gú>3sﬂhK˘˝àG/rΩGÕ≥!˝h§˝≤¨≤*6âòW˙ÌŸ¥ﬂfÄ£≈ÒÉ¯ïÉG*Éìô«Æ?~¸M_¯¡∆#≠éÄø"„<${ÑãKPπ∏9qL@¶^9>u}ÌÕ¢HÖÒfÛÁ‘0OÏúààFë•bT∫∏xñ#&1;¬Å≈Pp}‡4]ÂIv)K¨æ-h‰dØj[ÃòÉØîQàt„ô˘ûÍ]ÛYÆv0◊®±¯
+Tm…£âô∫∆ˇ¯`ë≈IY∫D&”∞(åÀâ†5."¢ÚY^˜La¯‹óÔ"P¢ıbóQêO’ø<„U6ﬁŸ‚—FﬁÛNîñUËàÍƒßO√2ëÙßyË‹ò—›(º±æåkE$¥wKâQÁ∏≠†±—åR¥/è∫ ú^@«aAsù ‹ !…Ø„äËJëp¸ÀN≥û5ÈŒº∞Ÿ©∑”YﬁÏSô!wÚ4ÈìSu¿Ã.‹ËkSøôRY31ËNdd%Î∂ÕˆÎ◊”˙Do=Îµ`)(3=èÓ«â¯Ÿ∑”a=<à/ƒÎU\4iÔUÏñYΩüÚÇ…fÕ	.ÂPπnÀØ-SÖ¯≠%øœ¸ƒ*1qTˆT^óõlùÍÕfä%TÓƒb8d´ﬁjq÷…9«4j#›1ìh∫Ë˛∂R‡à∞T‡`}ä∏+$Jﬁ=	˛À–„€·÷MºyTÛUì…	Ë=”‘Ê•éÏWkOfıÌß§=Iï†’d uÌ@ˇô,¨gù`Gõ………∂Ø9uV©:+F˙:£Ôˆíi
+ÌòÛ©ë%t$ﬁÓjp@KNØY≤è›…{Ú∂Ôm∂«=/äyp‡hU:
+JàgƒÛ$S‚+#ß#Z„⁄»˜ü~ÊıπJúf?∑C>¡Æ‡/÷2™mq>U‹(ô∏b∂®ﬁ§ÁEaä?~Ã≈Ò#Æ»›S*˝Î?+^ëJËaﬁ–∂⁄K•√U⁄§Ø2Ál»tÊ∫≥ kPëËmÃ;J0÷≠É^√lÊ°±Ñù)Ï5…ç8'≠jñIœÙ‰x}≈ÒSÓΩo;-”ÿ√QïøÊ' âs	‚ ‰ 9C˜Ä8ﬂÄ°¶v∫∑~8¬|Ωq…óW„ ∫≠ª!›⁄—ÃRyÿ…V*ü(Œvë\∑⁄ñt¬w•}¸1÷Æy(= ‚HEëI˝˙Fj¥"e·‡`>áººÂÜ±„Aq	'r7ÿ∂±Ø=ôk„⁄®üéæ∑Ê1?ÒŒ™üy‘Û≥ÔÀÉE∫H?(Ì˘ãET  @;√a›îÄÛÚvJÆR¿5b©Zrï∑πn7¶ÔR5Ÿ¨‘/Ÿß∑√–Yï≤yÓíÜ8e÷Æ∑“wXÛﬁö}∆8ÎJaûÉ∂ımW¬∫ô˙ız⁄96Ù¸ÔßáK_—a÷§√œ‹>%BÔ˜µ¨ÚoåÏu”f—Ê∏u’6«{Á:œ›µ#˝0ﬁÁ˛l≈™^Aèø—‡·ÛE˛°ŒÈøûBzó»c÷j¢®bÆxrÓ¨¡Ç„˜ﬁæä_ıJTp√„¢˜¥‚∞z◊ºﬁﬂ·ånq[H |fw∫U-¯âÌπ2hü◊iEjcÇvåÕ‰ßd⁄◊ä5$ˆ=Ô·ã˜(˘†Ä◊M√~Ñå»ì&E÷|ã»éÊﬂŒãË»~ög∑ˆYRA“1ûàê:îxÜ%%ªVÅï{‰Ué|÷cpñHä-«O2F.bXµRäºÅ<Çw-ìSfo¨≤hN–Ï¨„#ôµÀTúDµ£∆T(¡g⁄˘§J`]˘öü±ﬂäP•©√Å∂Ép∞åÅnkΩ›!”≥d±ôòi©g¿cên!æÒ ı°ãÍfIÀW¢åöÜxQ]~Ñcdk†{?∞¶¢w Ø˛5s‡=Äu„6Ù»ßâç>viß∑>åï;Ú‡Âp7?Æ◊[Îâ–›,KÉ§µo1G‡ZΩ≥J/Ø%AW ?∏“Lz≤–∫'ŸÛ˝.n8‚â†‹2-_(∫T‹K◊"ˆn≥l0€T µ}nF~xúç‚µê‰,Ï∞.SÕ≈®bHFZÌJ∑±ﬁüÖt∫èkTÃm RNBÛ‹£∫V≤∆“NÏèueŒıﬂçG¡í2Üd84KÑ›£,πóJ‡7y4Ì`Ä¬√¨˛~(£ë€¥pGæ§;…Ü≤·wgaáGAçÀR≥ˇx·U⁄¯¡π F‰pP§
+~Dƒ˜‰QÁìá…	≥˘‘≈\l:-ÿÊ◊∫i#ôU$4ΩÚ€+So≤‚Gê¥Ë.S¯po‹PùPª†e;|oR¸ºó˚@©= OHÎ†±W!
+ìØu{,¶¢/R˙¿ﬂ'ŸøØ‰ÁÑ·Ü2¥G‰oËÁ,ô„-Î8Ôæ\€Õ&˙˚◊“º¿3Ìv4kÌÅTY°§hòù'2Ï´ˆPhÎ™/Ä*}”z¨Mz%µ®lNVòX◊z]î¸`€èDÛ>∆2Õ=ìZLYãõ±¬£y°êﬁ¨Ay¬y‡î	¯=ôﬁ~Ã]ãL8∏y ]›êﬁGáœß…ƒ+ çå˙>ı£û	sÌ°i—4uD&˙o
+∏Y‹(|õúÈ˚ŸD∑”⁄Œ´ÛÉ«ˆ=A˝†S@¨–óeô…F__£[_eüÔ*3'˘˘¨µÓ˛·v(ì€ÿ>c÷ûˇÑê"ùÍ˛5ÄRj∑/4˚L√œ´±áÈ_“
+îvTÉ+TÂå¿˘w∂âVÑüß@√F«~ËiW¶öe‘¸˙c¢í!ƒÙaéﬂ≤É”¶e÷Áâ⁄fs–/∂‡0¨Å>2…ì}	å”óX8≈F„° CqAT°øìg|»TÂC2√.∫ê}ü9˙W-àÒ∏˜
+…"{h®‡@ÙŒj⁄é(˜cÏt∑ÀzØ±Ãƒ~â<3®<È4U—poêw`8uiªZN\±ÂÔïƒN7ù”iá9Œx1Ø“Å⁄äHyD∂∑.5ºdŸØˆ§ÉáºÒ√…àä‡@HóUà†Ö aW˛«L.}°y´ã è<—)<÷Z◊	ﬂ¡√Ú¸‡
+Å¯í„ÀùîŒYøﬁí®¶¥· Va\;◊%ÈJéFÜÛ€ﬂ7ÆW7ÿÿ©ìiˇ|/ÈTÆ8>Z≠‚Xñ3w#Ì=Ê©Vü˚<1O!ÀÏ0ésäÿë˙‰Å· sΩ—H˙˝1$Ë»îì@Ì≈»{n‘≥éfèJ»$˛nIñu3„^&@—´¯Õ4Kÿ-l∂çW‘`›*†e˝ÄòaÖœ f\QÎπ±"‹ò-R~„aÔ+8‚ª¶ùï.øÈ©n˜-&‚Óä–ªÅÜ´™õ˚ùı’˝'Õ4 Ìh§[≥|˙®0:\Ã>¬§«k•ŸD+Ì$Ö†ﬂ∆¿⁄îÁÍ´àŸ9:⁄b‘cDÄA!ˆêSlœÚÄyK•ä
+•¢ § p©èä^TÔ4í÷8¡æ≈1SIZÄêÊÛkîÕã´‡”¬wΩY¬R_∞5Å]ƒÁÁß±‚¶Ø1πFÆKÙV‰›w@ÀØ—¢¿Y∏VÎV⁄Ï`∞‹§ªbÛÅ¿ggBleΩ√IcæP7z-ŒD€úâ˚ååµúÔÇ>TCPL6.è`YΩ7Í™.•dx
+ƒò>ÇmÚe4„iRsêèígî|é´õ˜À}èï\bIÆ/ﬁı|Ë7Œ⁄⁄ÇˇìÇ6˘O<Õ“YÁ#GGÇG®†ÉÜÑ$π—k’;‹:i€¯G	?sëûS“·Ì”èNôÜD°Ÿ·+ñ’aZ+›¨m•€Y^ø÷N^p¬§ }ﬁB≤R_o\√=ƒoì$Ôô	eÒµ∑·~oK«ÆFô…∑óöŒm@0æ4{õı}\Ã©‹«Ñ ÍzØIﬂï>Ä^Î\¸rÂÕqÊ‡LnÑrr%LÙí7ŸH¶Ä†Ln`"h÷∏æ¡”[∞}X‹/πÅ†°!"∑€πÃﬁ]¬]◊Ä–Ëpl*Ã*"a∑a∫[nLØç°éÅ±|ßÕùüò	— ˙Vi4@∞cUÉgMÉCÑßHâå5,Ê‘≠u®%Ï:)çœ÷TdfÎö[€≠UﬁÄá™…ÉÙzÇ”rg≤çjÕ@◊uK°FHøpΩí=l∆“^π~≠ﬂm≠CDµÀj¿“’µl¡;O`ºÊíù}°Z’H/	2«ÁË˙øéqoyDu|¯|⁄Ú˚;Ò}≈©èx/√V9‹ÔÒö_úù-œÿ3»&E°é#Ø¡hÍYR∑»ê%oØßY“¥øÓnÙOl±ÁKƒ0l)büÊDÒ,^–cl2í∆ï9!•å(ãü±èX=Â}w{S1&·µ3êÕ÷]Ä59—È2ì≤(€Õ‰&õMº·Æy¸◊f:È«\Jáå•
+ì’ßùa#©Ó≤Æ¸ëxÔ˚LpâÉæg<áÔEÛÌ√Ÿúv3ﬂ1J=Êâtìˇıª˚ÆÏ ÷ø m)J?úªº∞tâú9ˇY^úø¥t˛úÆBJ¿ı‰R˝WÕÎÎî±&Z›’˛XÅÜpﬂb ù¸à≈¡~Â*ÛÎ8G¸“Ä4Ù…ÃJm∫M„,Évsñ˝∏≠v¨Ób¶Á9±k_åN_ºá0AÈ£ œXU1{GÒïZŒz“gQyØ£5|*‚v3¸	yˇDz£∆[  7“¶ßPñUû}∆ñˇ]+î´müÈ∏çÍ€πØÒj&ıÂ∑8⁄‚BâÏ.b¯!5≤ﬁE∂?Îœ¸–Åú4“b!˝µ*˛⁄!gHV/IIË(D%∞7∏{zï}ƒÊÄ >¥Á‰)†9’Ê`≈ì3›U;◊Åjáú˚}π9⁄F!Úp=ìãH>6ar˜Ä⁄Eûr¸y&…ÑÀ~![`ˇDˆo|Oì œrÃLõÕhvÍ7R%W‹3ﬂL4…z®ºüK‘ÕGí{Óq0vıÚ8–C’¯ÒK?s¡/ø6Ê’éîE*.¶2 v5ÉaÆŸ§l»]}ÉlΩ s!Ä∆&ü≈@Ä]2.‘@pAx»ÈïÄÿ¢óó∆‹º–Z«q|_&M¬ıü⁄‚WFõO ·:ÿÃMRœòX†”—.·â‹óŒcÙ4"ûX2Õhå*ª≤‚πJ&xÅ«™6W¥•6Œ«lä˛ô_ÃSßÉ"ó„9 CΩÂª&CÕ¸BtZ‡/+;3>¥Ã≈/%ò=Á/˜ºØ∆÷„”ß≥á/4dŒ¢Óæ7Ã>Ó≥â!ë-ÚºTs\6Ï5ÉN~l{ß^:ƒ—ﬂ+±§{˚¯ÙE~È`¿©$y‡˛–î”êDH≤ê´*Ωò◊kó≤z-˙¿;„A-œÂöòeØû•Ê⁄/ ¢g>ªe¶,S˛n¨Qk¶IN≥BL¿*é∞WÑ=âC990 ◊Ø`âd	Ää`∂»aRåˆbKPEPò˙h¯1<º!T˝/¸GÃ∆‰cqWKÓ<JÑj0óü^3]CàÇ`ïõÓBî∑J›‰ÉÀê—„&ˇ1á(∑È˚∫¥˝Ñq'˝ﬂŒ¶ìììA7ÖÙVµ&é0°TA o–t^›–ÄçÃ0veGñ¯V±´nÔXcvA¿m#Jym[…
+dæÇÛˆ∞iMîˇ;|ÂÍ¨∞ÀzÜ≈HcX£E‹#Õ}—¸ÂE"∂˜À:R∞˛⁄#S=Ω à=G\ÇÄ,óp‰TôÑhtQõ78¸&4	Eˇ;ÂÔÇáúy$˜g∞˙Ö6CÛîöœS±k0µŒ”¥mÎäCΩ-í6g…XΩ’¢Z+ØëΩçIc∂ù1L?◊6ìV’⁄ÂÜ	∫ˆ⁄zÎ-„ †≠∫ìÃÔ7ÓÊ5åCw‚±8„>Ò£x›⁄µyYaË¬‰FΩm\ÜòÊ°ÎÈ*Ph‹Çõ>wπ∏]‹¨%ôqÈ“Î§;´æs¢¢o≤»Ì
+^ö‚[¨8e≈ÜXQ¶¡BÊÎ∏w&u˙m8ñ‰ÇÅMk+0◊ı’ß‹VA¶ß
+≥në˘ôaò•;Tç©¨q_•›$—Js¡±aıèhÊ◊ $cõâ\’RÂ¢Îst‰_¶…F¨:ZRUR|-m6ùûún'§CAÒwdB[Õ˚àãAaŒTÙÊËV*«îï[wÇN‰ìà$’î&,Ó'§vÃo¿[X€‚‡.ISô–V+Ò2dÙMÑ◊ﬂRTa9*Ôïö7g¸öΩ–_ï„‰â™7crtGy‰ı˘ÛáÿhQç√˜ﬁL `µÅ.∑M2rÈ¨4:¢(sjé8ûk _z¢Á®.hJıQ’;ØÔ√|¡“>º•ëÎêó},-’ñºiÂAº…å`èOÏ∂MÑ œ_∏ó†¿zy∆‰_cñ6[–èi3ôÿ$‚è\ËxJ˝»ñ .ã¬ﬂÍÆ˙|bT˝#◊ÍÕ’‰=%ÿ†◊IS√‹Gpø¥%⁄då2ﬁEOÇú0:&-°RË°æd0sÑnaâ6<ÈbBL¥±›˛˝øÓ|Ñû%2z›Q2ç7nå
+ˆ\√Ÿ<6ÂB2Û÷˝rcT∫t‹8U¥¡àÅi#Õ£b≈˝Miä
+}=n¨¢#ñËÍ¥q≤œ≈£‰9L%I É∏A˙*©¥°j»µÖ£}Xn®Ãâ(^$•S|1 è˛OiöJõ'n¨É§ﬁR#e¥q≤œQKÈ|åËD )^pf¡KAôæŸ\|v	«¡Wßw∂⁄‚˚Ì‹cJˇ.4˜˘H≠!V˙\£⁄}úNÒ=”EØﬁ@ΩU^â(¶∞ fÊgåo¨Älö¥”ŒƒÜßgiâå r^=ÔIm	—køûQùQòåüÑ16ähÖçè—ÿ9o »t±„Z˜ì\5≥;…Í5ò xù»?'›Àêì3›@Uõc˘]¿;≈/ÑGg'∏jßU^≈]  o¿…pçnoMl–∑ÔGˆJ5^ø…õ⁄á·)%9Íµ¬:(∑Kπ„òJ6Ñ-ÅËèV•Ñå†?…ø©Ë £=€c5Æ—.DÖ—gßL#ÖPÉIﬁ}&ﬂ‰6˜∂´
+NÂwO¨…&3¢j∆Øÿ∑tœÃV¿7PÅ?‹˝¯øSª ¨Ê¡)jÆ÷[ÈΩŸ•¥ù-ô˛AwÑv/!Y≠Å˜'¨'}L;.„úÇ£¸{<´ÙÏ‹πÀsg»‹¬Çñ`zˆ¸˝ŒÍ∏ÆÂıî©:záyî¥“£j»U+éíjıF†´Ìk◊;Îıá˚d—÷…Añ∂©à¶‹.~\‡≤LˇSÊÍ2q‚Èåπ-=4ﬂ6˙◊"	Ñ{${ﬁauGöˆœ§ΩèXõU⁄⁄}Ö5dòÏXWÙ¬Ö.ú(›ÂiXcØjúPÛë Ò“O˛æfˆ}AG ≥ü°A˚:uû˛‘‡âj5b¿Nµìﬁ8^èsbQç·á	Ââ.ß<i…∞ÒAÖ3jÜ)hj7GR–ÑÁ/[â˙£Øt¬'rOÀùºuÎ√V> •_e2L\É80…bÔ”=	õÑ{TéZI˝ﬁi∆3°ùùu∞£õmâb/6/«πØ5z
+œ/û∏	ß°{|sXâÏèdæ¢pÙ„YŒπP>ﬁdŸ$ájz®ÆD¿ùU≥-PÜ√⁄p.u≠ËíUøîáë∏ŸâCXKG8ÓÁ§B{|÷ÉµÈÉ¿IM÷÷ìÿdÔV›õ7äãdiyÃn
+QÂÚ7-ó:ê&Ñ∞®Åy∏ümÄ|∞–:©ùá‡Ñ÷˝∏∑nh$[ê⁄˚!˛F‹}
+72≤Hç/«ﬂ<€bë˘S8HÌ=çîΩ∑ÙHã íß⁄°¶ö?DﬂúùpS¨¢∂HåøïpGÓ?ie^ê⁄E˛Kâ◊eﬁb∏ì÷i∫6œæ-1≥}ŒqîÓøï¡ 'VläßèÖ.\ª‹ éz˘$ñí±R«Øâ¶ó Å…/º 'kzJÉ-Åß)ŒÒ"O◊∂Àft~≈˜*JÄY¢E¶'ìÔüËŸˇœÿÙfïSÃ¶⁄ ˛'gÑ®îÕ·lÕ]µéí∂ª¸≤Â1„˚—À#?z
+–|∆ã–ªa0†në≈s†a«Ua¡P‡¸ë
+wãà∏«ö"ä™V:ﬂ‡>)ó\¸Rp*^5œ<ü{VjÅí;‚˙˘aPqùçi◊KÈUv√ó“Á¶[I¢<ˇ™˙Ö≥KÁ»¸œÁŒΩ±H.Ã-/ˇÍ¸≈◊öˆ/PöB»Éq[YÙ◊—8A£ùû ôÀÃ9œÀ¡øpÆ’äu=;ÆèíN í;°«ù¿ØÀ2∏¿Î2dgùK6π√gäz»‚≥ùJ¥øªüÚ˚x›OX‚Qÿ˘î3"Ê{˙√Ô˜ﬁ˜d◊*}.´–o©bXÂË≈ïòëzû ÚTﬁ"ÏûÆ‚©Ú<“∆ıU√˙π¥sûÿÈÜ∑ô£ÍÛ‚‹QΩ1u«⁄ã‡è“)ûwwàûºJ¶^OàÆÚÊ^Cóc1ä∂)¯ Íÿ8qB}üìÏπÍ∆Rz»5–Ì8=òˆÿÑ3çü|¨[4$®+ˇ‹=Ê~HïIﬁ·^∂j.ÜÍ|◊±w∆ﬁs∑”≤¸I∑ø≥›Plá¬‹óæC°ÍÏ5«50+J‚°™YYŒC(Ú„·?C'®hFﬁKG©¢¨KUyv=&ôÎQ¿≥|û!/‚ÈªE%CÀ rËä:åo%ÿèB*ïò$zxÍ1Sà~À‚KÜ⁄ñ6	$"—9˜îΩVãeıì~ü*Ú‚ﬁg”5ê¨;k†¿÷óÆá>9Azı¨ü,uÏ%qÄLO°X<kÑ«Kñç!˘“ûÒ≥k¸Q‡ÇÔıB2>¥dË≤∏≠#€'ø{Qz•ñ"˙≈ˇN+˝‚ò9†°«∆[∂¶ŸTz(
+ßKT'EGz∂O¡ìˇÂª˜wÒıé≤á<¬R£ØMø¸ﬂ›ˇ≥*¨Ø˛h_{5‘ˆö
+⁄^ÉÕl⁄ÅzÉh¥~i◊¡Â˜µ∑Ω´‚l‹Í“jﬁÀêÃN~[.·>’√6ÏL/∆∏iGi:Q„êŸc˙V˚~ÀN˙L$_‰rïΩˇ#ûÊ‰Lé™ˆ¸⁄ò ,È•äıSïÒTïÛU…›µˇ=wB©wÊ_Ô}Wæ´í	)§fŒ√û∫‰Áœúøº@ñˇÒ‹<YXº4∑tfOH^ﬁÏ4™•#«5=0:∂!.˚`J≤[»ü◊º†˜:˛´Îä¯[®!ò8jzÂyﬂ3Â\«úÚ¢|ˆ¯‘ıµ¢ÍYñŒ(*0~£pdÇx 6ñ@^awpf „÷çuc ºSl.<¬ZÀê√¶X/ò8û¥∆‡µ˘VwΩâÙˇR“[ß€˝É{å}mTMOrﬁ”K6¯≤`g5‰ÃhTˆaÓ FÆ…Ôﬂw≥	8a`ôíÂA}∞ﬁ˜`"pJ`æjTcíPµyi¶Á50º/›KÕÙ-?â'⁄£íOú*”ÏU˛J!˝NºC¥‹À/Uæ÷Ÿπw‰E_°Ñ¡P	ÙÀÜ€ï¿çjIÀÃÓ|Â	)j√∏+Tƒ|6u,.Sﬁ®PÛ…
+R¡€vî»Û◊°pπE.$,•˙jBÊÎY≥PV‚PËí:¸\ÏP©ƒ4•®øå6(ö1ÃsèÙ-®è„≈¥:¶áH…  ®CCi9W¯¸–ÂfŸ#e|ÿ‚Ík≥Ç~1±(„[W%éàzØ•à2I´f¢Qb•r∞à@ˆ'ªúë±äp–·^'cFÕ¸kÒ)æ‰™ﬁÜx‰©>›
+>ur–=”Ö(˝Ú \µ±kùâSc„€ˇÄ»ú2òÏ»\¶¯1èÀfl~ËÕ\»e˙√¨ÛjÉÓ†ﬁbØ„}-"¸sÔ"≤õﬁŸsO¯ò4ãnI1ºBµ∏1√!’ô∑=ª·√>–"OÅWûkµò—∑P‘±∫»f⁄Ø_k%Õ[iŒßD)∫ÎYŒ∑	D6Í≠ÚË∑‚ 7†åSé‰€FW%† ¥÷ÎO[øπI€µ¨{Wëe∂€´7“¡&s$l$oUéËì~`q©¨·S ¬ƒÇﬂ (5|ÄÙ≈……I&^æˇÙ3|Mp)˙1/z…ó"\ıÆòe1~G»∫ìï,ÈØùNÈøÉnñÃ”©†ÂÊ:≥≥(˘‘e±Ïß„†˚75˝)©ˇ∏¯jª¿±Æs⁄√±Ç÷Û∆v©£HøÇ—¯R%âı“„¿1∫ÉÖQ¶?ñ|˘Pπ(üó≥h„^E+I§Ffê0f0l.d›U˙R[:]!s¨è£nıÈ…Í\#—5’PouÓS3π«tî•\⁄7áQu@∑’ZLBF
+Ωˇ|∑sÄ˜âËΩ5EIã\ZèÈq}g˚¸·5≈ëÿëÚÁ¿⁄^”¿`ÿØa¯EÌ∆®ŸjrÅ˛vk¸ˆûåΩ	∞JöÎk…ö3&+	È6[tën™:÷f…’W<î∫ä√‡«∫1p‡gÂœqEË>‹!-¿«,2®xCq’›	ÓUS+6ß>3É0tí‚È©,õ‰†ëxÀSbkùl›I@IRFÓ?n7“ïÏm}ç? `Ò‡/<¡£æTØ†‡
+!¥ß=A˙¸/˛ı/íMfπ¿m&ﬂJ6}ÿ(àÃ( £VJﬁá‰…J0àC∆≤ÿú—y‘î≤Æ7µÿÆÊf∞]%sYC…Ò›µL¶,«z∫2=3ÇèÒÙœjQi…®Õ`®
+ÄNÇòBØ≠ÕÂ∫rïF-Y˛‡=ù>xm&pÎBê‘|	ŒXnì´ı,üL5,úKÙ|ML;Ü!ÃüÒán±CKpuñ£Áñ§l°{ïL }®Ñ”,Ω€ ÎRAaﬂOoT¿7h6≠†ΩNgâ›Ì$j±˚Ê”	ÿ#``?“OØíE[WÛΩ&Á WƒíÎü¶º±…]±ŒüB89∏sØ¥ã'Ó√¯[˙h≥E˙.øè3˝6ƒ∆^çä˙Ñî‘§|†ËÚ¿g“‘ﬁ∆¨y¿Öóxy~ *ú>„^’ç®âGU°Á5‹·(2ﬁ·∞¬πäÎÃùëÎâ5)√Ω`]Üc –^ﬁ}óD˚™‡p9Ÿ‚
+xÔ} Æ[÷‡Ì Â≥ıÍt=1Lí˜I˛},R-òQ.€‚É^#œ{Ÿ’Î| ◊s<òì_ŒÈ¿°|kˆç"Ωj÷i~ø{ö◊7Ê]õnΩXd◊Ê?›Ì"¬¸v˙ÆƒU≈eI«ı<ø@‰çâ# QßÌ&6≠ïÖ„∫Ÿ*∆ ôë«›UFíFD˚¡/ûªx˛Ãô≥ãÁ.ë•sø<ø4øHíããÛãK.!˘4,]1i.v2*g€TJúÓfœÎ/î§Rÿ!√)\m≠∆ÆzÎTÛ∆#vm´7Öfû≤%føT.MÙ∏†≤z#Gg;F%Ë1´YéjlVØNE‰SÂ°T˚·ÓÉgerπ1°*Kïâïws‡q„û2ÚP"0>ï≠EsÛ-^Ìr”˝ÂâDoº_"ó≈ÌÚ`÷_ú\Í\Ô¶çÑ¸€¿ùLõì}*&ì⁄‘rl‹ƒﬁ.ù@RâØ<NÊQı}€†‹÷›òÏQÖeP+Í˘f)f%˙y(È˙˛ˆﬁÆ&Ì◊¿9ø’Y'ﬂ"√.2Æ©ïË2óGQê1<óh]æ•{9ª÷°rºp∫ÀNÙQs¢CSá“1™ˆ=DæA&6”†çìãI#I{É∏d#ª•SQˇ(ëõ!]ÍnZxµ“ûo7+ÂÆ‚éR;5¥YÔØ)<jmÊ–›.∞ÿ„∞"Y¬§Åí}d*wÙ Daˇ…Ûˇ›˘sdn~naÒÏ?zÌb˚Qû∂MG¯N√pÛL∆è§Ok«¿˙µ˜$ÜÚ&K¥˜üœÖsÃ¿ñ˚Bµ»ˆmßqa/ﬁeÜ”&&0óvXôî
+ò‚ÖVx}N1m¢4œâ“7‹"H+è{Ë˚;∑tîÑØ}HÃ∏sK„®ÕÂD∆M¸åØ¬ë. y-∞…'Ï´§97@bô˘≈7z∂ƒÎMHF[Í±Å7°x©K±!‰∞Ï†àY+Q°ézxƒ¢s(7kQ6$Å5àä˜xØÜ†]”i0π>V≥¥I‡0*˙‘÷‰[Fﬂo8êÑÌ¡E† ™—≠1‚›èj†lcàù˚˘@·&Û?G)ÁíÈf»«î§ï…`√CÊùü´RÜ9ËÒ Ò´1ÙYj2Íú;8∑˜‘‡Iîè‰6Ûtî4–⁄8ë‡¬î»>7*(m /N•Àzß¡∞Mã(∞ÿÆß≠!(PRtœw◊3*˝~B.Å>À[ÂÅê¯7 √mù»oàπeÙ’‡F—¬üπS†ËÜ
+k¬åkºßçÎ¡‹º†ÎSÁÑìÏ °£<q ƒ‘∆a¢∂Ízﬁ=∫·ºp[Ê´ﬁ‚êùUhUîÿ*{ıM¯|6¨u˘ép:KíJ¬0ÙòAvÉn8HRa<›óF…ÙcÓJÁ3UË¶¨%+[3©]¢√^A^è¯_Ï-+Áz= W©R8BÑàä¶ß ﬂ§(ä
+GL$4ö:ﬂÌmRÇá6Œ}ÅHÜ◊EPÊv¥X¡tÖF∑ó&ÕKåç!ô¨ê◊_'ØÕØ%tÜMã˚∆"¥Ï%OíYz• r>¸j˙‰…Òﬂ+¥}¬:çó⁄ÍÁ⁄êPMN©|…]›ﬁ≠ò(c˙ﬂ¸^Ñì≤…ˆSƒÚÖ¶”˚o‡ˇÜñcóÓ{ißﬁ∫ê•ˇ>ÊôΩÇÌ±G◊^∑ô¯dq<°Ù“ó‚$.≠^˜}ß¯œxÍ©≈çyõæ]3Ì7ÄÎ.»ì∞‰ÊCö ì!Ô 9∫¸∆à≠•";™Q€q	¢¿U!ù◊`‡•Su91g†AÒ≥7∑çôaÙ]©»È%<‘<⁄…õ∏ÜFp6†Ø¢BVAp¿Fï2P:æ‡´Û>îÙ2§,_∫º y.û?ΩtfëöîsgŒàÑÇ≈2˛Ú≈ÂEîC–zpP
+_»∫+i+˘€»"`ªóE∞˚(ªüYUf¥AWUª¶≠êî–a‡V∏r∫pÚ˘˚¯nπU∞)Û€ºŒR’¿\ùô(abzD/èç_ôz”ä¡ó	ªå*π°ÊGhèÄ8%›≈q≥ï;\Ki©9Ó∑òëù◊€+˛U=_√·W·Úë≠1;â·≥ÄBs„	Có˚ÆânÜäES2|n :-£∑3t˛Ãàµd>c‘ò]Kí@àô QwEº∞ö|¬nªê°<¿≈õ°õåm;\Òπ@“Ã0ÊﬁP5’∫¸˜.¬Q¿êk%à∑˘RÅ’!ZV2^œ€WÊãh+* Jûú ©|üºΩ¸H¢Òˆîä?`—3Ó{,aeûÖí ∆“éy~Ñ∞Ô…[	Yü«Â¸≠¢Û&W—Úu‘ßƒÂIPØºﬁß⁄îåt"Í+1yxpO'"‚mV©]NZ¿âU>J#ÊÚ©Vqõ‘ﬁ`OU|÷»¯^PºﬂHúM‘§fÌ ¨≥˝j7HjkKDcß{†Ôü8kÌ1≠µ∑ﬂ+Ç7”˛ KÉ]°6hA9»ÒƒæâÿFLT˘Ü{EQﬁÕµ9∑;$}"3ıN÷9úá∫ñˇ…h…Ìœ¬ÛNÄ"»¯¶†L6pí±—v	É‘Ï3»ôÎt#a)¬.ÍL·‘ˆŸ]" iÑ≠å‡ÉAMZ+Q0Òi"®2ù◊WÓ?˘√›[ˇEz◊Õû«™A0¯π‰!ñkg’
+ÎPyÏyk¬OÙì™%ŒË…Äf•˛T81–B≤%éõ2@wüõß ;ZœâÊn•Å‘œ±Ú†Ât‘ö©ÌPpõ¯º Ü£(ÓwC)Êd˚SMbsPˆà™í]Y≤∂“ïdê∂ì˘nñ—ÛGG€¶à≈Ò[§Ê…KCÿ¨€OÜ£ÍØ~ƒ»h˙%—<}i	™µâ≠L“ÂF7K^ß‚‡4ƒuj”„ª!vdOé+êw¿™Eëá/.°Fò Ûµ¥OÄ<Ò®UàÔg´ÊÎ¡±òr˚˝D–““;‡b8ÂèáùàgWtCáûÃÌÂòáW∂∆Ê\‰œó”}Ç‘x"dNf˚›ï7«'ÈÌÈÓ^cçîn¨	≤Pu+ôtˇfH-2hƒ2°∞`9˘nŒπC›˝(ÔÀ>Ön∆)ÆÆ∆>zÜå¸Êÿå#‰. ãîiÖÒŒˆ5oå†VöÑîÛ9î@ÁÆz»YΩπŒºÿÛıûÈËe˛Ú('Ø∫õpˆ~Ù›˝õ$&Äí#∫ö—Ÿ˛√åô‘∂¥`¬“ ˝Ÿ¿ê^e–˘åú/Lu—t©Õ≤T$˝=≤§πﬁHjµz£qÄ4ò‡•íü“ı≠ÂÕ∞Ωk¸ ˝ïY∞∞œê'Ã≥H/Ûì—›√ù$∂ R‹ÁDsyBæn≤ÙXY®’
+ é≠qKÙì!¬píÓÀÔ˛r¶ÒcúÃÜ©ø¿÷Ëú•Õl÷¸W	"38¡∆d 6$z’∂©XF√CÅËP°Ä	"¶ÖDô5¯d~•◊∞RÙ´<O0VØ@Ígœ ÂîÈÕ¡
+!FΩcQÚ¥yˇÔﬂ˚ﬂÂ.@´Ë∞HˇyVŸŒZ–zïü_≠ÿÏRvcV›F>7î•Õ^¨xÚcN)Wl\ZTçb{ÄÉAD7bíÕÉ3~AÚmƒõ]9Æ±∑ìÇÀ!è∏˚—_ˇuÁ#Ûôqk-òZ1' *Vπeç&k Nm-⁄‘Kó_QeÍ%Có2æ£‹∞˝o˛?   ˇˇ }‚‘

@@ -33,7 +33,9 @@ export interface HybridLoadResult {
 }
 
 export interface ScopedQuestionQuery {
+  category?: string;
   categoryName?: string;
+  subcategory?: string;
   subcategoryName?: string;
   topic?: string;
   examId?: string;
@@ -133,13 +135,15 @@ export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Prom
     const boundLimit = target.limitCount || 100;
     let localMatches: Question[] = [];
 
+    const sub = (target.subcategoryName || target.subcategory || '').trim();
+    const cat = (target.categoryName || target.category || '').trim();
+
     // 1. Check local SQLite and IndexedDB
     if (target.questionIds && target.questionIds.length > 0) {
       const rawIds = target.questionIds.map(String);
       const sqliteQs = await getQuestionsByIds(rawIds);
       localMatches = sqliteQs;
-    } else if (target.subcategoryName) {
-      const sub = target.subcategoryName.trim();
+    } else if (sub) {
       const sqliteQs = await getQuestionsBySubcategory(sub);
       if (sqliteQs.length > 0) {
         localMatches = sqliteQs;
@@ -151,8 +155,7 @@ export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Prom
           (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === subLower))
         );
       }
-    } else if (target.categoryName) {
-      const cat = target.categoryName.trim();
+    } else if (cat) {
       const sqliteQs = await getQuestionsByCategory(cat);
       if (sqliteQs.length > 0) {
         localMatches = sqliteQs;
@@ -202,10 +205,10 @@ export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Prom
         const missingFetched = await fetchMissingQuestionsFromFirestore(missingIds);
         fetchedFromFirestore.push(...missingFetched);
       }
-    } else if (target.subcategoryName) {
+    } else if (sub) {
       const qSub = query(
         qColRef, 
-        where('subcategory', '==', target.subcategoryName),
+        where('subcategory', '==', sub),
         limit(boundLimit)
       );
       const snap = await getDocs(qSub);
@@ -215,10 +218,10 @@ export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Prom
           fetchedFromFirestore.push(normalizeQuestionDoc(data, d.id));
         }
       });
-    } else if (target.categoryName) {
+    } else if (cat) {
       const qCat = query(
         qColRef, 
-        where('category', '==', target.categoryName),
+        where('category', '==', cat),
         limit(boundLimit)
       );
       const snap = await getDocs(qCat);
