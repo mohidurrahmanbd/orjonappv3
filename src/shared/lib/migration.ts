@@ -27,6 +27,18 @@ export interface MigrationReport {
   logs: string[];
 }
 
+function getVersionKeyForCollection(collectionName: string): 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | null {
+  switch (collectionName) {
+    case 'courses': return 'courseVersion';
+    case 'live_exams': return 'examVersion';
+    case 'routines': return 'routineVersion';
+    case 'questions': return 'questionVersion';
+    case 'categories': return 'categoryVersion';
+    case 'subcategories': return 'subcategoryVersion';
+    default: return null;
+  }
+}
+
 // Batch write helper (max 450 per batch to stay under Firestore limit of 500)
 async function uploadCollectionInBatches<T extends { id?: string }>(
   collectionName: string,
@@ -36,6 +48,14 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
 ): Promise<number> {
   if (!Array.isArray(items) || items.length === 0) {
     return 0;
+  }
+
+  const versionKey = getVersionKeyForCollection(collectionName);
+  let newVersion: number | null = null;
+  if (versionKey) {
+    try {
+      newVersion = await incrementGlobalVersion(versionKey);
+    } catch {}
   }
 
   const chunkSize = 400;
@@ -70,9 +90,12 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
       const isExamOrCourseOrRoutine = collectionName === 'courses' || collectionName === 'live_exams' || collectionName === 'routines';
       const isAttempt = collectionName === 'attempts';
 
+      const itemVersion = (item as any)?.version || newVersion || 1;
+
       const cleanItem = JSON.parse(JSON.stringify({
         ...item,
         id: docId,
+        ...(versionKey ? { version: itemVersion } : {}),
         ...(isExamOrCourseOrRoutine ? {
           createdAt: existingCreatedAt || nowIso,
           updatedAt: resolvedUpdatedAt
@@ -433,7 +456,20 @@ export async function saveItemToFirestore(colName: string, item: any, idPrefix: 
   try {
     const docId = String(item.id || item.phone || `${idPrefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
     const docRef = doc(db, colName, docId);
-    const cleanItem = JSON.parse(JSON.stringify({ ...item, id: docId }));
+    const nowIso = new Date().toISOString();
+    const versionKey = getVersionKeyForCollection(colName);
+    let newVersion = item.version;
+    if (versionKey) {
+      try {
+        newVersion = await incrementGlobalVersion(versionKey);
+      } catch {}
+    }
+    const cleanItem = JSON.parse(JSON.stringify({
+      ...item,
+      id: docId,
+      ...(versionKey ? { version: newVersion || 1 } : {}),
+      updatedAt: item.updatedAt || nowIso
+    }));
     await setDoc(docRef, cleanItem, { merge: true });
     return true;
   } catch (err) {
@@ -445,6 +481,22 @@ export async function saveItemToFirestore(colName: string, item: any, idPrefix: 
 export async function deleteItemFromFirestore(colName: string, id: string): Promise<boolean> {
   try {
     const docRef = doc(db, colName, String(id));
+    const versionKey = getVersionKeyForCollection(colName);
+    const nowIso = new Date().toISOString();
+    let newVersion = 1;
+    if (versionKey) {
+      try {
+        newVersion = await incrementGlobalVersion(versionKey);
+      } catch {}
+      try {
+        await updateDoc(docRef, {
+          isDeleted: true,
+          deletedAt: nowIso,
+          version: newVersion,
+          updatedAt: nowIso
+        });
+      } catch {}
+    }
     await deleteDoc(docRef);
     return true;
   } catch (err) {
@@ -456,6 +508,13 @@ export async function deleteItemFromFirestore(colName: string, id: string): Prom
 export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
   try {
+    const versionKey = getVersionKeyForCollection(colName);
+    let newVersion = 1;
+    if (versionKey) {
+      try {
+        newVersion = await incrementGlobalVersion(versionKey);
+      } catch {}
+    }
     const chunkSize = 400;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
@@ -475,6 +534,14 @@ export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[
 export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colName: string, items: T[], idPrefix: string = 'doc'): Promise<boolean> {
   if (!items || items.length === 0) return true;
   try {
+    const versionKey = getVersionKeyForCollection(colName);
+    let newVersion: number | null = null;
+    if (versionKey) {
+      try {
+        newVersion = await incrementGlobalVersion(versionKey);
+      } catch {}
+    }
+    const nowIso = new Date().toISOString();
     const chunkSize = 400;
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
@@ -482,7 +549,13 @@ export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colNam
       chunk.forEach((item, idx) => {
         const docId = String(item.id || `${idPrefix}_${Date.now()}_${i + idx}`);
         const docRef = doc(db, colName, docId);
-        const cleanItem = JSON.parse(JSON.stringify({ ...item, id: docId }));
+        const itemVersion = (item as any)?.version || newVersion || 1;
+        const cleanItem = JSON.parse(JSON.stringify({
+          ...item,
+          id: docId,
+          ...(versionKey ? { version: itemVersion } : {}),
+          updatedAt: (item as any)?.updatedAt || nowIso
+        }));
         batch.set(docRef, cleanItem, { merge: true });
       });
       await batch.commit();

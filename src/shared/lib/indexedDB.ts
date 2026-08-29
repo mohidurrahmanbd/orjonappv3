@@ -660,9 +660,10 @@ export async function upsertCoursesToIDB(
  * Perform metadata-first incremental background sync with Firestore for Courses.
  * 1. Checks `meta/versions` document in Firestore (1 doc read).
  * 2. Compares local courseVersion with server courseVersion.
- * 3. If version matches & local cache present: ZERO collection reads!
- * 4. If version differs: queries only courses with `version > localCourseVersion`.
- * 5. Updates both IndexedDB and SQLite stores.
+ * 3. If version matches & verified local cache present: ZERO collection reads!
+ * 4. If local version is 0 (fresh install): downloads full collection regardless of local mock data.
+ * 5. If server version > local version: queries only courses with `version > localCourseVersion`.
+ * 6. Updates both IndexedDB and SQLite stores.
  */
 export async function performIncrementalCourseSyncFromFirestore(
   onUpdate?: (updatedCourses: Course[]) => void
@@ -671,7 +672,10 @@ export async function performIncrementalCourseSyncFromFirestore(
     const syncStartTimeIso = new Date().toISOString();
     const meta = await getCoursesMetaFromIDB();
     const localCached = await getCoursesFromIDB();
-    const localVersion = meta?.version || (localCached.length > 0 ? 1 : 0);
+    
+    // Fresh install check: Only trust localVersion if a verified sync timestamp exists
+    const hasVerifiedSync = Boolean(meta && meta.lastCourseSyncedAt && typeof meta.version === 'number' && meta.version > 0);
+    const localVersion = hasVerifiedSync ? Number(meta!.version) : 0;
 
     // 1. Fetch server meta/versions
     let serverCourseVersion = 1;
@@ -689,14 +693,15 @@ export async function performIncrementalCourseSyncFromFirestore(
       return { hasChanges: false, totalCount: localCached.length };
     }
 
-    // 2. Zero-reads optimization: If versions match and local data exists -> 0 collection reads!
-    if (localVersion >= serverCourseVersion && localCached.length > 0) {
+    // 2. Zero-reads optimization: If versions match and verified local data exists -> 0 collection reads!
+    if (localVersion >= serverCourseVersion && hasVerifiedSync && localCached.length > 0) {
       console.log(`[IndexedDB] Courses up to date (v${localVersion}). 0 collection reads.`);
       return { hasChanges: false, totalCount: localCached.length };
     }
 
-    // 3. Initial sync if local cache is empty
-    if (localCached.length === 0) {
+    // 3. Initial sync if fresh install / localVersion === 0
+    if (localVersion === 0) {
+      console.log(`[IndexedDB] Initial courses sync from Firestore (server v${serverCourseVersion})...`);
       const snap = await getDocs(collection(db, 'courses'));
       const activeCourses: Course[] = [];
       snap.forEach((docSnap) => {
@@ -714,6 +719,9 @@ export async function performIncrementalCourseSyncFromFirestore(
       if (activeCourses.length > 0) {
         await saveCoursesToIDB(activeCourses);
         await insertCoursesToSQLite(activeCourses);
+        try {
+          localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
+        } catch {}
         if (onUpdate) onUpdate(activeCourses);
       }
 
@@ -724,12 +732,15 @@ export async function performIncrementalCourseSyncFromFirestore(
         tx.objectStore(STORE_META).put({
           key: 'courses_meta',
           lastCourseSyncedAt: syncStartTimeIso,
-          count: activeCourses.length,
+          count: activeCourses.length > 0 ? activeCourses.length : localCached.length,
           version: serverCourseVersion
         });
       } catch {}
 
-      return { hasChanges: activeCourses.length > 0, totalCount: activeCourses.length };
+      return {
+        hasChanges: activeCourses.length > 0,
+        totalCount: activeCourses.length > 0 ? activeCourses.length : localCached.length
+      };
     }
 
     // 4. Differential sync: Query ONLY courses with version > localVersion
@@ -774,6 +785,9 @@ export async function performIncrementalCourseSyncFromFirestore(
       for (const id of removedIds) await deleteCourseFromSQLite(id);
 
       const freshlyMerged = await getCoursesFromIDB();
+      try {
+        localStorage.setItem('orjon_courses', JSON.stringify(freshlyMerged));
+      } catch {}
       if (onUpdate) onUpdate(freshlyMerged);
 
       try {
@@ -1074,8 +1088,10 @@ export async function performIncrementalExamSyncFromFirestore(
     const localLiveExams = await getLiveExamsFromIDB();
     const localRoutines = await getRoutinesFromIDB();
 
-    const localExamVersion = (meta as any)?.examVersion || meta?.version || (localLiveExams.length > 0 ? 1 : 0);
-    const localRoutineVersion = (meta as any)?.routineVersion || meta?.version || (localRoutines.length > 0 ? 1 : 0);
+    // Fresh install check: Only trust local versions if a verified sync timestamp exists
+    const hasVerifiedSync = Boolean(meta && meta.lastExamSyncedAt);
+    const localExamVersion = hasVerifiedSync && typeof (meta as any)?.examVersion === 'number' ? Number((meta as any).examVersion) : 0;
+    const localRoutineVersion = hasVerifiedSync && typeof (meta as any)?.routineVersion === 'number' ? Number((meta as any).routineVersion) : 0;
 
     // 1. Fetch server meta/versions
     let serverExamVersion = 1;
@@ -1093,8 +1109,9 @@ export async function performIncrementalExamSyncFromFirestore(
       return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
     }
 
-    // 2. Zero-reads optimization: If both versions match and local data exists -> 0 collection reads!
+    // 2. Zero-reads optimization: If both versions match and verified local data exists -> 0 collection reads!
     if (
+      hasVerifiedSync &&
       localExamVersion >= serverExamVersion &&
       localRoutineVersion >= serverRoutineVersion &&
       (localLiveExams.length > 0 || localRoutines.length > 0)
@@ -1108,8 +1125,9 @@ export async function performIncrementalExamSyncFromFirestore(
     let modifiedR: Routine[] = [];
     let removedRIds: string[] = [];
 
-    // 3. Process Live Exams
-    if (localLiveExams.length === 0) {
+    // 3. Process Live Exams (Full fetch on fresh install / localExamVersion === 0)
+    if (localExamVersion === 0) {
+      console.log(`[IndexedDB] Initial live exams sync from Firestore (server v${serverExamVersion})...`);
       const snapLE = await getDocs(collection(db, 'live_exams'));
       snapLE.forEach((d) => {
         const data = d.data();
@@ -1125,6 +1143,9 @@ export async function performIncrementalExamSyncFromFirestore(
       if (modifiedLE.length > 0) {
         await saveLiveExamsToIDB(modifiedLE);
         await insertLiveExamsToSQLite(modifiedLE);
+        try {
+          localStorage.setItem('orjon_live_exams', JSON.stringify(modifiedLE));
+        } catch {}
       }
     } else if (serverExamVersion > localExamVersion) {
       const qLE = query(collection(db, 'live_exams'), where('version', '>', localExamVersion));
@@ -1151,8 +1172,9 @@ export async function performIncrementalExamSyncFromFirestore(
       }
     }
 
-    // 4. Process Routines
-    if (localRoutines.length === 0) {
+    // 4. Process Routines (Full fetch on fresh install / localRoutineVersion === 0)
+    if (localRoutineVersion === 0) {
+      console.log(`[IndexedDB] Initial routines sync from Firestore (server v${serverRoutineVersion})...`);
       const snapR = await getDocs(collection(db, 'routines'));
       snapR.forEach((d) => {
         const data = d.data();
@@ -1168,6 +1190,9 @@ export async function performIncrementalExamSyncFromFirestore(
       if (modifiedR.length > 0) {
         await saveRoutinesToIDB(modifiedR);
         await insertRoutinesToSQLite(modifiedR);
+        try {
+          localStorage.setItem('orjon_routines', JSON.stringify(modifiedR));
+        } catch {}
       }
     } else if (serverRoutineVersion > localRoutineVersion) {
       const qR = query(collection(db, 'routines'), where('version', '>', localRoutineVersion));

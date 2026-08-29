@@ -333,8 +333,8 @@ export async function syncCoursesMetadataFirst(
       return { hasChanges: false, updatedCount: 0, removedCount: 0 };
     }
 
-    // If initial empty local state
-    if (localCourseVersion === 0 && localCourses.length === 0) {
+    // If initial fresh sync (local version is 0)
+    if (localCourseVersion === 0) {
       console.log(`[VersionSync] Initial courses sync (v${serverCourseVersion})...`);
       const snap = await getDocs(collection(db, 'courses'));
       const activeCourses: Course[] = [];
@@ -344,7 +344,7 @@ export async function syncCoursesMetadataFirst(
           activeCourses.push(normalizeCourse({
             ...data,
             id: String(data.id || d.id),
-            version: data.version || 1,
+            version: data.version || serverCourseVersion,
             updatedAt: data.updatedAt || new Date().toISOString(),
             deletedAt: null
           }));
@@ -354,6 +354,9 @@ export async function syncCoursesMetadataFirst(
       if (activeCourses.length > 0) {
         await saveCoursesToIDB(activeCourses);
         await insertCourses(activeCourses);
+        try {
+          localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
+        } catch {}
         if (onUpdate) onUpdate(activeCourses);
       }
 
@@ -443,7 +446,7 @@ export async function syncLiveExamsMetadataFirst(
       return { hasChanges: false, updatedCount: 0, removedCount: 0 };
     }
 
-    if (localExamVersion === 0 && localExams.length === 0) {
+    if (localExamVersion === 0) {
       console.log(`[VersionSync] Initial live exams sync (v${serverExamVersion})...`);
       const snap = await getDocs(collection(db, 'live_exams'));
       const activeExams: LiveExam[] = [];
@@ -453,7 +456,7 @@ export async function syncLiveExamsMetadataFirst(
           activeExams.push(normalizeLiveExam({
             ...data,
             id: String(data.id || d.id),
-            version: data.version || 1,
+            version: data.version || serverExamVersion,
             updatedAt: data.updatedAt || new Date().toISOString(),
             deletedAt: null
           }));
@@ -463,6 +466,9 @@ export async function syncLiveExamsMetadataFirst(
       if (activeExams.length > 0) {
         await saveLiveExamsToIDB(activeExams);
         await insertLiveExams(activeExams);
+        try {
+          localStorage.setItem('orjon_live_exams', JSON.stringify(activeExams));
+        } catch {}
         if (onUpdate) onUpdate(activeExams);
       }
 
@@ -551,7 +557,7 @@ export async function syncRoutinesMetadataFirst(
       return { hasChanges: false, updatedCount: 0, removedCount: 0 };
     }
 
-    if (localRoutineVersion === 0 && localRoutines.length === 0) {
+    if (localRoutineVersion === 0) {
       console.log(`[VersionSync] Initial routines sync (v${serverRoutineVersion})...`);
       const snap = await getDocs(collection(db, 'routines'));
       const activeRoutines: Routine[] = [];
@@ -561,7 +567,7 @@ export async function syncRoutinesMetadataFirst(
           activeRoutines.push(normalizeRoutine({
             ...data,
             id: String(data.id || d.id),
-            version: data.version || 1,
+            version: data.version || serverRoutineVersion,
             updatedAt: data.updatedAt || new Date().toISOString(),
             deletedAt: null
           }));
@@ -571,6 +577,9 @@ export async function syncRoutinesMetadataFirst(
       if (activeRoutines.length > 0) {
         await saveRoutinesToIDB(activeRoutines);
         await insertRoutines(activeRoutines);
+        try {
+          localStorage.setItem('orjon_routines', JSON.stringify(activeRoutines));
+        } catch {}
         if (onUpdate) onUpdate(activeRoutines);
       }
 
@@ -710,7 +719,7 @@ export async function performDifferentialSync(
     try {
       options.onProgress?.('প্রশ্নমালা সিঙ্ক করা হচ্ছে...', 25);
       const localQuestions = await getQuestionsFromIDB();
-      const needsFullQuestionSync = localVersions.questionVersion === 0 && localQuestions.length === 0;
+      const needsFullQuestionSync = localVersions.questionVersion === 0;
 
       if (needsFullQuestionSync) {
         // Initial Full Fetch of Active Questions
@@ -723,7 +732,7 @@ export async function performDifferentialSync(
             activeQuestions.push(normalizeQuestion({
               ...data,
               id: data.id || d.id,
-              version: data.version || 1,
+              version: data.version || serverVersions.questionVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
             }));
@@ -793,7 +802,7 @@ export async function performDifferentialSync(
     try {
       options.onProgress?.('ক্যাটাগরি সিঙ্ক করা হচ্ছে...', 40);
       const localCats = await getCategoriesFromIDB();
-      const needsFullCatSync = localVersions.categoryVersion === 0 && localCats.length === 0;
+      const needsFullCatSync = localVersions.categoryVersion === 0;
 
       if (needsFullCatSync) {
         const snap = await getDocs(collection(db, 'categories'));
@@ -805,7 +814,7 @@ export async function performDifferentialSync(
               id: String(data.id || d.id),
               name: data.name || '',
               subHeading: data.subHeading || undefined,
-              version: data.version || 1,
+              version: data.version || serverVersions.categoryVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
             });
@@ -871,7 +880,7 @@ export async function performDifferentialSync(
     try {
       options.onProgress?.('সাব-ক্যাটাগরি সিঙ্ক করা হচ্ছে...', 55);
       const localSubs = await getSubcategoriesFromIDB();
-      const needsFullSubSync = localVersions.subcategoryVersion === 0 && localSubs.length === 0;
+      const needsFullSubSync = localVersions.subcategoryVersion === 0;
 
       if (needsFullSubSync) {
         const snap = await getDocs(collection(db, 'subcategories'));
@@ -890,7 +899,7 @@ export async function performDifferentialSync(
               details: data.details || undefined,
               createdAt: data.createdAt || undefined,
               updatedAt: data.updatedAt || new Date().toISOString(),
-              version: data.version || 1,
+              version: data.version || serverVersions.subcategoryVersion,
               deletedAt: null
             });
           }
@@ -961,7 +970,7 @@ export async function performDifferentialSync(
     try {
       options.onProgress?.('কোর্স সিঙ্ক করা হচ্ছে...', 70);
       const localCourses = await getCoursesFromIDB();
-      const needsFullCourseSync = localVersions.courseVersion === 0 && localCourses.length === 0;
+      const needsFullCourseSync = localVersions.courseVersion === 0;
 
       if (needsFullCourseSync) {
         const snap = await getDocs(collection(db, 'courses'));
@@ -972,7 +981,7 @@ export async function performDifferentialSync(
             activeCourses.push(normalizeCourse({
               ...data,
               id: String(data.id || d.id),
-              version: data.version || 1,
+              version: data.version || serverVersions.courseVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
             }));
@@ -982,6 +991,9 @@ export async function performDifferentialSync(
         if (activeCourses.length > 0) {
           await saveCoursesToIDB(activeCourses);
           await insertCourses(activeCourses);
+          try {
+            localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
+          } catch {}
           result.coursesUpdated = activeCourses.length;
           result.hasChanges = true;
           options.onCoursesUpdate?.(activeCourses);
@@ -1024,6 +1036,9 @@ export async function performDifferentialSync(
             result.hasChanges = true;
 
             const allUpdated = await getCoursesFromIDB();
+            try {
+              localStorage.setItem('orjon_courses', JSON.stringify(allUpdated));
+            } catch {}
             options.onCoursesUpdate?.(allUpdated);
           }
         }
@@ -1039,7 +1054,7 @@ export async function performDifferentialSync(
 
       // 5a. Live Exams
       const localExams = await getLiveExamsFromIDB();
-      const needsFullExamSync = localVersions.examVersion === 0 && localExams.length === 0;
+      const needsFullExamSync = localVersions.examVersion === 0;
 
       if (needsFullExamSync) {
         const snap = await getDocs(collection(db, 'live_exams'));
@@ -1050,7 +1065,7 @@ export async function performDifferentialSync(
             activeExams.push(normalizeLiveExam({
               ...data,
               id: String(data.id || d.id),
-              version: data.version || 1,
+              version: data.version || serverVersions.examVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
             }));
@@ -1060,6 +1075,9 @@ export async function performDifferentialSync(
         if (activeExams.length > 0) {
           await saveLiveExamsToIDB(activeExams);
           await insertLiveExams(activeExams);
+          try {
+            localStorage.setItem('orjon_live_exams', JSON.stringify(activeExams));
+          } catch {}
           result.examsUpdated = activeExams.length;
           result.hasChanges = true;
           options.onLiveExamsUpdate?.(activeExams);
@@ -1102,6 +1120,9 @@ export async function performDifferentialSync(
             result.hasChanges = true;
 
             const allUpdated = await getLiveExamsFromIDB();
+            try {
+              localStorage.setItem('orjon_live_exams', JSON.stringify(allUpdated));
+            } catch {}
             options.onLiveExamsUpdate?.(allUpdated);
           }
         }
@@ -1110,7 +1131,7 @@ export async function performDifferentialSync(
 
       // 5b. Routines
       const localRoutines = await getRoutinesFromIDB();
-      const needsFullRoutineSync = localVersions.routineVersion === 0 && localRoutines.length === 0;
+      const needsFullRoutineSync = localVersions.routineVersion === 0;
 
       if (needsFullRoutineSync) {
         const snap = await getDocs(collection(db, 'routines'));
@@ -1121,7 +1142,7 @@ export async function performDifferentialSync(
             activeRoutines.push(normalizeRoutine({
               ...data,
               id: String(data.id || d.id),
-              version: data.version || 1,
+              version: data.version || serverVersions.routineVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
             }));
@@ -1131,6 +1152,9 @@ export async function performDifferentialSync(
         if (activeRoutines.length > 0) {
           await saveRoutinesToIDB(activeRoutines);
           await insertRoutines(activeRoutines);
+          try {
+            localStorage.setItem('orjon_routines', JSON.stringify(activeRoutines));
+          } catch {}
           result.routinesUpdated = activeRoutines.length;
           result.hasChanges = true;
           options.onRoutinesUpdate?.(activeRoutines);
@@ -1173,6 +1197,9 @@ export async function performDifferentialSync(
             result.hasChanges = true;
 
             const allUpdated = await getRoutinesFromIDB();
+            try {
+              localStorage.setItem('orjon_routines', JSON.stringify(allUpdated));
+            } catch {}
             options.onRoutinesUpdate?.(allUpdated);
           }
         }
