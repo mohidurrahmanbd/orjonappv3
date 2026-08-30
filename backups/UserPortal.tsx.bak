@@ -34,11 +34,11 @@ const isJobSolutionVariation = (name: string): boolean => {
   const normalized = name.trim().toLowerCase();
   return (
     normalized === 'জব সলিউশন পরীক্ষা' ||
-    normalized === 'জব সলউশন পরিক্ষা' ||
+    normalized === 'জব সলউশন পরীক্ষা' ||
     normalized === 'জব সলউশন পরীক্ষা' ||
     normalized === 'জব সলিউশন ব্যাংক' ||
     normalized === 'জব সলউশন ব্যাংক' ||
-    normalized === 'জব সলিউশন ব্যাঙ্ক' ||
+    normalized === 'জব সলিউশন ব্যাংক' ||
     normalized === 'জব সリューション ব্যাংক' ||
     normalized === 'job solution' ||
     normalized === 'job solutions' ||
@@ -58,8 +58,8 @@ const isYearJobSolutionVariation = (name: string): boolean => {
     normalized === 'সালভিত্তিক জব সলিউশন' ||
     normalized === 'সাল ভিক্তিক জব সলউশন' ||
     normalized === 'সালভিত্তিক জব সলউশন' ||
-    normalized === 'সাল ভিত্তিক জব সল্যুশন' ||
-    normalized === 'সালভিত্তিক জব সল্যুশন' ||
+    normalized === 'সাল ভিত্তিক জব সল্য্শন' ||
+    normalized === 'সালভিত্তিক জব সল্য্শন' ||
     normalized === 'সাল ভিত্তিক জব সলিউশন ব্যাংক' ||
     normalized === 'সালভিত্তিক জব সলিউশন ব্যাংক' ||
     normalized === 'সাল ভিত্তিক জব সলিউশন পরীক্ষা' ||
@@ -108,8 +108,8 @@ const isSubjectPrepRootOrSubject = (name: string): boolean => {
     norm === 'ভূগোল (বাংলাদেশ ও বিশ্ব)' ||
     norm === 'নৈতিকতা ও মূল্যবোধ' ||
     norm === 'নৈতিকতা ও ম্ল্যবোধ' ||
-    norm === 'নৈতিকতা, মূল্যবোধ ও সুশাসন' ||
-    norm === 'সুশাসন'
+    norm === 'নৈতিকতা, মূল্যবোধ ও স্শাসন' ||
+    norm === 'স্শাসন'
   );
 };
 
@@ -172,19 +172,19 @@ const renderSubjectIcon = (name: string, sizeClass = "w-4 h-4") => {
   if (norm.includes('বিজ্ঞান') || norm.includes('science') || norm.includes('পদার্থ') || norm.includes('রসায়ন') || norm.includes('জীববিজ্ঞান') || norm.includes('পদার্থবিজ্ঞান')) {
     return <FlaskConical className={sizeClass} />;
   }
-  if (norm.includes('বাংলাদেশ') || norm.includes('bangladesh') || norm.includes('সংবিধান') || norm.includes('মুক্তিযুদ্ধ')) {
+  if (norm.includes('বাংলাদেশ') || norm.includes('bangladesh') || norm.includes('সংবিধান') || norm.includes('ম্ক্তিয্দ্ধ')) {
     return <Landmark className={sizeClass} />;
   }
   if (norm.includes('আন্তর্জাতিক') || norm.includes('international') || norm.includes('বিশ্ব')) {
     return <Globe2 className={sizeClass} />;
   }
-  if (norm.includes('ভূগোল') || norm.includes('পরিবেশ') || norm.includes('দুর্যোগ') || norm.includes('geography')) {
+  if (norm.includes('ভূগোল') || norm.includes('পরিবেশ') || norm.includes('দ্র্যোগ') || norm.includes('geography')) {
     return <Compass className={sizeClass} />;
   }
   if (norm.includes('মানসিক দক্ষতা') || norm.includes('ব্দ্ধিমত্তা') || norm.includes('mental')) {
     return <BrainCircuit className={sizeClass} />;
   }
-  if (norm.includes('নৈতিকতা') || norm.includes('মূল্যবোধ') || norm.includes('সুশাসন') || norm.includes('ethics')) {
+  if (norm.includes('নৈতিকতা') || norm.includes('মূল্যবোধ') || norm.includes('স্শাসন') || norm.includes('ethics')) {
     return <Scale className={sizeClass} />;
   }
   if (norm.includes('সাধারণ জ্ঞান') || norm.includes('gk') || norm.includes('জ্ঞান')) {
@@ -196,7 +196,7 @@ const renderSubjectIcon = (name: string, sizeClass = "w-4 h-4") => {
   if (norm.includes('প্রাথমিক') || norm.includes('প্রাইমারি') || norm.includes('শিক্ষক') || norm.includes('স্ক্ল')) {
     return <School className={sizeClass} />;
   }
-  if (norm.includes('ইতিহাস') || norm.includes('history') || norm.includes('ঐতিহ্য')) {
+  if (norm.includes('ইতিহাস') || norm.includes('history') || norm.includes('এতিহ্য')) {
     return <History className={sizeClass} />;
   }
   return <BookOpen className={sizeClass} />;
@@ -301,7 +301,7 @@ const getSubjectTheme = (name: string) => {
       badgeBg: 'bg-lime-100/90 text-lime-950 border-lime-300',
     };
   }
-  if (norm.includes('নৈতিকতা') || norm.includes('মূল্যবোধ') || norm.includes('সুশাসন')) {
+  if (norm.includes('নৈতিকতা') || norm.includes('মূল্যবোধ') || norm.includes('স্শাসন')) {
     return {
       bg: 'bg-indigo-600',
       lightBg: 'bg-indigo-50',
@@ -616,7 +616,7 @@ export default function UserPortal({
           updated = enrolledCourseIds.filter(id => id !== courseId);
           setEnrolledCourseIds(updated);
           localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
-          showCustomAlert('আন-ঁনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
+          showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
         },
         undefined,
         'আন-এনরোল নিশ্চিতকরণ'
@@ -648,7 +648,7 @@ export default function UserPortal({
     }
 
     const discountNotice = enrollmentData.discountAmount > 0 
-      ? ` (${enrollmentData.discountPercent}% কুপন ছাড় সহ ৳${enrollmentData.finalPrice} পরিশোধিত)` 
+      ? ` (${enrollmentData.discountPercent}% ক্পন ছাড় সহ ৳${enrollmentData.finalPrice} পরিশোধিত)` 
       : '';
     showCustomAlert('অভিনন্দন! 🎉', `"${enrollmentData.courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন!${discountNotice} এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
     setSelectedCourseFilter('enrolled');
@@ -717,7 +717,7 @@ export default function UserPortal({
       const courseTitle = batchInfo.courseTitle || 'এই কোর্সটি';
       const courseId = batchInfo.courseId;
       showCustomAlert(
-        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের ${featureName} শুধুমাত্র এনরোল্ড শিক্ষার্থীদের জন্য উন্ম্ক্ত।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন। ${featureName} আনলক করতে অনুগ্রহ করে কোর্সে এনরোল (Enroll) করুন।`,
+        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের ${featureName} শুধুমাত্র এনরোল্ড শিক্ষার্থীদের জন্য উন্ম্ক্ত।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন। ${featureName} আনলক করতে অন্গ্রহ করে কোর্সে এনরোল (Enroll) করুন।`,
         () => {
           if (courseId) {
             handleToggleEnrollCourse(courseId, courseTitle);
@@ -739,7 +739,7 @@ export default function UserPortal({
   const [syllabusModalRoutine, setSyllabusModalRoutine] = useState<Routine | null>(null);
 
   const handleOpenRoutinePreparation = (routine: Routine) => {
-    if (!checkCourseEnrollmentAccess(routine, 'পরিক্ষার প্রস্তুতি (Chapter MCQ)')) {
+    if (!checkCourseEnrollmentAccess(routine, 'পরীক্ষার প্রস্তুতি (Chapter MCQ)')) {
       return;
     }
     setViewingHierarchyRoutine(routine);
@@ -815,7 +815,7 @@ export default function UserPortal({
     }
 
     if (finalQuestions.length === 0) {
-      showCustomAlert('দুঃখিত, ডেমো পরীক্ষার জন্য কোনো প্রশ্ন পাওয়া যায়নি!');
+      showCustomAlert('দ্ঃখিত, ডেমো পরীক্ষার জন্য কোনো প্রশ্ন পাওয়া যায়নি!');
       return;
     }
 
@@ -937,8 +937,8 @@ export default function UserPortal({
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
       const months = [
-        'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-        'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+        'জান্য়ারি', 'ফেব্র্য়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জ্ন',
+        'জ্লাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
       ];
       const bnDigits = ['০','১','২','৩','৪','৫','৬','৭','৮','৯'];
       const toBn = (num: number | string) => num.toString().replace(/\d/g, x => bnDigits[parseInt(x)]);
@@ -1086,7 +1086,7 @@ export default function UserPortal({
         }
       });
 
-      g.nextExamDateStr = nextExamTimeStr || fallbackDateStr || 'শিডিউল অনুযায়ী';
+      g.nextExamDateStr = nextExamTimeStr || fallbackDateStr || 'শিডিউল অন্যায়ী';
       g.hasLiveExam = hasLive;
     });
 
@@ -1226,13 +1226,13 @@ export default function UserPortal({
         await onUpdateUser(updatedUser);
       }
 
-      setProfileSuccessMsg('প্রোফাইল তথ্য সফলভাবে আপডেট হয়েছে!');
+      setProfileSuccessMsg('পুরোফাইল তথ্য সফলভাবে আপডেট হয়েছে!');
       setTimeout(() => {
         setProfileModalOpen(false);
         setProfileSuccessMsg(null);
       }, 1200);
     } catch (err: any) {
-      setProfileErrorMsg(err?.message || 'প্রোফাইল আপডেট করতে সমস্যা হয়েছে।');
+      setProfileErrorMsg(err?.message || 'পুরোফাইল আপডেট করতে সমস্যা হয়েছে।');
     } finally {
       setIsSavingProfile(false);
     }
@@ -1291,7 +1291,7 @@ export default function UserPortal({
   const handleTabSelect = (tab: 'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
     if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
       checkGuestAccess(
-        tab === 'bookmarks' ? 'সেভকৃত ব্কমার্কস' : 'একাডেমিক রুটিন'
+        tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
       );
       return;
     }
@@ -1720,7 +1720,7 @@ export default function UserPortal({
             <span class="info-val">${attempt.examTitle}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">নির্ভ্লতার হার:</span>
+            <span class="info-label">নির্ভুলতার হার:</span>
             <span class="info-val">${accuracy}%</span>
           </div>
         </div>
@@ -2090,13 +2090,13 @@ export default function UserPortal({
     const normalizedStr = trimmed.replace(/[০-৯]/g, d => bnToEnMap[d] || d);
 
     const bnMonths: Record<string, number> = {
-      'জানুয়ারি': 0, 'জানুয়ারি': 0, 'january': 0, 'jan': 0,
-      'ফেব্রুয়ারি': 1, 'ফেব্রুয়ারি': 1, 'february': 1, 'feb': 1,
+      'জান্য়ারি': 0, 'জান্য়ারি': 0, 'january': 0, 'jan': 0,
+      'ফেব্র্য়ারি': 1, 'ফেব্র্য়ারি': 1, 'february': 1, 'feb': 1,
       'মার্চ': 2, 'march': 2, 'mar': 2,
       'এপ্রিল': 3, 'april': 3, 'apr': 3,
       'মে': 4, 'may': 4,
-      'জুন': 5, 'june': 5, 'jun': 5,
-      'জুলাই': 6, 'july': 6, 'jul': 6,
+      'জ্ন': 5, 'june': 5, 'jun': 5,
+      'জ্লাই': 6, 'july': 6, 'jul': 6,
       'আগস্ট': 7, 'august': 7, 'aug': 7,
       'সেপ্টেম্বর': 8, 'september': 8, 'sep': 8,
       'অক্টোবর': 9, 'october': 9, 'oct': 9,
@@ -2149,7 +2149,7 @@ export default function UserPortal({
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return 'আসন্ন পরীক্ষা';
-    if (diffDays === 0) return 'আজ অনুষ্ঠিত';
+    if (diffDays === 0) return 'আজ অন্ষ্ঠিত';
     if (diffDays === 1) return 'গতকাল';
     if (diffDays < 7) return `${toBengaliDigits(diffDays)} দিন আগে`;
     if (diffDays < 30) {
@@ -2165,8 +2165,8 @@ export default function UserPortal({
   };
 
   const BENGALI_MONTH_NAMES = [
-    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+    'জান্য়ারি', 'ফেব্র্য়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জ্ন',
+    'জ্লাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
   ];
 
   const getMonthYearBengali = (date: Date): string => {
@@ -2411,7 +2411,7 @@ export default function UserPortal({
       .sort((a, b) => b.monthDate.getTime() - a.monthDate.getTime());
   }, [recentJobSolutionExams]);
 
-  // ─── YEAR-WISE JOB SOLUTION DYNAMIC AUTO-MAPPING (UI-ONLY HIERARCHY) ───
+  // â”€â”€â”€ YEAR-WISE JOB SOLUTION DYNAMIC AUTO-MAPPING (UI-ONLY HIERARCHY) â”€â”€â”€
   // Automatically generates Year -> Month -> Exam structure from existing Job Solution Bank exams
   // Sorted descending: Year DESC -> Month DESC -> Exam Date DESC (Newest first)
   const yearWiseJobSolutionTree = useMemo(() => {
@@ -2552,7 +2552,7 @@ export default function UserPortal({
       const monthName = `${BENGALI_MONTH_NAMES[month]} ${toBengaliDigits(year)}`;
       const progress = calculateQuestionsReadingProgress(user.phone || user.email || user.name, examQuestions, userReadSet);
 
-      const cleanName = node.name.replace(/\s*\([\d\s\u09E6-\u09EF\u0980-\u09FF\w\/\.-]+(?:\s*(?:জানুয়ারি|ফেব্রুয়ারি|মার্চ|এপ্রিল|মে|জুন|জুলাই|আগস্ট|সেপ্টেম্বর|অক্টোবর|নভেম্বর|ডিসেম্বর|january|february|march|april|may|june|july|august|september|october|november|december)\s*)?[\d\s\u09E6-\u09EF\w]*\)\s*$/i, '').trim() || node.name;
+      const cleanName = node.name.replace(/\s*\([\d\s\u09E6-\u09EF\u0980-\u09FF\w\/\.-]+(?:\s*(?:জান্য়ারি|ফেব্র্য়ারি|মার্চ|এপ্রিল|মে|জ্ন|জ্লাই|আগস্ট|সেপ্টেম্বর|অক্টোবর|নভেম্বর|ডিসেম্বর|january|february|march|april|may|june|july|august|september|october|november|december)\s*)?[\d\s\u09E6-\u09EF\w]*\)\s*$/i, '').trim() || node.name;
 
       compiledExams.push({
         id: node.id,
@@ -3114,7 +3114,7 @@ export default function UserPortal({
       const course = courses ? courses.find(c => c.id === exam.courseId) : undefined;
       const courseTitle = course?.title || exam.courseName || 'এই কোর্সটি';
       showCustomAlert(
-        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের অফিশিয়াল লাইভ পরীক্ষায় অংশগ্রহণ করতে অনুগ্রহ করে প্রথমে কোর্সে এনরোল (Enroll) করুন।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন।`,
+        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের অফিশিয়াল লাইভ পরীক্ষায় অংশগ্রহণ করতে অন্গ্রহ করে প্রথমে কোর্সে এনরোল (Enroll) করুন।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন।`,
         () => {
           if (exam.courseId) {
             handleToggleEnrollCourse(exam.courseId, courseTitle);
@@ -3176,7 +3176,7 @@ export default function UserPortal({
       }
 
       if (pool.length === 0) {
-        showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
+        showCustomAlert('দ্ঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
         return;
       }
       const limit = Math.min(exam.qLimit || 20, pool.length);
@@ -3184,7 +3184,7 @@ export default function UserPortal({
     }
 
     if (finalQuestions.length === 0) {
-      showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
+      showCustomAlert('দ্ঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো কুইজ ডাটাবেসে পাওয়া যায়নি!');
       return;
     }
 
@@ -3412,7 +3412,7 @@ export default function UserPortal({
     if (!selectedBookmarkQId) return;
     const folderName = isCustomFolder ? customFolderInput.trim() : bookmarkFolder;
     if (!folderName) {
-      showCustomAlert('বুকমার্ক গ্র্পের নাম দিন!');
+      showCustomAlert('বুকমার্ক গ্রুপের নাম দিন!');
       return;
     }
 
@@ -3590,7 +3590,7 @@ export default function UserPortal({
                       const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                       if (parts.length === 0) return;
                       const root = parts[0];
-                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" â€º ") : "";
+                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
                       if (!rootMap.has(root)) {
                         rootMap.set(root, []);
                       }
@@ -3616,7 +3616,7 @@ export default function UserPortal({
                             {subList.length > 0 ? (
                               <div className="space-y-1.5 pl-1.5">
                                 {subList.map((sub, sIdx) => {
-                                  const subParts = sub.split(/\s*â€º\s*/);
+                                  const subParts = sub.split(/\s*Ã¢â‚¬Âº\s*/);
                                   return (
                                     <div 
                                       key={`sub-${sIdx}`}
@@ -3627,7 +3627,7 @@ export default function UserPortal({
                                           <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
                                             {seg}
                                           </span>
-                                          {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">â€º</span>}
+                                          {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">Ã¢â‚¬Âº</span>}
                                         </React.Fragment>
                                       ))}
                                     </div>
@@ -3751,7 +3751,7 @@ export default function UserPortal({
                   <div key={e.id} className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 text-gray-800">
                     <div className="flex justify-between items-center mb-1">
                       <span className="font-extrabold text-emerald-900 flex items-center gap-1">
-                        🏆 অনুমোদিত অতিরিক্ত ব্যাখ্যা
+                        🏆 অন্মোদিত অতিরিক্ত ব্যাখ্যা
                       </span>
                       <span className="text-[9px] font-bold bg-emerald-100/60 px-1.5 py-0.5 rounded text-emerald-800">
                         অবদানকারী: {e.userName}
@@ -3824,7 +3824,7 @@ export default function UserPortal({
                   rows={4}
                   value={flagCommentText}
                   onChange={(e) => setFlagCommentText(e.target.value)}
-                  placeholder="ভ্লটি কি এবং সঠিক তথ্য কি হবে তা বিস্তারিত লিখুন..."
+                  placeholder="ভুলটি কি এবং সঠিক তথ্য কি হবে তা বিস্তারিত লিখ্ন..."
                   className="w-full p-3 border rounded-2xl text-gray-800 focus:ring-2 focus:ring-rose-500 focus:outline-none"
                 />
               </div>
@@ -3856,7 +3856,7 @@ export default function UserPortal({
                 ev.preventDefault();
                 if (!userExplText.trim()) return;
                 if (!allowUserExplanation) {
-                  alert('দুঃখিত, বর্তমানে ব্যাখ্যা যোগ করার স্বিধাটি সাময়িকভাবে বন্ধ রয়েছে।');
+                  alert('দ্ঃখিত, বর্তমানে ব্যাখ্যা যোগ করার স্বিধাটি সাময়িকভাবে বন্ধ রয়েছে।');
                   return;
                 }
                 if (onUpdateQuestion) {
@@ -3870,7 +3870,7 @@ export default function UserPortal({
                   };
                   const updatedExpls = [...(userExplModalQ.userExplanations || []), newExpl];
                   onUpdateQuestion(userExplModalQ.id, { userExplanations: updatedExpls });
-                  alert('আপনার ব্যাখ্যাটি সফলভাবে প্রেরণ করা হয়েছে! এডমিন প্যানেল থেকে অনুমোদন মিললে এটি প্রকাশ করা হবে।');
+                  alert('আপনার ব্যাখ্যাটি সফলভাবে প্রেরণ করা হয়েছে! এডমিন প্যানেল থেকে অন্মোদন মিললে এটি প্রকাশ করা হবে।');
                   setUserExplModalQ(null);
                   setUserExplText('');
                 }
@@ -3886,7 +3886,7 @@ export default function UserPortal({
               </button>
 
               <div className="flex items-center gap-2 text-amber-700 font-bold">
-                <span>✍️ সঠিক উত্তরের ব্যাখ্যা প্রদান করুন</span>
+                <span>✍︍ সঠিক উত্তরের ব্যাখ্যা প্রদান করুন</span>
               </div>
 
               <div className="bg-amber-50/50 p-3.5 rounded-2xl border border-amber-100 text-amber-900 leading-relaxed">
@@ -3895,7 +3895,7 @@ export default function UserPortal({
 
               <div>
                 <label className="block text-gray-700 font-bold mb-1.5">
-                  প্রশ্নের উত্তরের সঠিক ব্যাখ্যা লিখুন:
+                  প্রশ্নের উত্তরের সঠিক ব্যাখ্যা লিখ্ন:
                 </label>
                 <textarea
                   required
@@ -3941,7 +3941,7 @@ export default function UserPortal({
                       ফ্রেন্ড চ্যালেঞ্জ (Facebook Share)
                     </h3>
                     <p className="text-[10.5px] text-slate-500 font-medium">
-                      প্রাপ্ত নম্বর দিয়ে ফেসবুকে বন্ধ্দের সরাসরি চ্যালেঞ্জ জানান!
+                      প্রাপ্ত নম্বর দিয়ে ফেসব্কে বন্ধ্দের সরাসরি চ্যালেঞ্জ জানান!
                     </p>
                   </div>
                 </div>
@@ -3980,7 +3980,7 @@ export default function UserPortal({
                   <span className="text-[10px] text-indigo-600 font-semibold">স্বয়ংক্রিয় তৈরি</span>
                 </label>
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-slate-800 text-[11px] leading-relaxed font-medium whitespace-pre-wrap select-all">
-                  {`🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে ঁখনই পরীক্ষা দাও:\n${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`}
+                  {`🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`}
                 </div>
               </div>
 
@@ -3990,21 +3990,21 @@ export default function UserPortal({
                   type="button"
                   onClick={() => {
                     const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`;
-                    const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে ঁখনই পরীক্ষা দাও:\n${shareUrl}`;
+                    const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${shareUrl}`;
 
                     navigator.clipboard.writeText(challengeMsg);
                     const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
                     window.open(fbUrl, '_blank', 'width=600,height=500');
 
                     showCustomAlert(
-                      `আপনার নম্বর (${challengeModalData.score}) সহ চ্যালেঞ্জ মেসেজ ক্লিপবোর্ডে কপি করা হয়েছে এবং ফেসব্ক শেয়ার পেজ চালু হয়েছে!\n\nফেসবুকে পেস্ট (Paste) করে বন্ধ্দের চ্যালেঞ্জ পোস্ট করুন।`,
+                      `আপনার নম্বর (${challengeModalData.score}) সহ চ্যালেঞ্জ মেসেজ ক্লিপবোর্ডে কপি করা হয়েছে এবং ফেসব্ক শেয়ার পেজ চাল্ হয়েছে!\n\nফেসব্কে পেস্ট (Paste) করে বন্ধ্দের চ্যালেঞ্জ পোস্ট করুন।`,
                       undefined,
-                      '⚔️ ফেসব্ক চ্যালেঞ্জ প্রস্তুত!'
+                      '⚔︍ ফেসব্ক চ্যালেঞ্জ প্রস্ত্ত!'
                     );
                   }}
                   className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <span>📘</span> ফেসবুকে চ্যালেঞ্জ শেয়ার করুন (FB Share)
+                  <span>📘</span> ফেসব্কে চ্যালেঞ্জ শেয়ার করুন (FB Share)
                 </button>
 
                 <div className="flex gap-2">
@@ -4012,7 +4012,7 @@ export default function UserPortal({
                     type="button"
                     onClick={() => {
                       const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${challengeModalData.exam.id}`;
-                      const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে ঁখনই পরীক্ষা দাও:\n${shareUrl}`;
+                      const challengeMsg = `🎯 ফ্রেন্ড চ্যালেঞ্জ! 🔥\nআমি অর্জন (Orjon MCQ) -এর "${challengeModalData.exam.title}" লাইভ পরীক্ষায় ${challengeModalData.score} নম্বর পেয়েছি! 🏆\n\nত্মি কি পারবে আমার চেয়ে বেশি নম্বর পেতে? চ্যালেঞ্জ গ্রহণ করতে এখনই পরীক্ষা দাও:\n${shareUrl}`;
 
                       navigator.clipboard.writeText(challengeMsg);
                       showCustomAlert('চ্যালেঞ্জ মেসেজ ও পরীক্ষার লিঙ্ক সফলভাবে ক্লিপবোর্ডে কপি করা হয়েছে!', undefined, '📋 কপি সম্পন্ন!');
@@ -4046,12 +4046,101 @@ export default function UserPortal({
             onEnrollSuccess={handleEnrollSuccess}
           />
         )}
+
+        {/* Bookmark Folder Selection Modal */}
+        {bookmarkModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 relative border border-gray-100 flex flex-col gap-4 animate-fade-in text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setBookmarkModalOpen(false);
+                  setSelectedBookmarkQId(null);
+                }}
+                className="absolute top-4 right-4 p-2 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded-full transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
+                <BookmarkIcon className="w-4 h-4 fill-amber-500 text-amber-500" />
+                <span>বুকমার্ক কালেকশনে সংরক্ষণ</span>
+              </div>
+
+              <p className="text-gray-600 font-medium text-xs">
+                প্রশ্নটি কোন বুকমার্ক ফোল্ডারে রাখতে চান নির্বাচন করুন:
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-gray-700 font-bold mb-1.5">ফোল্ডার নির্বাচন করুন:</label>
+                  <select
+                    value={isCustomFolder ? '__custom__' : bookmarkFolder}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setIsCustomFolder(true);
+                      } else {
+                        setIsCustomFolder(false);
+                        setBookmarkFolder(e.target.value);
+                      }
+                    }}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="সাধারণ বুকমার্ক">সাধারণ বুকমার্ক</option>
+                    {Object.keys(groupedBookmarks)
+                      .filter(f => f !== 'সাধারণ বুকমার্ক')
+                      .map(folder => (
+                        <option key={folder} value={folder}>{folder}</option>
+                      ))}
+                    <option value="__custom__">+ নতুন ফোল্ডার তৈরি করুন...</option>
+                  </select>
+                </div>
+
+                {isCustomFolder && (
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1.5">নতুন ফোল্ডারের নাম:</label>
+                    <input
+                      type="text"
+                      value={customFolderInput}
+                      onChange={(e) => setCustomFolderInput(e.target.value)}
+                      placeholder="যেমন: বিসিএস প্রস্তুতি, সাম্প্রতিক সাধারণ জ্ঞান..."
+                      className="w-full p-2.5 bg-white border border-amber-300 rounded-xl font-bold text-xs text-gray-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2.5 pt-2 border-t border-gray-100 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookmarkModalOpen(false);
+                    setSelectedBookmarkQId(null);
+                  }}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBookmark}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <BookmarkIcon className="w-3.5 h-3.5 fill-white" />
+                  সংরক্ষণ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   };
 
   return (
     <div className={`flex flex-col gap-3 min-h-[90vh] max-w-full overflow-x-hidden ${!quizActive && !readerModeActive ? 'pb-24' : ''}`}>
+      {renderModals()}
       
       {/* Guest Mode Banner if active */}
       {user.isGuest && !quizActive && !readerModeActive && (
@@ -4084,7 +4173,7 @@ export default function UserPortal({
             <button
               onClick={() => setDrawerOpen(true)}
               className="p-1.5 sm:p-2 bg-white hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-100 shadow-sm transition-all hover:scale-105 active:scale-95 duration-150 flex items-center justify-center shrink-0 cursor-pointer"
-              title="মেনু খুলুন"
+              title="মেন্ খ্ল্ন"
             >
               <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -4119,7 +4208,7 @@ export default function UserPortal({
               onClick={() => setActiveTab('profile')}
               className={`text-[11px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white hover:bg-gray-100 text-indigo-700'}`}
             >
-              👤 প্রোফাইল
+              👤 পুরোফাইল
             </button>
             <button 
               onClick={onLogout}
@@ -4162,7 +4251,7 @@ export default function UserPortal({
                     </span>
                     <div>
                       <h3 className="font-extrabold text-[15.3px] text-indigo-950 tracking-wide">অর্জন অ্যাপ্লিকেশন</h3>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">মেনু নেভিগেশন</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">মেন্ নেভিগেশন</p>
                     </div>
                   </div>
                   <button
@@ -4217,12 +4306,12 @@ export default function UserPortal({
                     { id: 'preparation', label: '📚 বিষয়ভিত্তিক প্রস্তুতি', icon: BookOpen },
                     { id: 'job', label: '💼 জব সলিউশন ব্যাংক', icon: Layers },
                     { id: 'yearJob', label: '📅 সাল ভিত্তিক জব সলিউশন', icon: Calendar },
-                    { id: 'exams', label: '⏱️ এক্সাম জোন (পরীক্ষা)', icon: Clock },
-                    { id: 'bookmarks', label: '🔖 সেভকৃত ব্কমার্কস', icon: BookmarkIcon },
-                    { id: 'results', label: '📝 পরীক্ষার ফলাফল', icon: Award },
+                    { id: 'exams', label: '⍱︍ এক্সাম জোন (পরীক্ষা)', icon: Clock },
+                    { id: 'bookmarks', label: '🔖 সেভকৃত বুকমার্কস', icon: BookmarkIcon },
+                    { id: 'results', label: '📍 পরীক্ষার ফলাফল', icon: Award },
                     { id: 'courses', label: '🎓 চলমান কোর্স স্পেস', icon: GraduationCap },
                     { id: 'routines', label: '📅 একাডেমিক রুটিন', icon: Calendar },
-                    { id: 'profile', label: '👤 প্রোফাইল ও সেটিংস', icon: UserIcon },
+                    { id: 'profile', label: '👤 পুরোফাইল ও সেটিংস', icon: UserIcon },
                   ].map(item => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
@@ -4561,7 +4650,7 @@ export default function UserPortal({
                               }}
                               className="px-3 py-1.5 rounded-xl font-extrabold text-[11px] transition flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {allowUserExplanation ? '✍️ ব্যাখ্যা +' : '✍️ ব্যাখ্যা (বন্ধ)'}
+                              {allowUserExplanation ? '✍︍ ব্যাখ্যা +' : '✍︍ ব্যাখ্যা (বন্ধ)'}
                             </button>
                           </div>
                         );
@@ -4651,7 +4740,7 @@ export default function UserPortal({
                 type="button"
                 onClick={() => {
                   showCustomConfirm(
-                    'আপনি কি নিশ্চিত পরীক্ষা বাতিল করতে চান? ঁতে আপনার এই পরীক্ষার সমস্ত প্রগ্রেস হারিয়ে যাবে।',
+                    'আপনি কি নিশ্চিত পরীক্ষা বাতিল করতে চান? এতে আপনার এই পরীক্ষার সমস্ত প্রগ্রেস হারিয়ে যাবে।',
                     () => {
                       setIsQuizTimerRunning(false);
                       setQuizActive(false);
@@ -4741,7 +4830,7 @@ export default function UserPortal({
                       : 'text-gray-600 hover:text-purple-600 hover:bg-white/40'
                   }`}
                 >
-                  ✍️ যাচাই
+                  ✍︍ যাচাই
                 </button>
                 <button
                   onClick={() => {
@@ -4765,7 +4854,7 @@ export default function UserPortal({
                   }}
                   className="px-3 py-1.5 rounded-lg text-center transition text-gray-600 hover:text-amber-600 hover:bg-white/40 flex items-center gap-1 whitespace-nowrap cursor-pointer"
                 >
-                  ⏱️ পরিক্ষা
+                  ⏱️ পরীক্ষা
                 </button>
               </div>
             </div>
@@ -4774,7 +4863,7 @@ export default function UserPortal({
             {readerSource === 'job' && (
               <div className="mt-3.5 flex flex-col gap-1.5 bg-emerald-50/10 p-3 rounded-2xl border border-emerald-100/30">
                 <span className="text-[10px] font-extrabold text-emerald-900 mr-1.5 flex items-center gap-1">
-                  🎯 বিষয় অনুযায়ী ফিল্টার করুন:
+                  🎯 বিষয় অন্যায়ী ফিল্টার করুন:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {availableCategories.map(cat => {
@@ -4814,7 +4903,7 @@ export default function UserPortal({
             <div className="my-3 flex-grow space-y-3">
               {paginatedQuestions.length === 0 ? (
                 <div className="text-center py-6 text-gray-500 font-bold bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                  এই ক্যাটাগরিতে কোনো প্রশ্ন খুঁজে পাওয়া যায়নি।
+                  এই ক্যাটাগরিতে কোনো প্রশ্ন খ্এজে পাওয়া যায়নি।
                 </div>
               ) : (
                 paginatedQuestions.map((q, i) => {
@@ -4847,7 +4936,7 @@ export default function UserPortal({
                           ? 'fill-amber-500 text-amber-500' 
                           : ''
                       }`} /> 
-                      <span>{isBookmarked ? 'ব্কমার্কড' : 'বুকমার্ক'}</span>
+                      <span>{isBookmarked ? 'বুকমার্কড' : 'বুকমার্ক'}</span>
                     </button>
 
                     <h4 className="font-extrabold text-gray-900 leading-relaxed mb-3 pr-20">
@@ -4948,7 +5037,7 @@ export default function UserPortal({
                             }}
                             className="px-2.5 py-1 rounded-lg font-bold text-[10px] transition flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-100/50 cursor-pointer disabled:bg-amber-100/85 disabled:text-amber-700/80 disabled:border-amber-200/50 disabled:opacity-100 disabled:cursor-not-allowed"
                           >
-                            {allowUserExplanation ? '✍️ ব্যাখ্যা +' : '✍️ ব্যাখ্যা (বন্ধ)'}
+                            {allowUserExplanation ? '✍︍ ব্যাখ্যা +' : '✍︍ ব্যাখ্যা (বন্ধ)'}
                           </button>
                         </div>
                       );
@@ -4970,7 +5059,7 @@ export default function UserPortal({
                   }}
                   className="px-3 py-1.5 bg-white hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed text-gray-600 rounded-lg border border-gray-200 transition text-[11px] font-bold shadow-xs"
                 >
-                  â—€
+                  ◀
                 </button>
                 
                 {Array.from({ length: totalPages }, (_, index) => {
@@ -5062,7 +5151,7 @@ export default function UserPortal({
               <div className="bg-white border border-gray-100 p-3 rounded-2xl shadow-sm">
                 <h3 className="text-xs font-extrabold text-gray-800 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                   <Compass className="w-4 h-4 text-indigo-600" />
-                  দ্রুত নেভিগেশন ক্যাটাগরি
+                  দ্র্ত নেভিগেশন ক্যাটাগরি
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   <div 
@@ -5072,7 +5161,7 @@ export default function UserPortal({
                     <span className="text-xl">⏱️</span>
                     <div>
                       <h4 className="text-xs font-bold text-indigo-950">কাস্টম পরীক্ষা</h4>
-                      <p className="text-[9px] text-indigo-700/80 mt-0.5">ইচ্ছামত পরিক্ষা তৈরি করুন</p>
+                      <p className="text-[9px] text-indigo-700/80 mt-0.5">ইচ্ছামত পরীক্ষা তৈরি করুন</p>
                     </div>
                   </div>
 
@@ -5095,7 +5184,7 @@ export default function UserPortal({
                     onClick={() => handleTabSelect('recentJob')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-emerald-50/60 to-teal-100/40 border-emerald-200/90 hover:border-emerald-300 hover:shadow transition flex flex-col justify-between min-h-[85px] group"
                   >
-                    <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
+                    <span className="text-xl group-hover:scale-110 transition-transform">âš¡</span>
                     <div>
                       <h4 className="text-xs font-bold text-emerald-950 group-hover:text-emerald-700 transition-colors">রিসেন্ট জব সলিউশন</h4>
                       <p className="text-[9px] text-emerald-700/80 mt-0.5">সাম্প্রতিক সকল পরীক্ষা</p>
@@ -5109,7 +5198,7 @@ export default function UserPortal({
                     <span className="text-xl">🌍</span>
                     <div>
                       <h4 className="text-xs font-bold text-teal-950">সাম্প্রতিক বিষয়াবলী</h4>
-                      <p className="text-[9px] text-teal-700/80 mt-0.5">দৈনিক বুলেট পয়েন্ট ও প্রশ্ন</p>
+                      <p className="text-[9px] text-teal-700/80 mt-0.5">দৈনিক ব্লেট পয়েন্ট ও প্রশ্ন</p>
                     </div>
                   </div>
 
@@ -5142,7 +5231,7 @@ export default function UserPortal({
                     <span className="text-xl">📅</span>
                     <div>
                       <h4 className="text-xs font-bold text-amber-950">সাল ভিত্তিক জব সলিউশন</h4>
-                      <p className="text-[9px] text-amber-700/80 mt-0.5">বছর অনুযায়ী পরিক্ষা সমূহ</p>
+                      <p className="text-[9px] text-amber-700/80 mt-0.5">বছর অন্যায়ী পরীক্ষা সমূহ</p>
                     </div>
                   </div>
 
@@ -5163,13 +5252,13 @@ export default function UserPortal({
               <div className="bg-white border border-gray-100 p-3 sm:p-3.5 rounded-2xl shadow-sm flex flex-col">
                 <h3 className="text-xs font-extrabold text-gray-800 mb-0.5 flex items-center gap-1.5">
                   <TrendingUp className="w-4 h-4 text-indigo-600" />
-                  বিষয়ভিত্তিক নির্ভ্লতা সূচক (Performance Rate)
+                  বিষয়ভিত্তিক নির্ভুলতা সূচক (Performance Rate)
                 </h3>
                 <p className="text-[10px] text-gray-400 mb-2 font-semibold">বিগত পরীক্ষাগ্লোর ফলাফলের ওপর ভিত্তি করে পরিসংখ্যান</p>
                 
                 {Object.keys(categoryAnalytics).length === 0 ? (
                   <div className="text-center py-6 text-gray-400 text-xs">
-                     কোনো পরীক্ষার ডাটা নেই। ক্ইজে অংশ নিলে এখানে চার্ট প্রদর্শিত হবে।
+                     কোনো পরীক্ষার ডাটা নেই। কুইজে অংশ নিলে এখানে চার্ট প্রদর্শিত হবে।
                   </div>
                 ) : (
                   <div className="space-y-3.5 text-xs">
@@ -5304,7 +5393,7 @@ export default function UserPortal({
                   {exam.formattedDate ? (
                     <div className="flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 mt-0.5">
                       <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>অনুষ্ঠিত: {exam.formattedDate}</span>
+                      <span>অন্ষ্ঠিত: {exam.formattedDate}</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 mt-0.5">
@@ -5381,7 +5470,7 @@ export default function UserPortal({
                           }
                         }
                         if (pool.length === 0) {
-                          showCustomAlert('দুঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো প্রশ্ন পাওয়া যায়নি!');
+                          showCustomAlert('দ্ঃখিত, এই পরীক্ষার সাথে সম্পর্কিত কোনো প্রশ্ন পাওয়া যায়নি!');
                           return;
                         }
                         setCustomExamOverridePool(pool);
@@ -5440,8 +5529,8 @@ export default function UserPortal({
                       </div>
                       <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
                         {selectedRecentJobMonth 
-                          ? `${selectedRecentJobMonth} মাসে অনুষ্ঠিত সকল সরকারি ও নিয়োগ পরীক্ষার প্রশ্ন সমাধান` 
-                          : 'চলতি মাসের অনুষ্ঠিত পরীক্ষা এবং বিগত মাসভিত্তিক প্রশ্নব্যাংক'}
+                          ? `${selectedRecentJobMonth} মাসে অন্ষ্ঠিত সকল সরকারি ও নিয়োগ পরীক্ষার প্রশ্ন সমাধান` 
+                          : 'চলতি মাসের অন্ষ্ঠিত পরীক্ষা এবং বিগত মাসভিত্তিক প্রশ্নব্যাংক'}
                       </p>
                     </div>
                   </div>
@@ -5453,7 +5542,7 @@ export default function UserPortal({
                       type="text"
                       value={recentExamSearchQuery}
                       onChange={(e) => setRecentExamSearchQuery(e.target.value)}
-                      placeholder="পরীক্ষার নাম বা মাস দিয়ে খুঁজুন..."
+                      placeholder="পরীক্ষার নাম বা মাস দিয়ে খ্এজ্ন..."
                       className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
                     />
                     {recentExamSearchQuery && (
@@ -5493,7 +5582,7 @@ export default function UserPortal({
                     )}
                   </div>
                 ) : selectedRecentJobMonth ? (
-                  /* CASE 2: A SPECIFIC PREVIOUS MONTH IS SELECTED (e.g. জুলাই ২০২৬) */
+                  /* CASE 2: A SPECIFIC PREVIOUS MONTH IS SELECTED (e.g. জ্লাই ২০২৬) */
                   <div className="flex flex-col gap-3">
                     {/* Back navigation pill */}
                     <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
@@ -5531,7 +5620,7 @@ export default function UserPortal({
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                           <h3 className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
-                            চলতি মাসে অনুষ্ঠিত পরীক্ষা ({currentRunningMonthName})
+                            চলতি মাসে অন্ষ্ঠিত পরীক্ষা ({currentRunningMonthName})
                           </h3>
                         </div>
                         <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -5542,7 +5631,7 @@ export default function UserPortal({
                       {runningMonthExams.length === 0 ? (
                         <div className="p-3.5 bg-emerald-50/40 rounded-xl border border-emerald-100 text-emerald-800 text-[11px] font-semibold flex items-center gap-2">
                           <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>চলতি মাসে ({currentRunningMonthName}) এখনো নতুন কোনো পরীক্ষা অনুষ্ঠিত বা যোগ হয়নি।</span>
+                          <span>চলতি মাসে ({currentRunningMonthName}) এখনো নতুন কোনো পরীক্ষা অন্ষ্ঠিত বা যোগ হয়নি।</span>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -5555,7 +5644,7 @@ export default function UserPortal({
                     <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-100">
                         <div className="flex items-center gap-2">
-                          <span className="text-base">📝</span>
+                          <span className="text-base">📍</span>
                           <h3 className="text-xs sm:text-sm font-extrabold text-slate-800">
                             বিগত মাসভিত্তিক জব সলিউশন
                           </h3>
@@ -5567,7 +5656,7 @@ export default function UserPortal({
 
                       {previousMonthGroups.length === 0 ? (
                         <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-slate-400 text-xs">
-                          বিগত ৫ মাসে অনুষ্ঠিত কোনো পরীক্ষার রেকর্ড পাওয়া যায়নি।
+                          বিগত ৫ মাসে অন্ষ্ঠিত কোনো পরীক্ষার রেকর্ড পাওয়া যায়নি।
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -5596,7 +5685,7 @@ export default function UserPortal({
                               {/* Exam Previews List */}
                               <div className="flex flex-col gap-1 py-1">
                                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                  অনুষ্ঠিত পরীক্ষাসমূহ:
+                                  অন্ষ্ঠিত পরীক্ষাসমূহ:
                                 </div>
                                 <div className="space-y-0.5">
                                   {group.exams.slice(0, 3).map((ex, eIdx) => (
@@ -5706,7 +5795,7 @@ export default function UserPortal({
                   {!isPrepRoot && (
                     <div className="flex justify-between items-center px-0.5 my-0.5">
                       <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                        {subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentPrepNode.trim().toLowerCase()).length > 0 ? '📝 উপ-অধ্যায়সমূহ' : '📖 কোনো উপ-অধ্যায় নেই'}
+                        {subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentPrepNode.trim().toLowerCase()).length > 0 ? '📍 উপ-অধ্যায়সমূহ' : '📖 কোনো উপ-অধ্যায় নেই'}
                       </span>
                       <button 
                         onClick={() => setPrepPath(prepPath.slice(0, -1))}
@@ -5736,7 +5825,7 @@ export default function UserPortal({
                           <div className="flex flex-col gap-1.5">
                             {!isPrepRoot && leafItems.length > 0 && (
                               <span className="text-[10px] font-extrabold text-indigo-900 uppercase tracking-wider px-0.5">
-                                📝 বিষয় ও ক্যাটাগরি কার্ডসমূহ
+                                📍 বিষয় ও ক্যাটাগরি কার্ডসমূহ
                               </span>
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
@@ -5795,7 +5884,7 @@ export default function UserPortal({
                                         </span>
                                       ) : <span />}
                                       <span className={`${theme.subText} font-black flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform`}>
-                                        খুলুন <ChevronRight className="w-3 h-3" />
+                                        খ্ল্ন <ChevronRight className="w-3 h-3" />
                                       </span>
                                     </div>
                                   </button>
@@ -5997,7 +6086,7 @@ export default function UserPortal({
                   {!isJobRoot && (
                     <div className="flex justify-between items-center px-0.5 my-0.5">
                       <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                        {subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentJobNode.trim().toLowerCase()).length > 0 ? '📝 উপ-ক্যাটাগরি সমূহ' : '💼 কোনো উপ-ক্যাটাগরি নেই'}
+                        {subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentJobNode.trim().toLowerCase()).length > 0 ? '📍 উপ-ক্যাটাগরি সমূহ' : '💼 কোনো উপ-ক্যাটাগরি নেই'}
                       </span>
                       <button 
                         onClick={() => setJobPath(jobPath.slice(0, -1))}
@@ -6027,7 +6116,7 @@ export default function UserPortal({
                           <div className="flex flex-col gap-1.5">
                             {!isJobRoot && leafItems.length > 0 && (
                               <span className="text-[10px] font-extrabold text-emerald-900 uppercase tracking-wider px-0.5">
-                                📝 প্রতিষ্ঠান ও পরীক্ষা গ্র্পসমূহ
+                                📍 প্রতিষ্ঠান ও পরীক্ষা গ্রুপসমূহ
                               </span>
                             )}
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
@@ -6086,7 +6175,7 @@ export default function UserPortal({
                                         </span>
                                       ) : <span />}
                                       <span className="text-emerald-700 font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                                        খুলুন <ChevronRight className="w-2.5 h-2.5" />
+                                        খ্ল্ন <ChevronRight className="w-2.5 h-2.5" />
                                       </span>
                                     </div>
                                   </button>
@@ -6329,7 +6418,7 @@ export default function UserPortal({
                         <span>সালভিত্তিক জব সলিউশন</span>
                       </h3>
                       <p className="text-[10.5px] text-slate-500 font-medium">
-                        পরীক্ষার সাল ও মাস অনুযায়ী সাজানো প্রশ্ন সমাধান ব্যাংক (সর্বশেষ পরীক্ষা সবার উপরে)
+                        পরীক্ষার সাল ও মাস অন্যায়ী সাজানো প্রশ্ন সমাধান ব্যাংক (সর্বশেষ পরীক্ষা সবার উপরে)
                       </p>
                     </div>
                   </div>
@@ -6342,7 +6431,7 @@ export default function UserPortal({
                         type="text"
                         value={yearJobSearchQuery}
                         onChange={e => setYearJobSearchQuery(e.target.value)}
-                        placeholder="পরীক্ষা বা সাল খুঁজুন..."
+                        placeholder="পরীক্ষা বা সাল খ্এজ্ন..."
                         className="w-full pl-8 pr-7 py-1.5 text-[11px] bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-amber-500 font-medium transition"
                       />
                       {yearJobSearchQuery && (
@@ -6359,7 +6448,7 @@ export default function UserPortal({
                     <button
                       onClick={toggleAll}
                       className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10.5px] transition flex items-center gap-1 shrink-0 cursor-pointer"
-                      title={expandedYearKeys.size > 0 ? "সব সংকুচিত করুন" : "সব সম্প্রসারণ করুন"}
+                      title={expandedYearKeys.size > 0 ? "সব সংক্চিত করুন" : "সব সম্প্রসারণ করুন"}
                     >
                       {expandedYearKeys.size > 0 ? (
                         <>
@@ -6369,7 +6458,7 @@ export default function UserPortal({
                       ) : (
                         <>
                           <ChevronRight className="w-3.5 h-3.5" />
-                          <span>সব খুলুন</span>
+                          <span>সব খ্ল্ন</span>
                         </>
                       )}
                     </button>
@@ -6382,7 +6471,7 @@ export default function UserPortal({
                     📅 {toBengaliDigits(totalYearsCount)} টি বছর
                   </span>
                   <span className="bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded-md">
-                    📝 {toBengaliDigits(totalExamsCount)} টি পরীক্ষা
+                    📍 {toBengaliDigits(totalExamsCount)} টি পরীক্ষা
                   </span>
                   {showMcqCount && (
                     <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">
@@ -6399,7 +6488,7 @@ export default function UserPortal({
                       {yearJobSearchQuery ? `"${yearJobSearchQuery}" এর সাথে মিলে এমন কোনো পরীক্ষা পাওয়া যায়নি।` : 'জব সলিউশন ব্যাংকে এখনো কোনো পরীক্ষা যুক্ত করা হয়নি।'}
                     </span>
                     <span className="text-[11px] text-slate-400 max-w-sm">
-                      জব সলিউশন ব্যাংকে নতুন পরীক্ষা তৈরি করা হলে তা স্বয়ংক্রিয়ভাবে তার পরীক্ষার সাল ও মাস অনুযায়ী এখানে প্রদর্শিত হবে।
+                      জব সলিউশন ব্যাংকে নতুন পরীক্ষা তৈরি করা হলে তা স্বয়ংক্রিয়ভাবে তার পরীক্ষার সাল ও মাস অন্যায়ী এখানে প্রদর্শিত হবে।
                     </span>
                   </div>
                 ) : (
@@ -6723,10 +6812,10 @@ export default function UserPortal({
                                       onRemoveBookmark(b.id);
                                     }}
                                     className="absolute top-1.5 right-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 hover:border-rose-300 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition shadow-2xs cursor-pointer"
-                                    title="বুকমার্ক থেকে মুছুন"
+                                    title="বুকমার্ক থেকে ম্ছ্ন"
                                   >
                                     <BookmarkIcon className="w-3 h-3 fill-rose-500 text-rose-500" />
-                                    <span>রিমুভ</span>
+                                    <span>রিম্ভ</span>
                                   </button>
 
                                   <h5 className="font-bold text-gray-900 leading-relaxed pr-16 mb-2">
@@ -6746,7 +6835,7 @@ export default function UserPortal({
                                               key={catName} 
                                               className="text-[9px] font-extrabold text-indigo-700 bg-indigo-50/80 px-1.5 py-0.5 rounded-md border border-indigo-100 inline-flex items-center gap-1 font-sans"
                                             >
-                                              🏷️ {catName}
+                                              🏷︍ {catName}
                                             </span>
                                           ))}
                                         </span>
@@ -6834,7 +6923,7 @@ export default function UserPortal({
                                           }}
                                           className="px-2.5 py-1 rounded border transition font-bold text-[9px] bg-amber-50 hover:bg-amber-100 border-amber-150 text-amber-700 cursor-pointer disabled:bg-amber-100/85 disabled:border-amber-200/50 disabled:text-amber-700/80 disabled:opacity-100 disabled:cursor-not-allowed"
                                         >
-                                          {allowUserExplanation ? '✍️ ব্যাখ্যা +' : '✍️ ব্যাখ্যা (বন্ধ)'}
+                                          {allowUserExplanation ? '✍︍ ব্যাখ্যা +' : '✍︍ ব্যাখ্যা (বন্ধ)'}
                                         </button>
                                       </div>
                                     );
@@ -6844,7 +6933,7 @@ export default function UserPortal({
                                   {hasSelected && (
                                     <div className="bg-green-50/60 p-2.5 rounded-xl border border-green-100 text-green-800 font-semibold text-[10px] flex items-center justify-between mt-2">
                                       <span>
-                                        {selectedOpt === q.correct ? '🎉 আপনার উত্তরটি সঠিক হয়েছে! ' : '❌ আপনার উত্তরটি ভুল হয়েছে। '}
+                                        {selectedOpt === q.correct ? '🎉 আপনার উত্তরটি সঠিক হয়েছে! ' : '⍌ আপনার উত্তরটি ভুল হয়েছে। '}
                                         <b>সঠিক উত্তর:</b> {q.correct === 'Option A' ? q.optionA : q.correct === 'Option B' ? q.optionB : q.correct === 'Option C' ? q.optionC : q.optionD}
                                       </span>
                                     </div>
@@ -6862,7 +6951,7 @@ export default function UserPortal({
                                 onClick={() => setBookmarkViewPage(prev => Math.max(1, prev - 1))}
                                 className="px-3 py-1.5 rounded-xl border text-[11px] font-bold bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
                               >
-                                ← পূর্ববর্তী
+                                ↍ পূর্ববর্তী
                               </button>
                               
                               <div className="flex items-center gap-1">
@@ -6950,7 +7039,7 @@ export default function UserPortal({
                               </span>
                             ) : !isStarted ? (
                               <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
-                                ❳ শুরু হয়নি
+                                ⍳ শুরু হয়নি
                               </span>
                             ) : isExpired ? (
                               <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
@@ -6958,7 +7047,7 @@ export default function UserPortal({
                               </span>
                             ) : (
                               <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0 animate-pulse">
-                                ⏱️ চলমান পরীক্ষা
+                                ⍱︍ চলমান পরীক্ষা
                               </span>
                             )}
                           </div>
@@ -6991,7 +7080,7 @@ export default function UserPortal({
                                 window.open(fbUrl, '_blank', 'width=600,height=500');
                               }}
                               className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
-                              title="ফেসবুকে শেয়ার করুন"
+                              title="ফেসব্কে শেয়ার করুন"
                             >
                               <span>📘</span> <span className="whitespace-nowrap">FB শেয়ার</span>
                             </button>
@@ -7012,7 +7101,7 @@ export default function UserPortal({
                                 onClick={() => {
                                   if (user.isGuest) {
                                     showCustomAlert(
-                                      'গেস্ট (Guest) হিসেবে চ্যালেঞ্জ পোস্ট করা যাবে না।\n\nবিনামূল্যে একাউন্ট রেজিস্ট্রেশন করলে আপনার স্কোর দিয়ে বন্ধ্দের ফেসবুকে চ্যালেঞ্জ জানাতে পারবেন!',
+                                      'গেস্ট (Guest) হিসেবে চ্যালেঞ্জ পোস্ট করা যাবে না।\n\nবিনামূল্যে একাউন্ট রেজিস্ট্রেশন করলে আপনার স্কোর দিয়ে বন্ধ্দের ফেসব্কে চ্যালেঞ্জ জানাতে পারবেন!',
                                       undefined,
                                       '🔒 রেজিস্ট্রেশন প্রয়োজন'
                                     );
@@ -7023,9 +7112,9 @@ export default function UserPortal({
                                   setChallengeModalData({ exam, score: userScore });
                                 }}
                                 className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-600 to-purple-600 hover:from-amber-600 hover:to-rose-700 text-white font-extrabold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 animate-pulse"
-                                title="আপনার প্রাপ্ত নম্বর দিয়ে বন্ধ্দের ফেসবুকে চ্যালেঞ্জ পাঠান"
+                                title="আপনার প্রাপ্ত নম্বর দিয়ে বন্ধ্দের ফেসব্কে চ্যালেঞ্জ পাঠান"
                               >
-                                <span>⚔️</span> <span className="whitespace-nowrap">চ্যালেঞ্জ</span>
+                                <span>⚔︍</span> <span className="whitespace-nowrap">চ্যালেঞ্জ</span>
                               </button>
                             )}
                           </div>
@@ -7096,7 +7185,7 @@ export default function UserPortal({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base flex items-center gap-1.5">
-                          🛡️ {selectedAttemptForView.examTitle}
+                          🛡︍ {selectedAttemptForView.examTitle}
                         </h3>
                         {attemptCourseName && (
                           <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200/80 flex items-center gap-1">
@@ -7165,7 +7254,7 @@ export default function UserPortal({
                         onClick={() => setSelectedAttemptForView(null)}
                         className="px-3 py-1.5 rounded-xl border font-bold text-xs hover:bg-gray-50 transition cursor-pointer text-gray-600"
                       >
-                        ← ফিরে যান
+                        ↍ ফিরে যান
                       </button>
                     </div>
                   </div>
@@ -7199,7 +7288,7 @@ export default function UserPortal({
                               <span className="font-extrabold text-indigo-600 text-base">{selectedAttemptForView.score}</span>
                             </div>
                             <div className="bg-white p-2.5 rounded-xl border border-gray-100 shadow-2xs">
-                              <span className="text-gray-400 block text-[10px]">নির্ভ্লতার হার</span>
+                              <span className="text-gray-400 block text-[10px]">নির্ভুলতার হার</span>
                               <span className="font-extrabold text-emerald-600 text-base">{Math.round(correctPercent)}%</span>
                             </div>
                             {!isSelectedUserCreated && (
@@ -7409,10 +7498,10 @@ export default function UserPortal({
 
                       <div className="bg-white/10 p-4 rounded-2xl border border-white/10 text-left max-w-md mx-auto space-y-2 text-xs text-indigo-100">
                         <div className="font-extrabold text-amber-200 text-xs flex items-center gap-1.5">
-                          <span>✨</span> একাউন্ট রেজিস্ট্রেশন করার বিশেষ সুবিধা:
+                          <span>✨</span> একাউন্ট রেজিস্ট্রেশন করার বিশেষ স্বিধা:
                         </div>
                         <ul className="space-y-1.5 text-[11px] text-indigo-150 list-disc list-inside">
-                          <li>এই ইমেইলে দেওয়া পূর্বের সকল গেস্ট পরীক্ষার ফলাফল স্বয়ংক্রিয়ভাবে প্রোফাইলে যুক্ত হবে।</li>
+                          <li>এই ইমেইলে দেওয়া পূর্বের সকল গেস্ট পরীক্ষার ফলাফল স্বয়ংক্রিয়ভাবে পুরোফাইলে যুক্ত হবে।</li>
                           <li>পরীক্ষার বিস্তারিত উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে পাবেন।</li>
                           <li>অফিশিয়াল PDF রেজাল্ট শিট যেকোনো সময় ডাউনলোড করতে পারবেন।</li>
                         </ul>
@@ -7484,7 +7573,7 @@ export default function UserPortal({
                             {/* User Approved Explanations */}
                             {masterQ.userExplanations?.filter(e => e.approved).map((e) => (
                               <div key={e.id} className="p-2 rounded-xl bg-amber-50/80 border border-amber-100 text-amber-900 text-[10px] leading-relaxed">
-                                <span className="font-bold text-amber-950">✍️ {e.userName}: </span>
+                                <span className="font-bold text-amber-950">✍︍ {e.userName}: </span>
                                 {e.text}
                               </div>
                             ))}
@@ -7519,14 +7608,14 @@ export default function UserPortal({
                             : 'text-gray-500 hover:text-indigo-600 hover:bg-white/40'
                         }`}
                       >
-                        🛡️ অফিশিয়াল লাইভ পরীক্ষা ({adminCreatedAttempts.length})
+                        🛡︍ অফিশিয়াল লাইভ পরীক্ষা ({adminCreatedAttempts.length})
                       </button>
                     </div>
 
                     {activeFilteredAttempts.length === 0 ? (
                       <p className="text-center py-10 text-gray-400 font-bold">
                         {resultFilterMode === 'user' 
-                          ? 'আপনার কোনো কাস্টম বা অধ্যায়ভিত্তিক পরীক্ষার রেকর্ড পাওয়া যায়নি (রেকর্ডসমূহ ৭২ ঘণ্টা পর স্বয়ংক্রিয়ভাবে মুছে যায়)।'
+                          ? 'আপনার কোনো কাস্টম বা অধ্যায়ভিত্তিক পরীক্ষার রেকর্ড পাওয়া যায়নি (রেকর্ডসমূহ ৭২ ঘণ্টা পর স্বয়ংক্রিয়ভাবে ম্ছে যায়)।'
                           : 'বর্তমানে কোনো অফিশিয়াল লাইভ পরীক্ষার রেকর্ড পাওয়া যায়নি।'}
                       </p>
                     ) : (
@@ -7576,7 +7665,7 @@ export default function UserPortal({
                                   </span>
                                   {isUserCreated && (
                                     <span className="text-[8.5px] sm:text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-100 shrink-0">
-                                      ⏱️ আর {Math.ceil(hoursLeft).toLocaleString('bn-BD')} ঘণ্টা সংরক্ষিত
+                                      ⍱︍ আর {Math.ceil(hoursLeft).toLocaleString('bn-BD')} ঘণ্টা সংরক্ষিত
                                     </span>
                                   )}
                                   {!isUserCreated && (() => {
@@ -7724,7 +7813,7 @@ export default function UserPortal({
                             </span>
                           )}
                           <span className="flex-1 sm:flex-initial min-w-0 bg-indigo-50 border border-indigo-100 px-1.5 sm:px-2.5 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center whitespace-nowrap text-[9px] sm:text-[10.5px]">
-                            <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)}টি</span>
+                            <span className="truncate">মোট পরীক্ষা: {toBengaliDigits(courseRoutines.length)}টি</span>
                           </span>
                         </div>
 
@@ -7735,7 +7824,7 @@ export default function UserPortal({
                               {coupons && coupons.some(c => c.isActive) && (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl">
                                   <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                                  ডিসকাউন্ট কুপন কোড ব্যবহার করে ছাড় পান!
+                                  ডিসকাউন্ট ক্পন কোড ব্যবহার করে ছাড় পান!
                                 </span>
                               )}
                             </div>
@@ -7830,7 +7919,7 @@ export default function UserPortal({
                                       const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                                       if (parts.length === 0) return;
                                       const root = parts[0];
-                                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" â€º ") : "";
+                                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
                                       if (!rootMap.has(root)) {
                                         rootMap.set(root, []);
                                       }
@@ -7853,7 +7942,7 @@ export default function UserPortal({
                                       subList.forEach((sub, sIdx) => {
                                         displayLines.push(
                                           <div key={`${root}-sub-${sIdx}`} className="text-black font-normal text-xs pl-2.5 flex items-start gap-1 leading-snug">
-                                            <span className="text-black font-bold select-none">â€º</span>
+                                            <span className="text-black font-bold select-none">Ã¢â‚¬Âº</span>
                                             <span className="text-black">{sub}</span>
                                           </div>
                                         );
@@ -7913,7 +8002,7 @@ export default function UserPortal({
                                             title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                                           >
                                             {isCourseLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
-                                            <span className="truncate">পরিক্ষার প্রস্তুতি</span>
+                                            <span className="truncate">পরীক্ষার প্রস্তুতি</span>
                                           </button>
                                           <button
                                             onClick={() => startDemoExam(r)}
@@ -7950,7 +8039,7 @@ export default function UserPortal({
                                                 </button>
                                               ) : (
                                                 <span className="flex-1 min-w-0 bg-amber-100 text-amber-900 border border-amber-200 px-1 sm:px-3 py-2 rounded-xl text-[10px] sm:text-xs font-extrabold whitespace-nowrap text-center flex items-center justify-center">
-                                                  <span className="truncate">পরিক্ষা শুরু হয়নি</span>
+                                                  <span className="truncate">পরীক্ষা শুরু হয়নি</span>
                                                 </span>
                                               )
                                             )
@@ -7984,14 +8073,14 @@ export default function UserPortal({
                     <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-purple-900 text-white px-3.5 sm:px-4.5 py-3.5 rounded-2xl shadow-md border border-indigo-700/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5">
                       <div>
                         <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 mb-1">
-                          🎓 ঁকাডেমি ও জব সলিউশন
+                          🎓 একাডেমি ও জব সলিউশন
                         </span>
                         <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
                           <GraduationCap className="w-5 h-5 text-indigo-300" />
-                          আমার কোর্স ও স্টাডি প্রোগ্রাম
+                          আমার কোর্স ও স্টাডি পুরোগ্রাম
                         </h2>
                         <p className="text-xs text-indigo-100/80 font-medium mt-0.5">
-                          আপনার পছন্দের কোর্সে এনরোল করুন, র্টিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
+                          আপনার পছন্দের কোর্সে এনরোল করুন, রুটিনমাফিক প্রস্তুতি নিন এবং এক্সাম সেশনে অংশ নিন।
                         </p>
                       </div>
 
@@ -8039,7 +8128,7 @@ export default function UserPortal({
                         </h4>
                         <p className="text-gray-500 max-w-md mx-auto text-xs leading-relaxed font-medium">
                           {selectedCourseFilter === 'enrolled' 
-                            ? 'আমাদের উপলব্ধ কোর্সগ্লো থেকে আপনার পছন্দের কোর্সে এনরোল করুন। ঁনরোলকৃত কোর্সসমূহ সরাসরি এখানে জমা থাকবে।' 
+                            ? 'আমাদের উপলব্ধ কোর্সগ্লো থেকে আপনার পছন্দের কোর্সে এনরোল করুন। এনরোলকৃত কোর্সসমূহ সরাসরি এখানে জমা থাকবে।' 
                             : 'নির্বাচিত ফিল্টারে কোনো কোর্স পাওয়া যায়নি। অন্য ফিল্টার নির্বাচন করুন।'}
                         </p>
                         {selectedCourseFilter === 'enrolled' && (
@@ -8078,7 +8167,7 @@ export default function UserPortal({
                                       course.status === 'active' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                                       course.status === 'upcoming' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-gray-100 text-gray-700 border border-gray-200'
                                     }`}>
-                                      {course.status === 'active' ? '● চলমান কোর্স' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স' : '✓ সম্পন্ন কোর্স'}
+                                      {course.status === 'active' ? '◍ চলমান কোর্স' : course.status === 'upcoming' ? '▲ আসন্ন কোর্স' : '✓ সম্পন্ন কোর্স'}
                                     </span>
                                   </div>
 
@@ -8126,7 +8215,7 @@ export default function UserPortal({
                                     {coupons && coupons.some(c => c.isActive) && (
                                       <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-lg border border-emerald-200/80">
                                         <Tag className="w-3 h-3 text-emerald-600" />
-                                        কুপন ছাড়
+                                        ক্পন ছাড়
                                       </span>
                                     )}
                                   </div>
@@ -8145,7 +8234,7 @@ export default function UserPortal({
                                     </span>
                                   )}
                                   <span className="flex-1 min-w-0 bg-indigo-50 border border-indigo-100 px-1 sm:px-2 py-1 rounded-xl text-indigo-800 font-bold flex items-center justify-center whitespace-nowrap text-[9px] sm:text-[10px]">
-                                    <span className="truncate">মোট পরিক্ষা: {toBengaliDigits(courseRoutines.length)} টি</span>
+                                    <span className="truncate">মোট পরীক্ষা: {toBengaliDigits(courseRoutines.length)} টি</span>
                                   </span>
                                 </div>
 
@@ -8176,7 +8265,7 @@ export default function UserPortal({
                                   <div className="flex items-center gap-2 flex-1 justify-end">
                                     <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                      ঁনরোলড
+                                      এনরোলড
                                     </span>
                                   </div>
                                 ) : (
@@ -8271,7 +8360,7 @@ export default function UserPortal({
                           type="text"
                           value={routineSearchQuery}
                           onChange={(e) => setRoutineSearchQuery(e.target.value)}
-                          placeholder="কোর্স বা পরীক্ষার নাম খুঁজুন..."
+                          placeholder="কোর্স বা পরীক্ষার নাম খ্এজ্ন..."
                           className="w-full pl-7 pr-6 py-1 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-medium"
                         />
                         {routineSearchQuery && (
@@ -8631,7 +8720,7 @@ export default function UserPortal({
                                 title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                               >
                                 {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-indigo-700 shrink-0" />}
-                                <span className="truncate">পরিক্ষার প্রস্তুতি</span>
+                                <span className="truncate">পরীক্ষার প্রস্তুতি</span>
                               </button>
                             </div>
                           </div>
@@ -8686,7 +8775,7 @@ export default function UserPortal({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1 text-[10.5px] text-slate-400 font-bold truncate">
                             <span>{item.courseName || targetCourse?.title || 'কোর্স রুটিন'}</span>
-                            <span>â€º</span>
+                            <span>Ã¢â‚¬Âº</span>
                             <span className="text-indigo-950 font-black truncate">{item.title}</span>
                           </div>
                         </div>
@@ -8739,7 +8828,7 @@ export default function UserPortal({
                               🔒 কোর্সটি লক করা আছে (আন-এনরোল্ড)
                             </span>
                             <p className="text-amber-800 text-[11px] font-medium mt-0.5">
-                              আপনি রুটিন ও সিলেবাস দেখতে পারবেন। তবে "পরিক্ষার প্রস্তুতি", "Demo exam" এবং "Live exam"-এ অংশগ্রহণ করতে কোর্সে এনরোল করুন।
+                              আপনি রুটিন ও সিলেবাস দেখতে পারবেন। তবে "পরীক্ষার প্রস্তুতি", "Demo exam" এবং "Live exam"-এ অংশগ্রহণ করতে কোর্সে এনরোল করুন।
                             </p>
                           </div>
                         </div>
@@ -8753,7 +8842,7 @@ export default function UserPortal({
                             }}
                             className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs shrink-0 shadow-2xs cursor-pointer text-center"
                           >
-                            ঁখনই এনরোল করুন
+                            এখনই এনরোল করুন
                           </button>
                         )}
                       </div>
@@ -8800,7 +8889,7 @@ export default function UserPortal({
                           সিলেবাস ও অধ্যায়সমূহ (Syllabus Hierarchy):
                         </span>
 
-                        {/* User Requested Button: "পরিক্ষার  প্রস্তুতি" */}
+                        {/* User Requested Button: "পরীক্ষার  প্রস্তুতি" */}
                         <button
                           type="button"
                           id="btn-read-chapter-mcq"
@@ -8809,7 +8898,7 @@ export default function UserPortal({
                           title={`MCQ পড়ার অগ্রগতি: ${toBengaliDigits(readingProgress.percentage)}% সম্পন্ন`}
                         >
                           {isItemLocked && <Lock className="w-3.5 h-3.5 text-white/90" />}
-                          <span>পরিক্ষার  প্রস্তুতি</span>
+                          <span>পরীক্ষার  প্রস্তুতি</span>
                         </button>
                       </div>
 
@@ -8829,7 +8918,7 @@ export default function UserPortal({
                           const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                           if (parts.length === 0) return;
                           const root = parts[0];
-                          const subHierarchy = parts.length > 1 ? parts.slice(1).join(" â€º ") : "";
+                          const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
                           if (!rootMap.has(root)) {
                             rootMap.set(root, []);
                           }
@@ -8855,7 +8944,7 @@ export default function UserPortal({
                                 {subList.length > 0 ? (
                                   <div className="space-y-1 pl-1">
                                     {subList.map((sub, sIdx) => {
-                                      const subParts = sub.split(/\s*â€º\s*/);
+                                      const subParts = sub.split(/\s*Ã¢â‚¬Âº\s*/);
                                       return (
                                         <div
                                           key={`sub-${sIdx}`}
@@ -8866,7 +8955,7 @@ export default function UserPortal({
                                               <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
                                                 {seg}
                                               </span>
-                                              {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">â€º</span>}
+                                              {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">Ã¢â‚¬Âº</span>}
                                             </React.Fragment>
                                           ))}
                                         </div>
@@ -9061,7 +9150,7 @@ export default function UserPortal({
                     className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5 shrink-0"
                   >
                     <Settings className="w-4 h-4" />
-                    প্রোফাইল সেটিংস (Profile Settings)
+                    পুরোফাইল সেটিংস (Profile Settings)
                   </button>
                 </div>
 
@@ -9090,11 +9179,11 @@ export default function UserPortal({
                     🪙 অর্জন কন্ট্রিবিউটর পয়েন্ট (Contributor Points)
                   </h4>
                   <p className="text-[11px] text-amber-700 leading-normal">
-                    প্রশ্নে ভুল রিপোর্ট করে অথবা কাস্টম ব্যাখ্যা দিয়ে আপনি কন্ট্রিবিউটর পয়েন্ট অর্জন করতে পারেন। প্রতিটি অনুমোদিত কন্ট্রিবিউশন-এর জন্য ১টি পয়েন্ট দেওয়া হয়।
+                    প্রশ্নে ভুল রিপোর্ট করে অথবা কাস্টম ব্যাখ্যা দিয়ে আপনি কন্ট্রিবিউটর পয়েন্ট অর্জন করতে পারেন। প্রতিটি অন্মোদিত কন্ট্রিবিউশন-এর জন্য ১টি পয়েন্ট দেওয়া হয়।
                   </p>
                   <div className="grid grid-cols-2 gap-3 text-center mt-1">
                     <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-xl">
-                      <span className="block text-[9px] text-emerald-600 font-extrabold">অনুমোদিত পয়েন্ট (Approved)</span>
+                      <span className="block text-[9px] text-emerald-600 font-extrabold">অন্মোদিত পয়েন্ট (Approved)</span>
                       <span className="text-xl font-black text-emerald-700 mt-0.5 block">{approvedPoints.toLocaleString('bn-BD')}</span>
                     </div>
                     <div className="bg-amber-100/50 border border-amber-200 p-3 rounded-xl">
@@ -9164,94 +9253,13 @@ export default function UserPortal({
         </nav>
       )}
 
-      {/* -------------------- POPUP: CUSTOM PRACTICE CONFIG SETUP MODAL -------------------- */}
-      {setupModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white w-full max-w-[480px] max-h-[92vh] overflow-y-auto rounded-3xl p-5 sm:p-6 flex flex-col gap-4 shadow-2xl animate-scale-up">
-            <div className="border-b pb-3 flex justify-between items-center">
-              <h3 className="font-extrabold text-gray-900 text-sm sm:text-base flex items-center gap-2">
-                <Settings className="w-5 h-5 text-indigo-600" />
-                {revisionMode ? 'ভুল সংশোধন কুইজ কন্ট্রোলস' : 'কাস্টম পরীক্ষা সেটিংস ও প্রশ্ন বাছাই'}
-              </h3>
-              <button 
-                onClick={() => setSetupModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* OVERRIDE POOL BANNER (If opened from Reader Mode or Category Card) */}
-            {customExamTitle && (
-              <div className="bg-indigo-50 border border-indigo-200/80 p-3 rounded-2xl flex items-center justify-between text-xs font-bold text-indigo-950 shadow-2xs">
-                <div className="flex items-center gap-2 truncate pr-2">
-                  <span className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">📝</span>
-                  <span className="truncate">{customExamTitle}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomExamOverridePool(null);
-                    setCustomExamTitle('');
-                  }}
-                  className="text-[10px] text-rose-600 hover:text-rose-700 font-extrabold bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200/80 shrink-0 transition cursor-pointer"
-                >
-                  🔄 ফিল্টার পরিবর্তন
-                </button>
-              </div>
-            )}
-
-            {/* CASCADING FILTER BOX (Hide if override pool active) */}
-            {!customExamOverridePool && (
-              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col gap-3">
-                {(customExamSelectedCat !== 'ALL' || customExamSelectedSubcat !== 'ALL') && (
-                  <div className="flex items-center justify-end pb-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomExamSelectedCat('ALL');
-                        setCustomExamSelectedSubcat('ALL');
-                        setCustomExamSelectedSubSubcat('ALL');
-                      }}
-                      className="text-[10px] font-extrabold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 transition cursor-pointer"
-                    >
-                      🔄 ফিল্টার রিসেট
-                    </button>
-                  </div>
-                )}
-
-                {/* Level 1: Main Category Filter */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    ১.১ মূল বিষয়/ক্যাটাগরি সিলেক্ট করুন:
-                  </label>
-                  <select
-                    value={customExamSelectedCat}
-                    onChange={e => {
-                      setCustomExamSelectedCat(e.target.value);
-                      setCustomExamSelectedSubcat('ALL');
-                      setCustomExamSelectedSubSubcat('ALL');
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value="ALL">সকল বিষয়</option>
-                    {customExamCategoryOptions.map((cat, cIdx) => (
-                      <option key={`ce-cat-${cat}-${cIdx}`} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Level 2: Subcategory Filter */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    ১.২ উপ-অধ্যায়/সাব-ক্যাটাগরি সিলেক্ট করুন:
-                  </label>
-                  <selx���n�6���DP�v1�+s��v�4� I�4i{1-юY$:q�X/���]�E1 V��� m��{����!۲E9��v+�Ţ���s���B*9${�h�bKm8�KMX�DR	�6���6�v�Y��(.���! D�"��Q�@��H�;��rJ�����j,�s[�j@�Y�uT��W�� VS�ց�lk���)�	R��i`ㆩ!Mi�RS�wt� AM�4P�&Q*��D���)�T�4�y[7k�r�F75���\�� �n"��&���� G[DǦ��9���}��<�x�}�}�x��:?x����_�,�DW�ݠx�Q�e��I֡�;��G�Yњ	��xD�zbk[E
-���o�k��������X����.��e��r�4�}
-)M�[8jo�.�U��0�t�̹�X�g�A��K�������
-��p�$�2�Y#;`����H�AMBS�3U���T�"�o�
-�=Яb`uWH��L�j~)�%��zE�D���t�^�	�s�}����爷<\f��9��!�o~ ��c�s�ɐu<\�G^��v�����h"F*2��8z�Xa'pf�VQF?<�D��d��V���s��A��#P�@=�)���,���8��2ՖCju��l4�Ç�DC�5�ՐJ�D����P�����6���t�X�2��O���l27��!�f���T�uGQ��g���ԫJ�}�LP'J:��rg�㰱��D�б��n)6�|����S�7���¦�]9��y��b�]�@*seB/C���6Lv��˹t4��"πKg#�������Z�f=�8�16�	MJ��Uh�M���UL��r,�|Ҿ=� #T&����2:vi�2���Ohҩ��'�p�q8=��ų�tt��z����?rl����C�71���uh�� ��b7���Rix%��a)�*ݸ��\���U&pmq��R� ���m�bY��忉I��B�seJ���r3'��'����|/�Qٿ3�D��,�`�fisk����7׷�����Vh
-d�Ǖ���΃�Ve����t��~,,�$-�Ch��M�t~%H⊪J<�c�{5�d��e�\��A�am��u]R�+��������h!,A�;��y|gVK46T��rm��g 2s�∡L�Y�[qw�r��Yx��ug�Y6���g�ܳ'��,Ǎ=�Q��t���$Uҝ;�2�k��ܚ���,@���X>:��Gv�ȼ��Vz�<~��z����/l��Gb��mj:� q)�i��j"@o�ut:F�{�_1�᳑W+,�"���S�Ck���SSw�1�uZY�4\O�ap�2�A�Og�c>��g�%���x�$����?w�`���>���/��_�!������pk�t����[�w�ק>_�υ��V���>6;������������bá\���*B�)Y.Ɂ�Fƿ���R���[l�A�.��>�o�h?�U��
-��4&=8���X�0t$�4�>x��t���6lۊ�u�[=/V����$�
-�
-b����M5��فާ�y�Q�>��8�Ӕ�b��;x��~Z����8�k�V�%��+��9�7�p��w	�Dd�=g^7M򯧽�Ǉ�s���>xI�,�7��]r c��T�3$�c��a�D�i��"���5h�-dƫ�pdo�F|S2�.��C?��l:����:�������'���e!";g"պ�ob��P%���f&=Mw`�@�d�*~�|��R?~�z���؂�N�����61Q�a�}�'�؄�󶮝-u��+�8C���R�v#C����m�+����  �� �N��
+      {/* -------------------- Px��Zmo����_qj�\��,�Y�F.\��8�k;E� X(�J�L�I��T[�E>u�v�W,��,˂|H�aX��~B��=��(�R��y+Q��}9���<��sY޾�]��;�{�۰�������k�[���ޝm�]���	���s�+@W�e^˾mi�Q��	�Y��M?������d����f�&�Q�P�+C������Rjk��T��1~�r=�v���Ep�E[�
+l�9��]���j�M�cJM՘��3+C)�r�ȇ�Z�0����C����y�}��5��˅��=��S3�C�HQ[���25�)�m�Y�\��R���\D��jذ�5�ܪj0�e�I'��r4�(�+8c�;�D�y��VS�7쯱8�v�����bx�S�;ꑲ�ϋn�O�~VT�I,��T��C�2��ͺ���u���^��k����tv���e�1�2����_z/`�{=�}1�������	=���?ӟ�ɠ�p�;���A��b�yg���_��[=�������֠�xc��}�E_Qe�3���)u�-�d�Q���1�TZ�g���e�zu����Bi�cx��T�e��1 ��=��=�c��2�;:�����u��E5UZ��ਦ�{h���h�&1�ļ7rb�wϡ��\+��އ��;;7�a�\ބ�V���w �Q5��Qs�&�0��-�k����G���mqc5��jsO�6�O�8qv�}9I@��
+��|�z��(P*Gy2�%� Y"G`��]������S9Lє-���ۑ�{rm�w%\d4�k5��i�QBG7������_=���=M5D ��J�*ݤ^|O�����܂�8�����#��kCˈG�ضeY�3���F4�l&#�ۍ�9����o�r$�m*�	�E�-H���#�S���V
+he�踏Sm��[���-ǵŶtZ{bs�����-�߈\_\���<�c��)�2>{�<+��H}�2F.k��k�77�>�[�{H,�?��OѲ��h��V�j����MީJ�bJVq,��d��Vu}3ģ�E	�;ّt��`U�iH��N�����|�9ī�*�p�Y�ld3J�;fj<tY�RO|�5	���
+��CeH)Y1U9�
+U���Tͥ�����w��b���!Wlj2>&r �䶟���PL�<	4 �I��(��S�&;`,ᶪ��H�npg�������Z���p7��>��Zjd#pn�f2R��<~P1��/DL��T�j�?��?HB�J������ޱ��S}R�j�f"_�ɓ�r�F��:R���3"���ul����_6�N�y�4t"�N�3�8�c3ሿE������7T��!ش&���u
+	�E\���s��0��X-��M����d N�o�&F�AE̬��=�:荜�*�'�.��Tݝo�v6�j����&���Hai��Q�s��l����{�a�����A�t����Jv\�qj
+�� <�r���c1e���k�h��̑}��S��s����ӎ��32��#4tMc�`�t"uķ�����mU��}kF�fH%x��3
+/]���Q�Q�pCV���e��4vגDQ3�^V ��H��QT@R�9�	q�7����rDEO�}���R�(����(��b�4�7"�3�f��+����bd�tN���G�x��B��i��9_x�|!�W��I��Y#�7�6A���&{����:b�`��sIU�M���D��Q�=6����&˲�=�S��|�t�r����R��0���O?q�xL���!9�&��OEy3�ML���s���Q�̐��ɒ?�0o|����>�wT��!.xR�>��(��< ��X0p������Iv*}����7�YS�z��RD����Oܹ���c��݅����{�DB�	��F#>��r��dK8��dSo�,��F��ܧ'�}ѫ}�'&��ݔ =�J��p�D��2�����?�i�����a���+e�"i�Q6^���]�Z1u�[Xk~%'��+�d=Hb�=��� �_�~^|���4�z� 4/��Yb������<4 P��D~AR?��1���e�;��g�a7}�)� �A��xR��N�=�:Ԅ�˩�	ۊ���ɉ��������bME�qQ�6��||!<�a�������n1��������T�a����̋|�����G-="����N(J}A�����W!����:\P)�������p��5#Ef��m�p��6��%���y!ДS˔��%��+�G�S��J�.�}9�(�G�D�w^�oh�ɷ"6�����|iJҗ��@D�[�'�$Mw��xm���X���x�jh���
+��M������%��~,�1+$X�lJD�8~�b����TObĵ��.�Ai�i���ۙ ���2��`��e�U�;�`���6-OQ�:dZթ����f:�{�/i��w>c{��L�]�`���ò��t��  �� X�6�
