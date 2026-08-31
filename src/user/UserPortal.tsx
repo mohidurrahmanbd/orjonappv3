@@ -9253,16 +9253,233 @@ export default function UserPortal({
         </nav>
       )}
 
-      {/* ----------------xЬфZmo█╓■Ю_qjХ\ШЦ,╟YмF.\╟щ8Цk;EБ X(ёJтLСI┘ЄT[ўE>uщАvАW,Р▄,╦В|HЄaX■К~B┬╬=ЧФ(ЄТR№▓y+Q╥х}9ўЬє<ў▄sй(К█хэ;█EX╗│╗W╛█;лk{kы░V▐║╡ё1ьоя▌┘Ж█хЫлЫаH.x?╫╜tu\ц╡ь█ЦжeЫЩЁ▐{Рї▄╨ЇикыnйMVЪйщmжБnb%Х║R1╘ъ~юZ~й,хбf░6шk║JХЩsрч-╫╙kG┴_[Y╖Y┤ХлP┴ЖЪc┘╪E╦Q┌.иж▐T=ж╘TН)║9│2Ф".О|╪└БрPй╡Ъj[9Tю^╜Ю╖█ўш_C╣╗\8h▄ыА95├:TО╡хYрX-ScЪ▓╪6PЬ%!╬5!:┐)U╦А║╩EtкЖX3╬нкSZЎШt∙,GcОR╗В3ж╛MTШw╚P╧a5Ez├■Лcj╖LOam╧Q+ЦбБЗ?Х║г)╦∙╝°ч6∙DшgEuЩ─|JЕ╪@8╘.є<▌м╗сQ1№PЗ║йщuK╣Ц╧╧@.▐A╟a║л[&·Г!3ш¤}╨ їаў╜╫Г▐Г▐╦A ╦Aп?шЭ`╤#z°`╨√3¤щЭ·╜c║?Їё┴┐░-6═@СwЎИ
-^√╡z╧░╒к∙+ъK_aЛ7╞*oh╨╫XЇU=s)
-ЮRЧ▀╥¤AжU~о▒3HехyЦ	▒┘[цЪбWўKЭь,ФV Б▒;ЖзlM5\6┬┌┘є*┌│┴=╢8*C╜гг.╠/]Ч\^TC PеюОj║║ЗЦШЙМ&▒·gsK╠{#'&qў·√╩Х▒▓Nю}(║╛││qs┘й╝	нnmня@vгjЙгцXM╪ap╚[,╓Vu╦9┬О6"&┐█*т╞jо╖╒цЮюlЬЯ|qтьр√,rТАв ФЄ∙▄ї<╤QаTОЄd■
-PKfA▓"DО└шw╗МуI├ХБ-╩зrШв)[f╢#-Ўф┌кюJ╕╚hъ╫jDL╙игДОnю+∙ЩХО┐zx#╟{ЪjИ@кЩХиU║I╜°Ю+^%╘;▓╣щq╘Н∙┴[GR8
-╫ЖЦ'Оо▒m╦2▓&BgЎГ╔НhV┘LFZ╖Gs╧wh-в▀Ох22H█TЎ,ЛР;ZР-хGзq╗н╨╩6>l╤qз┌╛З╢СT[Оk9Кmщ┤Ў─ц"єЕО °[$╬┐╣╛╕щєy@╟№┴Sтe|ЎyVт2.С·ЄeМ\╓Vw╫Vonl}╖66ўРX>*┘ЯвeAп╤2╧н6Ъ╘кз0	Ы╝SХ·┼Фмт<X
-╕#D╔Ь=╞н ъ·fИGЛTw▓#щvЩ┴к╙РсЭR	2лЫЫ°№sИW┘mUксZ│▓┘╚fФLw╠╘xш▓ еЮ4°ЄkД∙5М∙5Ж╩РR▓bкr('6к:u█йЪK┘Б_	!юR	#─Ь8фCо╪╘d|0 Lф ~╔m?Б°бШ▄yh@<У.Q:рзДMv└X(┬mU7GС─-▌р╬? э╦╡В]ЕсnX╒}Ё╡04╘╚Fр▄H═dд·¤y№аbЮ·_ИШ°)йш╒аЬ"╪Р■Д $Ф(ВgбсA╜c2?з·д(╒ ═D╛ЮУ'Kх<PН+uд№#ўgDpC5ы╪Ие!8┐l▐SЭ:єцiшD4Э╞g qД╟"f
-┬Л)∙/вoифыC░iM"Eгыа!К╕r╫▒ч╨ЯaTT▒ZЮбЫL1-У╔@Ь@▀ЦM$ М>ГКШY!o{u╨9QU▐O╚]ьХй║;▀Tэl╒<╒нM/[С┬╥ь│гRч~Х)╪Ly╖Гў. ┬ц▌√▌бГbщ
-▌╙EЫХь╕88у╘Ц)Ax╬%х╛п¤╞b╩аў;╛╫╤
-▐ Щ#√тЯз╩хчбчєз∙gdЮ G■hшЪ╞д┴┌щDъИoA'!дН1К█к╠Б√╓МВ═РJЁ╬┼g^║Bў 4г,гpсЖмТГ=╦╓лiь2о%Йвf╓╜м@>mР`╫виАд╛rКтТo╚5╛%кщхИКЮ√<:%е2Q:е│Q!┼(ioD╪gК═┬ W$o&ё┼╚Їщ Ь┬¤Й'<Ов9Ё&1ЕД+и)╥}s╛Ё╞∙BФп°▀У─Х│FoдmВ&╓УхMЎ,O5@=Pu─Ж┴р-цТкАЫ╒g┼Й&-г╩O{lJCЕ¤MЦeх{╬3зTє∙°щхiKїерЕaО ╡Я~тёШШу7°Cr
-M|=\ЯКЄf,ЪШb%ч┬█qгЩ!?1У%ъa▐°$0e-g}Rя
-и╝Й9B\Ёд}╨1TQ>Д&x@L░:`р:/?╤	rЛУьT·&H=К│ЭoВ│ждї"aеИ:~▌╤5р7Ю╕sХлЙ╟hЭ╗∙9(рg	?ш∙ўИЙДЦ(-НF|Dнх29╔Цp2ї╔ж▐╘=!X9Нц▀╣ONш√вW√╨OL.┴╗)Az ФJ%сТЙL¤!dб7╬;№б╙v3Йй├ зЎW╩▓E╥╕гl╝(B╦╗╞╡bъ8┌╖░╓№JNЦ┼W╔zР─{zУБAК┐Ё¤╝°Р╧П#hю"Ї■zh^LA│─ayyyh@:а■=Й№Вд~Fўc
-[┐╦@w.н╬├n·╕SъA╨Г╨┴ёд
-c=Ь╚{Иu и	ЧS╢ёы9УўK┴O├.G┼"ЪКЎув*>mЄ5∙>°Bxj├t=╨U╙=D+▌bLуя┴Б;╠mиЁ├к y=Щ∙О╟┴┴'ПZzD _yЭPФ·Вxї╗є!пBЄ=чu╕аRh SЭf3jсЄ3Ж!jFК╠.i█z!рt╟e#lЖхK@╙9ГєBа)жЦ)БєKr┴WxП·з$UХ▐u%]А√r·Q ▄П┬ЙДя╝&▀(╨ЄУoDlЎЧс├╙∙╥Фд/}EБИ╖╘MO┬wI.Ъюачё┌╜╧▒@)9ёц╒╨QЄ1Ы╞▌7ф█S╘K$№XфOcVH░╬┘ФИPq№ф┼╢├▀╜й2Ю─ИkO╙]ЮГ╥J╙d;И∙╖3AtC°e\ы┴°E╦Vл║w─┴6,єUmZЮвЖu╚┤0кSц╝йЭ═tЄўZ_╥ЮЗя|╞Ў@SЩ6╗H┴╪_▀▌Зe│\щ^∙7      N.7я
+      {/* -------------------- POPUP: CUSTOM PRACTICE CONFIG SETUP MODAL -------------------- */}
+      {setupModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white w-full max-w-[480px] max-h-[92vh] overflow-y-auto rounded-3xl p-5 sm:p-6 flex flex-col gap-4 shadow-2xl animate-scale-up">
+            <div className="border-b pb-3 flex justify-between items-center">
+              <h3 className="font-extrabold text-gray-900 text-sm sm:text-base flex items-center gap-2">
+                <Settings className="w-5 h-5 text-indigo-600" />
+                {revisionMode ? 'ржнрзБрж▓ рж╕ржВрж╢рзЛржзржи ржХрзБржЗржЬ ржХржирзНржЯрзНрж░рзЗрж╛рж▓рж╕' : 'ржХрж╛рж╕рзНржЯржо ржкрж░рзАржХрзНрж╖рж╛ рж╕рзЗржЯрж┐ржВрж╕ ржУ ржкрзНрж░рж╢рзНржи ржмрж╛ржЫрж╛ржЗ'}
+              </h3>
+              <button 
+                onClick={() => setSetupModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full hover:bg-gray-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* OVERRIDE POOL BANNER (If opened from Reader Mode or Category Card) */}
+            {customExamTitle && (
+              <div className="bg-indigo-50 border border-indigo-200/80 p-3 rounded-2xl flex items-center justify-between text-xs font-bold text-indigo-950 shadow-2xs">
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <span className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">ЁЯУН</span>
+                  <span className="truncate">{customExamTitle}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomExamOverridePool(null);
+                    setCustomExamTitle('');
+                  }}
+                  className="text-[10px] text-rose-600 hover:text-rose-700 font-extrabold bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200/80 shrink-0 transition cursor-pointer"
+                >
+                  ЁЯФД ржлрж┐рж▓рзНржЯрж╛рж░ ржкрж░рж┐ржмрж░рзНрждржи
+                </button>
+              </div>
+            )}
+
+            {/* CASCADING FILTER BOX (Hide if override pool active) */}
+            {!customExamOverridePool && (
+              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col gap-3">
+                {(customExamSelectedCat !== 'ALL' || customExamSelectedSubcat !== 'ALL') && (
+                  <div className="flex items-center justify-end pb-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomExamSelectedCat('ALL');
+                        setCustomExamSelectedSubcat('ALL');
+                        setCustomExamSelectedSubSubcat('ALL');
+                      }}
+                      className="text-[10px] font-extrabold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 transition cursor-pointer"
+                    >
+                      ЁЯФД ржлрж┐рж▓рзНржЯрж╛рж░ рж░рж┐рж╕рзЗржЯ
+                    </button>
+                  </div>
+                )}
+
+                {/* Level 1: Main Category Filter */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    рзз.рзз ржорзВрж▓ ржмрж┐рж╖рзЯ/ржХрзНржпрж╛ржЯрж╛ржЧрж░рж┐ рж╕рж┐рж▓рзЗржХрзНржЯ ржХрж░рзБржи:
+                  </label>
+                  <select
+                    value={customExamSelectedCat}
+                    onChange={e => {
+                      setCustomExamSelectedCat(e.target.value);
+                      setCustomExamSelectedSubcat('ALL');
+                      setCustomExamSelectedSubSubcat('ALL');
+                    }}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value="ALL">рж╕ржХрж▓ ржмрж┐рж╖рзЯ</option>
+                    {customExamCategoryOptions.map((cat, cIdx) => (
+                      <option key={`ce-cat-${cat}-${cIdx}`} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Level 2: Subcategory Filter */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    рзз.рзи ржЙржк-ржЕржзрзНржпрж╛ржпрж╝/рж╕рж╛ржм-ржХрзНржпрж╛ржЯрж╛ржЧрж░рж┐ рж╕рж┐рж▓рзЗржХрзНржЯ ржХрж░рзБржи:
+                  </label>
+                  <select
+                    value={customExamSelectedSubcat}
+                    onChange={e => {
+                      setCustomExamSelectedSubcat(e.target.value);
+                      setCustomExamSelectedSubSubcat('ALL');
+                    }}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                  >
+                    <option value="ALL">рж╕ржХрж▓ ржЙржк-ржЕржзрзНржпрж╛рзЯ</option>
+                    {customExamSubcategoryOptions.map((sub, sIdx) => (
+                      <option key={`ce-sub-${sub}-${sIdx}`} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Level 3: Sub-subcategory / Topic Filter */}
+                {customExamSubSubcategoryOptions.length > 0 && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      рзз.рзй ржЕржирзБржЪрзНржЫрзЗржж/ржЯржкрж┐ржХ рж╕рж┐рж▓рзЗржХрзНржЯ ржХрж░рзБржи:
+                    </label>
+                    <select
+                      value={customExamSelectedSubSubcat}
+                      onChange={e => setCustomExamSelectedSubSubcat(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                    >
+                      <option value="ALL">рж╕ржХрж▓ ржЯржкрж┐ржХ</option>
+                      {customExamSubSubcategoryOptions.map((topic, tIdx) => (
+                        <option key={`ce-topic-${topic}-${tIdx}`} value={topic}>{topic}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Total available questions indicator */}
+            <div className="bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100 flex items-center justify-between text-xs font-bold text-indigo-900">
+              <span>ржорзЛржЯ ржкрзНрж░рж╕рзНрждрзБрждржХрзГржд ржкрзНрж░рж╢рзНржирж╕ржВржЦрзНржпрж╛:</span>
+              <span className="bg-indigo-600 text-white px-2.5 py-0.5 rounded-lg text-xs font-black">
+                {getCustomExamQuestionsPool().length} ржЯрж┐
+              </span>
+            </div>
+
+            {/* Question count selector */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                рзи. ржкрж░рзАржХрзНрж╖рж╛рж░ ржкрзНрж░рж╢рзНржирж╕ржВржЦрзНржпрж╛ ржирж┐рж░рзНржмрж╛ржЪржи ржХрж░рзБржи:
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[10, 20, 50, 100].map(count => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setSetupQLimit(count)}
+                    className={`py-2 rounded-xl font-bold text-xs border transition cursor-pointer ${
+                      setupQLimit === count
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {count} ржЯрж┐
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time limit selector */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                рзй. рж╕ржорзЯ ржирж┐рж░рзНржзрж╛рж░ржг ржХрж░рзБржи:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 999, label: 'ржЖржирж▓рж┐ржорж┐ржЯрзЗржб' },
+                  { value: 10, label: 'рззрзж ржорж┐ржирж┐ржЯ' },
+                  { value: 20, label: 'рзирзж ржорж┐ржирж┐ржЯ' }
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSetupTimeLimit(opt.value)}
+                    className={`py-2 rounded-xl font-bold text-xs border transition cursor-pointer ${
+                      setupTimeLimit === opt.value
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Instant Answer Feedback vs Result at end */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                рзк. ржЙрждрзНрждрж░ ржжрзЗржЦрж╛ржирзЛрж░ ржорзЛржб:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSetupAnswerView('after_exam')}
+                  className={`py-2 px-3 rounded-xl font-bold text-xs border transition cursor-pointer ${
+                    setupAnswerView === 'after_exam'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  ржкрж░рзАржХрзНрж╖рж╛рж░ рж╢рзЗрж╖рзЗ ржЙрждрзНрждрж░
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSetupAnswerView('instant')}
+                  className={`py-2 px-3 rounded-xl font-bold text-xs border transition cursor-pointer ${
+                    setupAnswerView === 'instant'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  ржХрзНрж▓рж┐ржХ ржХрж░рж▓рзЗржЗ рж╕ржарж┐ржХ ржЙрждрзНрждрж░
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 mt-2">
+              <button
+                type="button"
+                onClick={() => setSetupModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                ржмрж╛рждрж┐рж▓
+              </button>
+              <button
+                type="button"
+                onClick={startCustomPracticeExam}
+                disabled={getCustomExamQuestionsPool().length === 0}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                ржкрж░рзАржХрзНрж╖рж╛ рж╢рзБрж░рзБ ржХрж░рзБржи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
