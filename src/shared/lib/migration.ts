@@ -471,15 +471,12 @@ export async function deleteQuestionFromFirestore(id: string): Promise<boolean> 
     } catch {}
     const nowIso = new Date().toISOString();
     const nowMs = Date.now();
-    try {
-      await setDoc(docRef, {
-        isDeleted: true,
-        deletedAt: nowIso,
-        version: newVersion,
-        updatedAt: nowMs
-      }, { merge: true });
-    } catch {}
-    await deleteDoc(docRef);
+    await setDoc(docRef, {
+      isDeleted: true,
+      deletedAt: nowIso,
+      version: newVersion,
+      updatedAt: nowMs
+    }, { merge: true });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -501,12 +498,19 @@ export async function bulkDeleteQuestionsFromFirestore(ids: string[]): Promise<b
     try {
       newVersion = await incrementGlobalVersion('questionVersion');
     } catch {}
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
     const chunkSize = 400;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach(id => {
-        batch.delete(doc(db, 'questions', String(id)));
+        batch.set(doc(db, 'questions', String(id)), {
+          isDeleted: true,
+          deletedAt: nowIso,
+          version: newVersion,
+          updatedAt: nowMs
+        }, { merge: true });
       });
       await batch.commit();
     }
@@ -577,19 +581,16 @@ export async function deleteItemFromFirestore(colName: string, id: string): Prom
         newVersion = await incrementGlobalVersion(versionKey);
       } catch {}
       // Update with tombstone so incremental differential sync detects deletion across devices
-      try {
-        await setDoc(docRef, {
-          isDeleted: true,
-          deletedAt: nowIso,
-          version: newVersion,
-          updatedAt: nowIso
-        }, { merge: true });
-      } catch (err) {
-        console.warn(`Tombstone update notice for ${colName}/${id}:`, err);
-      }
+      await setDoc(docRef, {
+        isDeleted: true,
+        deletedAt: nowIso,
+        version: newVersion,
+        updatedAt: nowIso
+      }, { merge: true });
+    } else {
+      // Unversioned collection: safe to delete directly in Firestore
+      await deleteDoc(docRef);
     }
-    // Delete document directly in Firestore
-    await deleteDoc(docRef);
     return true;
   } catch (err) {
     console.error(`Error deleting item from ${colName} in Firestore:`, err);
@@ -607,12 +608,23 @@ export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[
         newVersion = await incrementGlobalVersion(versionKey);
       } catch {}
     }
+    const nowIso = new Date().toISOString();
     const chunkSize = 400;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach(id => {
-        batch.delete(doc(db, colName, String(id)));
+        const docRef = doc(db, colName, String(id));
+        if (versionKey) {
+          batch.set(docRef, {
+            isDeleted: true,
+            deletedAt: nowIso,
+            version: newVersion,
+            updatedAt: nowIso
+          }, { merge: true });
+        } else {
+          batch.delete(docRef);
+        }
       });
       await batch.commit();
     }

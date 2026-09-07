@@ -1,13 +1,17 @@
 import sqlite3
 import os
 import json
+import shutil
+import urllib.request
+import urllib.error
+import datetime
 
-# Ensure directories exist
-os.makedirs('public/assets/databases', exist_ok=True)
-os.makedirs('public', exist_ok=True)
-os.makedirs('assets/databases', exist_ok=True)
-os.makedirs('assets', exist_ok=True)
+# Public Firestore Config (No private secrets or service account keys)
+API_KEY = "AIzaSyDXwoEuyzm8FG0vG9VfpgfkBEbT4whs3Mg"
+PROJECT_ID = "orjonapp"
+BASE_URL = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/(default)/documents"
 
+# Target output paths expected by Mobile APK and Vite build
 db_paths = [
     'public/assets/databases/questions.db',
     'public/questions.db',
@@ -15,375 +19,378 @@ db_paths = [
     'assets/questions.db'
 ]
 
-# Remove existing files if present
+# Ensure output directories exist
 for p in db_paths:
-    if os.path.exists(p):
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+
+# Also check for Android native assets directory if present
+android_asset_dirs = [
+    'android/app/src/main/assets/public/assets/databases',
+    'android/app/src/main/assets/databases'
+]
+for ad in android_asset_dirs:
+    if os.path.exists(os.path.dirname(os.path.dirname(ad))):
+        os.makedirs(ad, exist_ok=True)
+        db_paths.append(os.path.join(ad, 'questions.db'))
+
+def decode_val(val):
+    if not isinstance(val, dict):
+        return val
+    if "stringValue" in val:
+        return val["stringValue"]
+    if "integerValue" in val:
+        return int(val["integerValue"])
+    if "doubleValue" in val:
+        return float(val["doubleValue"])
+    if "booleanValue" in val:
+        return val["booleanValue"]
+    if "timestampValue" in val:
+        return val["timestampValue"]
+    if "nullValue" in val:
+        return None
+    if "arrayValue" in val:
+        return [decode_val(x) for x in val["arrayValue"].get("values", [])]
+    if "mapValue" in val:
+        return {k: decode_val(v) for k, v in val["mapValue"].get("fields", {}).items()}
+    return None
+
+def decode_doc(doc_obj):
+    res = {}
+    fields = doc_obj.get("fields", {})
+    for k, v in fields.items():
+        res[k] = decode_val(v)
+    name = doc_obj.get("name", "")
+    doc_id = name.split("/")[-1] if name else ""
+    if "id" not in res or not res["id"]:
+        res["id"] = doc_id
+    return res
+
+def fetch_firestore_collection(col_name):
+    docs = []
+    page_token = ""
+    print(f"📡 Fetching live public '{col_name}' from Firestore...")
+    while True:
+        url = f"{BASE_URL}/{col_name}?key={API_KEY}&pageSize=300"
+        if page_token:
+            url += f"&pageToken={page_token}"
+        req = urllib.request.Request(url, headers={"User-Agent": "OrjonAPKBuildScript/1.0"})
         try:
-            os.remove(p)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for d in data.get("documents", []):
+                    decoded = decode_doc(d)
+                    docs.append(decoded)
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
+        except Exception as e:
+            print(f"⚠️ Notice while fetching '{col_name}': {e}")
+            break
+    print(f"   Fetched {len(docs)} documents for '{col_name}'.")
+    return docs
+
+def fetch_meta_versions():
+    print("📡 Fetching 'meta/versions' from Firestore...")
+    url = f"{BASE_URL}/meta/versions?key={API_KEY}"
+    req = urllib.request.Request(url, headers={"User-Agent": "OrjonAPKBuildScript/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            decoded = decode_doc(data)
+            print(f"   Firestore baseline versions: {decoded}")
+            return {
+                "categoryVersion": int(decoded.get("categoryVersion", 1)),
+                "subcategoryVersion": int(decoded.get("subcategoryVersion", 1)),
+                "questionVersion": int(decoded.get("questionVersion", 1))
+            }
+    except Exception as e:
+        print(f"⚠️ Notice while fetching meta/versions (using defaults): {e}")
+        return {
+            "categoryVersion": 1,
+            "subcategoryVersion": 1,
+            "questionVersion": 1
+        }
+
+def generate_database():
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    
+    # 1. Fetch live public data from Firestore
+    versions = fetch_meta_versions()
+    raw_cats = fetch_firestore_collection("categories")
+    raw_subs = fetch_firestore_collection("subcategories")
+    raw_qs = fetch_firestore_collection("questions")
+
+    # 2. Filter out soft-deleted / tombstoned items
+    active_cats = [c for c in raw_cats if not c.get("isDeleted") and not c.get("deletedAt")]
+    active_subs = [s for s in raw_subs if not s.get("isDeleted") and not s.get("deletedAt")]
+    active_qs = [q for q in raw_qs if not q.get("isDeleted") and not q.get("deletedAt")]
+
+    print(f"📊 Active records to bundle:")
+    print(f"   - Categories: {len(active_cats)} (baseline v{versions['categoryVersion']})")
+    print(f"   - Subcategories: {len(active_subs)} (baseline v{versions['subcategoryVersion']})")
+    print(f"   - Questions: {len(active_qs)} (baseline v{versions['questionVersion']})")
+    print(f"   - Courses: 0 (on-demand only, excluded from APK bundle)")
+    print(f"   - Routines & Live Exams: 0 (on-demand only, excluded from APK bundle)")
+
+    primary_db_path = 'public/assets/databases/questions.db'
+    if os.path.exists(primary_db_path):
+        try:
+            os.remove(primary_db_path)
         except Exception:
             pass
 
-# Create database and populate tables
-conn = sqlite3.connect('public/assets/databases/questions.db')
-cursor = conn.cursor()
+    conn = sqlite3.connect(primary_db_path)
+    cursor = conn.cursor()
 
-# 1. Schema Creation
-cursor.executescript('''
--- 1. Categories Table
-CREATE TABLE IF NOT EXISTS categories (
-  id TEXT PRIMARY KEY NOT NULL,
-  name TEXT NOT NULL,
-  subHeading TEXT,
-  createdAt TEXT,
-  updatedAt TEXT
-);
+    # 3. Create exact SQLite Schema (matching src/shared/lib/sqlite/schema.ts)
+    cursor.executescript('''
+    -- 1. Categories Table
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      subHeading TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER DEFAULT 1,
+      deletedAt TEXT
+    );
 
--- 2. Subcategories Table
-CREATE TABLE IF NOT EXISTS subcategories (
-  id TEXT PRIMARY KEY NOT NULL,
-  name TEXT NOT NULL,
-  parentCategory TEXT NOT NULL,
-  parentCategoryId TEXT,
-  date TEXT,
-  subHeading TEXT,
-  text TEXT,
-  details TEXT,
-  createdAt TEXT,
-  updatedAt TEXT
-);
+    -- 2. Subcategories Table
+    CREATE TABLE IF NOT EXISTS subcategories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      parentCategory TEXT NOT NULL,
+      parentCategoryId TEXT,
+      date TEXT,
+      subHeading TEXT,
+      text TEXT,
+      details TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER DEFAULT 1,
+      deletedAt TEXT
+    );
 
--- 3. Questions Table
-CREATE TABLE IF NOT EXISTS questions (
-  id TEXT PRIMARY KEY NOT NULL,
-  text TEXT NOT NULL,
-  optionA TEXT NOT NULL,
-  optionB TEXT NOT NULL,
-  optionC TEXT NOT NULL,
-  optionD TEXT NOT NULL,
-  correct TEXT NOT NULL,
-  explanation TEXT,
-  category TEXT NOT NULL,
-  subcategory TEXT NOT NULL,
-  categoriesJson TEXT,
-  subcategoriesJson TEXT,
-  csvCategory TEXT,
-  csvSubcategory TEXT,
-  examCategory TEXT,
-  examSubcategory TEXT,
-  examPathJson TEXT,
-  subjectCategory TEXT,
-  subjectSubcategory TEXT,
-  subjectPathJson TEXT,
-  commentsJson TEXT,
-  userExplanationsJson TEXT,
-  createdAt TEXT,
-  date TEXT,
-  updatedAt TEXT
-);
+    -- 3. Questions Table
+    CREATE TABLE IF NOT EXISTS questions (
+      id TEXT PRIMARY KEY NOT NULL,
+      text TEXT NOT NULL,
+      optionA TEXT NOT NULL,
+      optionB TEXT NOT NULL,
+      optionC TEXT NOT NULL,
+      optionD TEXT NOT NULL,
+      correct TEXT NOT NULL,
+      explanation TEXT,
+      category TEXT NOT NULL,
+      subcategory TEXT NOT NULL,
+      categoriesJson TEXT,
+      subcategoriesJson TEXT,
+      csvCategory TEXT,
+      csvSubcategory TEXT,
+      examCategory TEXT,
+      examSubcategory TEXT,
+      examPathJson TEXT,
+      subjectCategory TEXT,
+      subjectSubcategory TEXT,
+      subjectPathJson TEXT,
+      commentsJson TEXT,
+      userExplanationsJson TEXT,
+      createdAt TEXT,
+      date TEXT,
+      updatedAt TEXT,
+      version INTEGER DEFAULT 1,
+      deletedAt TEXT
+    );
 
--- 4. Courses Table (Empty in bundle)
-CREATE TABLE IF NOT EXISTS courses (
-  id TEXT PRIMARY KEY NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT,
-  status TEXT NOT NULL,
-  category TEXT,
-  startDate TEXT,
-  endDate TEXT,
-  price REAL,
-  originalPrice REAL,
-  couponsJson TEXT,
-  createdAt TEXT,
-  updatedAt TEXT
-);
+    -- 4. Courses Table (Empty in bundle, on-demand sync)
+    CREATE TABLE IF NOT EXISTS courses (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL,
+      category TEXT,
+      startDate TEXT,
+      endDate TEXT,
+      price REAL,
+      originalPrice REAL,
+      couponsJson TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER DEFAULT 1,
+      deletedAt TEXT
+    );
 
--- 5. Exams Table (Live Exams & Routines - Empty in bundle)
-CREATE TABLE IF NOT EXISTS exams (
-  id TEXT PRIMARY KEY NOT NULL,
-  title TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'live',
-  qLimit INTEGER DEFAULT 0,
-  timeLimit INTEGER DEFAULT 0,
-  category TEXT,
-  startTime TEXT,
-  expiryTime TEXT,
-  totalMarks REAL,
-  passMarks REAL,
-  questionSelection TEXT,
-  questionIdsJson TEXT,
-  routineId TEXT,
-  courseId TEXT,
-  courseName TEXT,
-  details TEXT,
-  selectedCategoriesJson TEXT,
-  selectedSubcategoriesJson TEXT,
-  selectedLeafCategoriesJson TEXT,
-  examConfigJson TEXT,
-  examDate TEXT,
-  createdAt TEXT,
-  updatedAt TEXT
-);
+    -- 5. Exams Table (Empty in bundle, on-demand sync)
+    CREATE TABLE IF NOT EXISTS exams (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'live',
+      qLimit INTEGER DEFAULT 0,
+      timeLimit INTEGER DEFAULT 0,
+      category TEXT,
+      startTime TEXT,
+      expiryTime TEXT,
+      totalMarks REAL,
+      passMarks REAL,
+      questionSelection TEXT,
+      questionIdsJson TEXT,
+      routineId TEXT,
+      courseId TEXT,
+      courseName TEXT,
+      details TEXT,
+      selectedCategoriesJson TEXT,
+      selectedSubcategoriesJson TEXT,
+      selectedLeafCategoriesJson TEXT,
+      examConfigJson TEXT,
+      examDate TEXT,
+      createdAt TEXT,
+      updatedAt TEXT,
+      version INTEGER DEFAULT 1,
+      deletedAt TEXT
+    );
 
--- Indices
-CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category);
-CREATE INDEX IF NOT EXISTS idx_questions_subcategory ON questions(subcategory);
-CREATE INDEX IF NOT EXISTS idx_questions_date ON questions(date);
-CREATE INDEX IF NOT EXISTS idx_subcategories_parent ON subcategories(parentCategory);
-CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
-CREATE INDEX IF NOT EXISTS idx_exams_type ON exams(type);
-CREATE INDEX IF NOT EXISTS idx_exams_startTime ON exams(startTime);
-''')
+    -- 6. Sync Metadata Table (stores baseline versions)
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
 
-# 2. Bundled Categories
-categories = [
-    ('cat-1', 'বিষয়ভিত্তিক প্রস্তুতি', 'বাংলা, ইংরেজি, গণিত ও সাধারণ জ্ঞান', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('cat-2', 'জব সলিউশন পরীক্ষা', 'বিসিএস ও অন্যান্য সরকারি চাকরির বিগত প্রশ্ন', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('cat-3', 'সাল ভিত্তিক জব সলিউশন', 'সাল অনুযায়ী সমাধানকৃত পরীক্ষার প্রশ্নব্যাংক', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('cat-4', 'সাম্প্রতিক বিষয়াবলী', 'সাম্প্রতিক দেশীয় ও আন্তর্জাতিক গুরুত্বপূর্ণ ঘটনাবলি', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z')
-]
-cursor.executemany('INSERT INTO categories (id, name, subHeading, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)', categories)
+    -- Indices
+    CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category);
+    CREATE INDEX IF NOT EXISTS idx_questions_subcategory ON questions(subcategory);
+    CREATE INDEX IF NOT EXISTS idx_questions_date ON questions(date);
+    CREATE INDEX IF NOT EXISTS idx_questions_version ON questions(version);
+    CREATE INDEX IF NOT EXISTS idx_subcategories_parent ON subcategories(parentCategory);
+    CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
+    CREATE INDEX IF NOT EXISTS idx_exams_type ON exams(type);
+    CREATE INDEX IF NOT EXISTS idx_exams_startTime ON exams(startTime);
+    ''')
 
-# 3. Bundled Subcategories
-subcategories = [
-    ('sub_bcs_52', '৫২তম বিসিএস', 'জব সলিউশন পরীক্ষা', 'cat-2', '2026-08-10', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bcs_46', '৪৬তম বিসিএস', 'জব সলিউশন পরীক্ষা', 'cat-2', '2026-06-15', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bcs_45', '৪৫তম বিসিএস', 'জব সলিউশন পরীক্ষা', 'cat-2', '2023-05-19', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bcs_44', '৪৪তম বিসিএস', 'জব সলিউশন পরীক্ষা', 'cat-2', '2022-05-27', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bcs_38', '৩৮তম বিসিএস', 'জব সলিউশন পরীক্ষা', 'cat-2', '2017-12-29', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_primary_2023', 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩', 'জব সলিউশন পরীক্ষা', 'cat-2', '2023-12-08', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bank_2024', 'ব্যাংক রিক্রুটমেন্ট ২০২৪', 'জব সলিউশন পরীক্ষা', 'cat-2', '2024-03-01', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bb_2026', 'বাংলাদেশ ব্যাংক সহকারী পরিচালক ২০২৬', 'জব সলিউশন পরীক্ষা', 'cat-2', '2026-07-20', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_bangla', 'বাংলা', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_english', 'ইংরেজি', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_gk', 'সাধারণ জ্ঞান', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_math', 'গণিত', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_science', 'সাধারণ বিজ্ঞান', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_ict', 'কম্পিউটার ও তথ্যপ্রযুক্তি', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_geo', 'ভূগোল ও পরিবেশ', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_mental', 'মানসিক দক্ষতা', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_ethics', 'নৈতিকতা ও মূল্যবোধ', 'বিষয়ভিত্তিক প্রস্তুতি', 'cat-1', '', '', '', '', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
-    ('sub_ca_18aug', '১৮ আগস্ট ২০২৬', 'সাম্প্রতিক বিষয়াবলী', 'cat-4', '2026-08-18', '', '', '', '2026-08-18T00:00:00Z', '2026-08-18T00:00:00Z'),
-    ('sub_ca_15aug', '১৫ আগস্ট ২০২৬', 'সাম্প্রতিক বিষয়াবলী', 'cat-4', '2026-08-15', '', '', '', '2026-08-15T00:00:00Z', '2026-08-15T00:00:00Z')
-]
-cursor.executemany('''
-INSERT INTO subcategories (id, name, parentCategory, parentCategoryId, date, subHeading, text, details, createdAt, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-''', subcategories)
+    # 4. Insert Categories
+    cat_rows = []
+    for c in active_cats:
+        c_id = str(c.get("id") or "")
+        name = str(c.get("name") or "")
+        sub_heading = c.get("subHeading")
+        created_at = str(c.get("createdAt") or now_iso)
+        updated_at = str(c.get("updatedAt") or now_iso)
+        ver = int(c.get("version") or versions["categoryVersion"])
+        cat_rows.append((c_id, name, sub_heading, created_at, updated_at, ver, None))
 
-# 4. Bundled Questions
-questions = [
-    (
-        'q_bcs52_1',
-        '৫২তম বিসিএস প্রিলিমিনারি: "ইউনেস্কো" কর্তৃক ঘোষিত বাংলাদেশের সর্বশেষ বিশ্ব ঐতিহ্য বা ইনট্যাঞ্জিবল কালচারাল হেরিটেজ কোনটি?',
-        'সুন্দরবন', 'শীতলপাটি বুনন', 'ঢাকার রিকশা ও রিকশাচিত্র', 'বাউল গান',
-        'Option C',
-        '২০২৩ সালের ডিসেম্বরে ইউনেস্কোর ইনট্যাঞ্জিবল কালচারাল হেরিটেজ হিসেবে "ঢাকার রিকশা ও রিকশাচিত্র" তালিকাভুক্ত হয়।',
-        'সাধারণ জ্ঞান', '৫২তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-08-10T00:00:00Z', '2026-08-10', '2026-08-10T00:00:00Z'
-    ),
-    (
-        'q_bcs52_2',
-        '৫২তম বিসিএস: Choose the correct preposition: "He has a great passion ___ classical literature."',
-        'for', 'in', 'with', 'to',
-        'Option A',
-        '"Passion for" একটি উপযুক্ত prepositional phrase যার অর্থ কোনো কিছুর প্রতি প্রবল অনুরাগ বা আকর্ষণ।',
-        'ইংরেজি', '৫২তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-08-10T00:00:00Z', '2026-08-10', '2026-08-10T00:00:00Z'
-    ),
-    (
-        'q_bb2026_1',
-        'বাংলাদেশ ব্যাংক এডি ২০২৬: বাংলাদেশের কেন্দ্রীয় ব্যাংকের বৈদেশিক মুদ্রার রিজার্ভ সুরক্ষায় ব্যবহৃত বর্তমান হিসাব পদ্ধতির নাম কী?',
-        'Gross Reserves', 'BPM6 (Balance of Payments and International Investment Position Manual 6th edition)', 'IMF SDR Method', 'Forex Net Assets',
-        'Option B',
-        'আইএমএফ (IMF)-এর নীতিমালা অনুযায়ী বাংলাদেশ ব্যাংক BPM6 হিসাব পদ্ধতি অনুসরণ করে প্রকৃত বা নিট বৈদেশিক মুদ্রার রিজার্ভ প্রকাশ করে।',
-        'সাধারণ জ্ঞান', 'বাংলাদেশ ব্যাংক সহকারী পরিচালক ২০২৬',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-20T00:00:00Z', '2026-07-20', '2026-07-20T00:00:00Z'
-    ),
-    (
-        'q_bcs46_1',
-        '৪৬তম বিসিএস: চর্যাপদের কোন কবি সর্বাধিক পদ রচনা করেছেন?',
-        'লুইপা', 'ভুসুকুপা', 'কাহ্নপা', 'শবরপা',
-        'Option C',
-        'চর্যাপদের পদকর্তাদের মধ্যে কাহ্নপা সর্বাধিক ১৩টি পদ (মতান্তরে ১২টি) রচনা করেছেন। ভুসুকুপা রচনা করেন ৮টি পদ।',
-        'বাংলা', '৪৬তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-06-15T00:00:00Z', '2026-06-15', '2026-06-15T00:00:00Z'
-    ),
-    (
-        'q1',
-        'বাংলাদেশের স্বাধীনতা সুবর্ণজয়ন্তী বা ৫০ বছর পূর্তি কোন বছর পালিত হয়?',
-        '২০২০', '২০২১', '২০২২', '২০২৩',
-        'Option B',
-        'বাংলাদেশ ১৯৭১ সালের ২৬শে মার্চ স্বাধীনতা ঘোষণা করে। এর সুবর্ণজয়ন্তী ৫০ বছর পূর্তি ২০২১ সালে উদযাপন করা হয়।',
-        'সাধারণ জ্ঞান', '৪৫তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2023-05-19', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q2',
-        'Which is the correct spelling?',
-        'Lieutenant', 'Lieutanent', 'Leiutenant', 'Lieutennant',
-        'Option A',
-        'সঠিক বানান হল Lieutenant (লেফটেন্যান্ট)। এটি ফরাসি ভাষা থেকে আগত একটি শব্দ যার অর্থ প্রতিনিধি বা সহকারী।',
-        'ইংরেজি', 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2023-12-08', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q3',
-        'বাংলা সাহিত্যের প্রথম সার্থক উপন্যাস কোনটি?',
-        'পদ্মরাগ', 'কপালকুণ্ডলা', 'দুর্গেশনন্দিনী', 'বিষবৃক্ষ',
-        'Option C',
-        'বঙ্কিমচন্দ্র চট্টোপাধ্যায় রচিত "দুর্গেশনন্দিনী" (১৮৬৫) বাংলা সাহিত্যের প্রথম সার্থক উপন্যাস হিসেবে স্বীকৃত।',
-        'বাংলা', '৪৪তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2022-05-27', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q4',
-        'পদ্মা সেতুর দৈর্ঘ্য কত কিলোমিটার?',
-        '৬.১৫ কিলোমিটার', '৫.১৫ কিলোমিটার', '৭.১৫ কিলোমিটার', '৬.৫০ কিলোমিটার',
-        'Option A',
-        'পদ্মা বহুমুখী সেতুর মোট দৈর্ঘ্য ৬.১৫ কিলোমিটার (৬,১৫০ মিটার)। এটি মুন্সীগঞ্জের লৌহজংয়ের সাথে শরীয়তপুর ও মাদারীপুরকে সংযুক্ত করেছে।',
-        'সাধারণ জ্ঞান', 'ব্যাংক রিক্রুটমেন্ট ২০২৪',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2024-03-01', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q5',
-        'Change the voice: "Who is calling me?"',
-        'By whom am I called?', 'By whom was I called?', 'By whom am I being called?', 'By whom are you called?',
-        'Option C',
-        'Present continuous tense-এর "Who" যুক্ত Active voice-কে Passive করতে হলে: By whom + auxiliary verb (am) + object-এর subject (I) + being + verb-এর past participle (called) + ?',
-        'ইংরেজি', '৪৫তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2023-05-19', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q6',
-        'বাংলা বর্ণমালায় অর্ধমাত্রার বর্ণ কয়টি?',
-        '৩২টি', '৮টি', '১০টি', '৬টি',
-        'Option B',
-        'বাংলা বর্ণমালায় মোট অর্ধমাত্রার বর্ণ ৮টি (ঋ, খ, গ, ণ, থ, ধ, প, শ)। পূর্ণমাত্রার বর্ণ ৩২টি এবং মাত্রাহীন বর্ণ ১০টি।',
-        'বাংলা', 'প্রাথমিক শিক্ষক নিয়োগ ২০২৩',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2023-12-08', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q7',
-        'একনেক (ECNEC) এর সভাপতি কে?',
-        'অর্থন্ত্রী', 'পরিকল্পনামন্ত্রী', 'প্রধানমন্ত্রী', 'রাষ্ট্রপতি',
-        'Option C',
-        'জাতীয় অর্থনৈতিক পরিষদের নির্বাহী কমিটি (ECNEC)-এর সভাপতি হলেন গণপ্রজাতন্ত্রী বাংলাদেশ সরকারের মাননীয় প্রধানমন্ত্রী।',
-        'সাধারণ জ্ঞান', '৪৪তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2022-05-27', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q8',
-        'What is the synonym of "Adjourn"?',
-        'Postpone', 'Continue', 'Begin', 'Accelerate',
-        'Option A',
-        'Adjourn অর্থ মূলত স্থগিত রাখা বা মুলতুবি করা। এর সঠিক সমার্থক শব্দ হলো Postpone (স্থগিত করা)।',
-        'ইংরেজি', 'ব্যাংক রিক্রুটমেন্ট ২০২৪',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2024-03-01', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q9',
-        '"গীতাঞ্জলি" কাব্যের জন্য রবীন্দ্রনাথ ঠাকুর কত সালে নোবেল পুরস্কার লাভ করেন?',
-        '১৯১১', '১৯১২', '১৯১৩', '১৯১৪',
-        'Option C',
-        'রবীন্দ্রনাথ ঠাকুর ১৯১৩ সালে সাহিত্য নোবেল পুরস্কার লাভ করেন। তিনি এশীয়দের মধ্যে প্রথম এই গৌরব অর্জন করেন।',
-        'বাংলা', '৩৮তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2017-12-29', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q10',
-        'বাংলাদেশের একমাত্র প্রবাল দ্বীপ কোনটি?',
-        'সন্দ্বীপ', 'হাতিয়া', 'সেন্টমার্টিন', 'কুতুবদিয়া',
-        'Option C',
-        'সেন্টমার্টিন দ্বীপ বাংলাদেশের একমাত্র সামুদ্রিক প্রবাল দ্বীপ (Coral Island)। এটি টেকনাফ উপজেলার অন্তর্গত বঙ্গোপসাগরের বুকে অবস্থিত।',
-        'সাধারণ জ্ঞান', '৩৮তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-28T00:00:00Z', '2026-07-28', '2026-07-28T00:00:00Z'
-    ),
-    (
-        'q11',
-        'Identify the noun of the word "Beautiful":',
-        'Beautify', 'Beauty', 'Beautifully', 'Beauties',
-        'Option B',
-        'Beautiful হল Adjective, এর Noun ফর্ম হল Beauty। Beautify হল Verb এবং Beautifully হল Adverb।',
-        'ইংরেজি', '৪৪তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2022-05-27', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'q12',
-        'কবর নাটকটি কার রচনা?',
-        'জসীমউদ্দীন', 'মুনীর চৌধুরী', 'রবীন্দ্রনাথ ঠাকুর', 'নজরুল ইসলাম',
-        'Option B',
-        'ভাষা আন্দোলনের পটভূমিতে মুনীর চৌধুরী ১৯৫৩ সালে ঢাকা কেন্দ্রীয় কারাগারে বন্দি অবস্থায় "কবর" নাটকটি রচনা করেন। উল্লেখ্য, কবর কবিতাটি রচনা করেন জসীমউদ্দীন।',
-        'বাংলা', '৪৫তম বিসিএস',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-07-15T00:00:00Z', '2023-05-19', '2026-07-15T00:00:00Z'
-    ),
-    (
-        'ca_q1',
-        'সাম্প্রতিক সময়ে বাংলাদেশ ব্যাংকের নীতি অনুযায়ী নতুন রেপো রেট কত শতাংশ নির্ধারণ করা হয়েছে?',
-        '৮.৫০%', '৯.০০%', '১০.০০%', '৭.৫০%',
-        'Option C',
-        'মুদ্রাস্ফীতি নিয়ন্ত্রণ ও ঋণ প্রবাহ স্থিতিশীল করতে বাংলাদেশ ব্যাংক সাম্প্রতিক মুদ্রানীতিতে পলিসি রেট বা রেপো হার ১০ শতাংশে উন্নীত করেছে।',
-        'সাম্প্রতিক বিষয়াবলী', '১৮ আগস্ট ২০২৬',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-08-18T00:00:00Z', '2026-08-18', '2026-08-18T00:00:00Z'
-    ),
-    (
-        'ca_q2',
-        'আন্তর্জাতিক সৌর জোট (International Solar Alliance - ISA)-এর সদর দপ্তর কোন দেশে অবস্থিত?',
-        'ফ্রান্স', 'ভারত (গুরুগ্রাম)', 'সুইজারল্যান্ড', 'যুক্তরাষ্ট্র',
-        'Option B',
-        'আন্তর্জাতিক সৌর জোট (ISA)-এর সদর দপ্তর ভারতের হরিয়ানা রাজ্যের গুরুগ্রামে (Gurugram) অবস্থিত। এটি বাংলাদেশসহ বিশ্বব্যাপী নবায়নযোগ্য সৌর শক্তি সম্প্রসারণে কাজ করছে।',
-        'সাম্প্রতিক বিষয়াবলী', '১৮ আগস্ট ২০২৬',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-08-18T00:00:00Z', '2026-08-18', '2026-08-18T00:00:00Z'
-    ),
-    (
-        'ca_q3',
-        'বঙ্গবন্ধু শেখ মুজিবুর রহমান টানেল কোন নদীর তলদেশে নির্মিত হয়েছে?',
-        'মেঘনা নদী', 'পদ্মা নদী', 'কর্ণফুলী নদী', 'যমুনা নদী',
-        'Option C',
-        'বঙ্গবন্ধু টানেল চট্টগ্রামের কর্ণফুলী নদীর তলদেশে নির্মিত দক্ষিণ এশিয়ার প্রথম আন্ডারওয়াটার রোড টানেল।',
-        'সাম্প্রতিক বিষয়াবলী', '১৫ আগস্ট ২০২৬',
-        '[]', '[]', '', '', '', '', '[]', '', '', '[]', '[]', '[]',
-        '2026-08-15T00:00:00Z', '2026-08-15', '2026-08-15T00:00:00Z'
-    )
-]
+    cursor.executemany('''
+    INSERT OR REPLACE INTO categories (id, name, subHeading, createdAt, updatedAt, version, deletedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', cat_rows)
 
-cursor.executemany('''
-INSERT INTO questions (
-  id, text, optionA, optionB, optionC, optionD, correct, explanation,
-  category, subcategory, categoriesJson, subcategoriesJson,
-  csvCategory, csvSubcategory, examCategory, examSubcategory,
-  examPathJson, subjectCategory, subjectSubcategory, subjectPathJson,
-  commentsJson, userExplanationsJson, createdAt, date, updatedAt
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-''', questions)
+    # 5. Insert Subcategories
+    sub_rows = []
+    for s in active_subs:
+        s_id = str(s.get("id") or "")
+        name = str(s.get("name") or "")
+        parent_cat = str(s.get("parentCategory") or "")
+        parent_cat_id = s.get("parentCategoryId")
+        date_val = s.get("date")
+        sub_heading = s.get("subHeading")
+        text_val = s.get("text")
+        details_val = s.get("details")
+        created_at = str(s.get("createdAt") or now_iso)
+        updated_at = str(s.get("updatedAt") or now_iso)
+        ver = int(s.get("version") or versions["subcategoryVersion"])
+        sub_rows.append((
+            s_id, name, parent_cat, parent_cat_id, date_val, sub_heading,
+            text_val, details_val, created_at, updated_at, ver, None
+        ))
 
-conn.commit()
-conn.close()
+    cursor.executemany('''
+    INSERT OR REPLACE INTO subcategories (
+      id, name, parentCategory, parentCategoryId, date, subHeading,
+      text, details, createdAt, updatedAt, version, deletedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', sub_rows)
 
-# Copy to all target paths
-import shutil
-src = 'public/assets/databases/questions.db'
-for p in db_paths:
-    if p != src:
-        shutil.copyfile(src, p)
+    # 6. Insert Questions
+    q_rows = []
+    for q in active_qs:
+        q_id = str(q.get("id") or "")
+        text_val = str(q.get("text") or "")
+        opt_a = str(q.get("optionA") or "")
+        opt_b = str(q.get("optionB") or "")
+        opt_c = str(q.get("optionC") or "")
+        opt_d = str(q.get("optionD") or "")
+        correct = str(q.get("correct") or "Option A")
+        explanation = q.get("explanation")
+        cat = str(q.get("category") or "")
+        subcat = str(q.get("subcategory") or "")
 
-print('✅ Bundled SQLite database generated successfully at:')
-for p in db_paths:
-    print(f'   - {p} ({os.path.getsize(p)} bytes)')
+        def to_json_str(field_val):
+            if isinstance(field_val, list):
+                return json.dumps(field_val)
+            if isinstance(field_val, str) and field_val.strip().startswith("["):
+                return field_val
+            return json.dumps([])
+
+        cats_json = to_json_str(q.get("categories"))
+        subs_json = to_json_str(q.get("subcategories"))
+        csv_cat = q.get("csvCategory") or ""
+        csv_subcat = q.get("csvSubcategory") or ""
+        exam_cat = q.get("examCategory") or ""
+        exam_subcat = q.get("examSubcategory") or ""
+        exam_path_json = to_json_str(q.get("examPath"))
+        subj_cat = q.get("subjectCategory") or ""
+        subj_subcat = q.get("subjectSubcategory") or ""
+        subj_path_json = to_json_str(q.get("subjectPath"))
+        comments_json = to_json_str(q.get("comments"))
+        user_expl_json = to_json_str(q.get("userExplanations"))
+
+        created_at = str(q.get("createdAt") or now_iso)
+        date_val = str(q.get("date") or "")
+        updated_at = str(q.get("updatedAt") or now_iso)
+        ver = int(q.get("version") or versions["questionVersion"])
+
+        q_rows.append((
+            q_id, text_val, opt_a, opt_b, opt_c, opt_d, correct, explanation,
+            cat, subcat, cats_json, subs_json,
+            csv_cat, csv_subcat, exam_cat, exam_subcat,
+            exam_path_json, subj_cat, subj_subcat, subj_path_json,
+            comments_json, user_expl_json, created_at, date_val, updated_at,
+            ver, None
+        ))
+
+    cursor.executemany('''
+    INSERT OR REPLACE INTO questions (
+      id, text, optionA, optionB, optionC, optionD, correct, explanation,
+      category, subcategory, categoriesJson, subcategoriesJson,
+      csvCategory, csvSubcategory, examCategory, examSubcategory,
+      examPathJson, subjectCategory, subjectSubcategory, subjectPathJson,
+      commentsJson, userExplanationsJson, createdAt, date, updatedAt,
+      version, deletedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', q_rows)
+
+    # 7. Insert Baseline Versions into sync_meta
+    cursor.executemany('''
+    INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?)
+    ''', [
+        ('categoryVersion', str(versions["categoryVersion"])),
+        ('subcategoryVersion', str(versions["subcategoryVersion"])),
+        ('questionVersion', str(versions["questionVersion"])),
+        ('updatedAt', now_iso)
+    ])
+
+    conn.commit()
+    conn.close()
+
+    # 8. Copy to all required asset locations
+    for p in db_paths:
+        if p != primary_db_path:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            shutil.copyfile(primary_db_path, p)
+
+    print('✅ Bundled SQLite database generated successfully from live Firestore data.')
+    print('📦 Output locations:')
+    for p in db_paths:
+        if os.path.exists(p):
+            print(f'   - {p} ({os.path.getsize(p)} bytes)')
+
+if __name__ == '__main__':
+    generate_database()
