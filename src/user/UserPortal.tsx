@@ -352,6 +352,8 @@ interface UserPortalProps {
   directExamId?: string | null;
   onRegisterPrompt?: () => void;
   onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
+  onLoadCoursesOnDemand?: () => Promise<void> | void;
+  onLoadRoutinesOnDemand?: () => Promise<void> | void;
 }
 
 // Helper to calculate merit rank (+71 to actual rank, +296 to actual users)
@@ -518,7 +520,9 @@ export default function UserPortal({
   showMcqCount = true,
   directExamId,
   onRegisterPrompt,
-  onFetchQuestionsLazy
+  onFetchQuestionsLazy,
+  onLoadCoursesOnDemand,
+  onLoadRoutinesOnDemand
 }: UserPortalProps) {
   // Navigation
   const [activeTab, setActiveTab] = useState<'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
@@ -595,19 +599,19 @@ export default function UserPortal({
   // Course & Enrollment States
   const [selectedCourseForEnrollment, setSelectedCourseForEnrollment] = useState<Course | null>(null);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
-    const userKey = user?.userId || user?.phone || 'guest';
+    const userKey = user?.userId || user?.phone || 'user';
     const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch { return []; }
     }
     return [];
   });
-  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('enrolled');
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('all');
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [expandedSyllabusMap, setExpandedSyllabusMap] = useState<Record<string, boolean>>({});
 
   const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
-    const userKey = user?.userId || user?.phone || 'guest';
+    const userKey = user?.userId || user?.phone || 'user';
     let updated: string[];
     if (enrolledCourseIds.includes(courseId)) {
       showCustomConfirm(
@@ -636,7 +640,7 @@ export default function UserPortal({
   };
 
   const handleEnrollSuccess = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
-    const userKey = user?.userId || user?.phone || 'guest';
+    const userKey = user?.userId || user?.phone || 'user';
     const courseId = enrollmentData.courseId;
     const updated = enrolledCourseIds.includes(courseId) ? enrolledCourseIds : [...enrolledCourseIds, courseId];
     
@@ -892,14 +896,14 @@ export default function UserPortal({
   }, []);
 
   const userReadSet = useMemo(() => {
-    const userKey = user.phone || user.email || user.name || 'guest';
+    const userKey = user.phone || user.email || user.name || user.userId || 'user';
     return new Set(getUserAllReadQuestionIds(userKey));
-  }, [user.phone, user.email, user.name, readQuestionsTick]);
+  }, [user.phone, user.email, user.name, user.userId, readQuestionsTick]);
 
   // Auto-record reading progress when questions are viewed in Reader mode
   useEffect(() => {
     if (!readerModeActive || !readerQuestions || readerQuestions.length === 0) return;
-    const userKey = user.phone || user.email || user.name || 'guest';
+    const userKey = user.phone || user.email || user.name || user.userId || 'user';
     const filteredReaderQuestions = readerQuestions.filter(q => {
       if (readerSource === 'job' && readerCategoryFilter !== 'সব প্রশ্ন') {
         const normFilter = readerCategoryFilter.trim().toLowerCase();
@@ -1094,7 +1098,7 @@ export default function UserPortal({
   }, [courses, routines, enrolledCourseIds]);
 
   useEffect(() => {
-    const userKey = user?.userId || user?.phone || 'guest';
+    const userKey = user?.userId || user?.phone || 'user';
     const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
     if (saved) {
       try {
@@ -1270,77 +1274,34 @@ export default function UserPortal({
   const [includeMarkTableInPDF, setIncludeMarkTableInPDF] = useState(true);
   const [resultFilterMode, setResultFilterMode] = useState<'user' | 'admin'>('user');
 
-  // Guest Limitation Guard & Helpers
-  const checkGuestAccess = (featureName: string = 'এই ফিচারটি'): boolean => {
-    if (user.isGuest) {
-      showCustomAlert(
-        `🔒 রেজিস্ট্রেশন প্রয়োজন!\n\nগেস্ট (Guest) হিসেবে ক্যাটাগরি ও সাব-ক্যাটাগরি দেখা গেলেও MCQ পড়া ও পরীক্ষা দেওয়ার জন্য বিনামূল্যে অ্যাকাউন্ট রেজিস্ট্রেশন সম্পন্ন করুন।\n\n${featureName} অ্যাক্সেস করতে রেজিস্ট্রেশন করুন।`,
-        () => {
-          if (onRegisterPrompt) onRegisterPrompt();
-        },
-        '🔒 রেজিস্ট্রেশন প্রয়োজন',
-        true,
-        'রেজিস্ট্রেশন করুন',
-        'এখন নয়'
-      );
-      return false;
-    }
-    return true;
-  };
-
   const handleTabSelect = (tab: 'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
-    if (user.isGuest && (tab === 'bookmarks' || tab === 'routines')) {
-      checkGuestAccess(
-        tab === 'bookmarks' ? 'সেভকৃত বুকমার্কস' : 'একাডেমিক রুটিন'
-      );
-      return;
-    }
     if (tab === 'recentJob') {
       setSelectedRecentJobMonth(null);
       setRecentExamSearchQuery('');
     }
     if (tab === 'courses') {
-      setSelectedCourseFilter(enrolledCourseIds.length > 0 ? 'enrolled' : 'all');
+      setSelectedCourseFilter('all');
+      if (onLoadCoursesOnDemand) {
+        onLoadCoursesOnDemand();
+      }
     }
     if (tab === 'routines') {
       setSelectedRoutineCourseId(null);
       setSelectedRoutineItem(null);
+      if (onLoadRoutinesOnDemand) {
+        onLoadRoutinesOnDemand();
+      }
     }
     setActiveTab(tab);
   };
 
-  const renderGuestLockCard = (title: string, description: string) => (
-    <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 text-white rounded-3xl p-6 sm:p-10 my-4 shadow-xl border border-indigo-700/50 text-center space-y-5 animate-fade-in max-w-2xl mx-auto">
-      <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-3xl mx-auto backdrop-blur-sm border border-white/20 shadow-md">
-        🔒
-      </div>
-      <div className="space-y-2.5">
-        <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider bg-amber-500/20 px-3 py-1 rounded-full border border-amber-400/30 inline-block">
-          গেস্ট মোড সীমাবদ্ধতা
-        </span>
-        <h3 className="text-base sm:text-xl font-extrabold text-white">
-          {title}
-        </h3>
-        <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed max-w-lg mx-auto">
-          {description}
-        </p>
-      </div>
-      <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center items-center">
-        <button
-          onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
-          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <span>🚀</span> বিনামূল্যে রেজিস্ট্রেশন সম্পূর্ণ করুন
-        </button>
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className="w-full sm:w-auto px-6 py-3.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm rounded-2xl transition-all border border-white/20 cursor-pointer"
-        >
-          এখন নয়
-        </button>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    if (activeTab === 'courses' && onLoadCoursesOnDemand) {
+      onLoadCoursesOnDemand();
+    } else if (activeTab === 'routines' && onLoadRoutinesOnDemand) {
+      onLoadRoutinesOnDemand();
+    }
+  }, [activeTab, onLoadCoursesOnDemand, onLoadRoutinesOnDemand]);
 
   // Stack Unwinding Engine: unwinds one layer of navigation/state stack.
   const handleStackUnwind = (): boolean => {
@@ -1482,14 +1443,6 @@ export default function UserPortal({
   }, [directExamId, liveExams]);
 
   const handleDownloadPDF = (attempt: Attempt, includeMarkCalcTable: boolean = true) => {
-    if (user.isGuest) {
-      showCustomAlert(
-        'গেস্ট (Guest) হিসেবে পরীক্ষা দিলে PDF ডাউনলোড করার স্যোগ নেই।\n\nবিনামূল্যে একটি একাউন্ট রেজিস্ট্রেশন করলে আপনার সকল আগের পরীক্ষার উত্তরপত্র ও PDF রেজাল্ট কার্ড ডাউনলোড করতে পারবেন!',
-        undefined,
-        '🔒 PDF ডাউনলোডে সীমাবদ্ধতা'
-      );
-      return;
-    }
     const attemptQuestions = 
       (attempt.activeQuizQuestions && attempt.activeQuizQuestions.length > 0)
         ? attempt.activeQuizQuestions
@@ -2705,7 +2658,6 @@ export default function UserPortal({
 
   // Quiz helper functions
   const startPrepExam = async (categoryName: string, overrideQuestions?: Question[]) => {
-    if (!checkGuestAccess('বিষয়ভিত্তিক প্রস্তুতি পরীক্ষা')) return;
     let filtered = overrideQuestions || questions.filter(q => 
       q.category === categoryName || (q.categories && q.categories.includes(categoryName))
     );
@@ -2731,7 +2683,6 @@ export default function UserPortal({
   };
 
   const startJobExam = async (subcatName: string, overrideQuestions?: Question[]) => {
-    if (!checkGuestAccess('জব সলিউশন পরীক্ষা')) return;
     let filtered = overrideQuestions || questions.filter(q => 
       q.subcategory === subcatName || (q.subcategories && q.subcategories.includes(subcatName))
     );
@@ -2904,7 +2855,6 @@ export default function UserPortal({
   };
 
   const startCustomPracticeExam = () => {
-    if (!checkGuestAccess('কাস্টম পরীক্ষা ও প্র্যাকটিস এক্সাম')) return;
     setSetupModalOpen(false);
     const pool = getCustomExamQuestionsPool();
 
@@ -3375,7 +3325,7 @@ export default function UserPortal({
     const finishedAttempt: Attempt = {
       id: `attempt_${Date.now()}`,
       userPhone: user.phone || user.email || '',
-      username: user.name || 'গেস্ট পরীক্ষার্থী',
+      username: user.name || 'শিক্ষার্থী',
       examId: quizExamId,
       examTitle: quizTitle,
       score: finalScore,
@@ -3387,8 +3337,7 @@ export default function UserPortal({
       userSelectedAnswers,
       activeQuizQuestions: quizQuestions,
       submittedAt: new Date().toISOString(),
-      userEmail: user.email || user.phone || '',
-      isGuestAttempt: user.isGuest || false
+      userEmail: user.email || user.phone || ''
     };
 
     onSaveAttempt(finishedAttempt);
@@ -3423,7 +3372,6 @@ export default function UserPortal({
   };
 
   const handleOpenReaderMode = async (type: 'prep' | 'job', customValue?: string, overrideQuestions?: Question[]) => {
-    if (!checkGuestAccess('MCQ পড়া ও সমাধান ভিউ')) return;
     let filtered: Question[] = [];
     const targetValue = customValue || (type === 'prep' ? prepCategory : jobSubcategory);
     
@@ -4141,30 +4089,6 @@ export default function UserPortal({
   return (
     <div className={`flex flex-col gap-3 min-h-[90vh] max-w-full overflow-x-hidden ${!quizActive && !readerModeActive ? 'pb-24' : ''}`}>
       {renderModals()}
-      
-      {/* Guest Mode Banner if active */}
-      {user.isGuest && !quizActive && !readerModeActive && (
-        <div className="bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 text-white px-3 sm:px-4 py-2.5 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs animate-fade-in">
-          <div className="flex items-center gap-2 font-bold">
-            <span className="bg-amber-300 text-slate-950 px-2 py-0.5 rounded-md text-[10px] uppercase font-black tracking-wider">গেস্ট মোড (Guest)</span>
-            <span>ইমেইল: <strong className="text-amber-200 font-extrabold">{user.email}</strong></span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
-              className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
-            >
-              <span>🚀</span> একাউন্ট তৈরি (রেজিস্ট্রেশন) করুন
-            </button>
-            <button
-              onClick={onLogout}
-              className="px-2.5 py-1 bg-black/20 hover:bg-black/30 text-white font-extrabold text-[11px] rounded-lg transition cursor-pointer"
-            >
-              বের হন
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Top Floating Mini Header */}
       {!quizActive && !readerModeActive && (
@@ -5155,7 +5079,7 @@ export default function UserPortal({
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   <div 
-                    onClick={() => { if (!checkGuestAccess('কাস্টম পরীক্ষা ও প্র্যাকটিস এক্সাম')) return; setRevisionMode(false); setSetupModalOpen(true); }}
+                    onClick={() => { setRevisionMode(false); setSetupModalOpen(true); }}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-indigo-50/50 to-indigo-100/30 border-indigo-150 hover:shadow transition flex flex-col justify-between min-h-[85px]"
                   >
                     <span className="text-xl">⏱️</span>
@@ -5415,10 +5339,6 @@ export default function UserPortal({
                     {/* Read / Practice button */}
                     <button
                       onClick={async () => {
-                        if (user.isGuest) {
-                          checkGuestAccess(`"${exam.name}" - জব সলিউশন MCQ সমাধান`);
-                          return;
-                        }
                         let examQuestions = exam.questions;
                         if (onFetchQuestionsLazy) {
                           const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
@@ -5452,10 +5372,6 @@ export default function UserPortal({
                     {/* Mock Test button */}
                     <button
                       onClick={async () => {
-                        if (user.isGuest) {
-                          checkGuestAccess(`"${exam.name}" - কাস্টম মক টেস্ট`);
-                          return;
-                        }
                         let pool = exam.questions;
                         if (onFetchQuestionsLazy) {
                           const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
@@ -5917,10 +5833,6 @@ export default function UserPortal({
                                     key={`prep-leaf-${idx}-${item}`}
                                     id={`prep-leaf-btn-${idx}`}
                                     onClick={async () => {
-                                      if (user.isGuest) {
-                                        checkGuestAccess(`"${item}" - অধ্যায়ভিত্তিক MCQ সমাধান`);
-                                        return;
-                                      }
                                       let subcatQuestions = getQuestionsForPrepNode(item, false);
                                       if (onFetchQuestionsLazy) {
                                         const fetched = await onFetchQuestionsLazy({ category: item, subcategory: item });
@@ -5956,11 +5868,6 @@ export default function UserPortal({
                                       <div className="flex flex-col">
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-black text-slate-900 text-[13.5px] sm:text-[15px] group-hover:text-indigo-950 transition-colors">{item}</span>
-                                          {user.isGuest && (
-                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
-                                              🔒 লক করা
-                                            </span>
-                                          )}
                                         </div>
                                         {itemSubHeading && (
                                           <span className={`text-[10.5px] sm:text-[11.5px] ${theme.subText} font-extrabold mt-0.5`}>{itemSubHeading}</span>
@@ -5991,15 +5898,11 @@ export default function UserPortal({
                                           </span>
                                         </div>
                                       </div>
-                                      {user.isGuest ? (
-                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                          🔒 আনলক করুন
-                                        </span>
-                                      ) : showMcqCount ? (
+                                      {showMcqCount && (
                                         <span className="text-[10px] bg-slate-900 text-white font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
-                                      ) : null}
+                                      )}
                                     </div>
                                   </button>
                                 );
@@ -6205,10 +6108,6 @@ export default function UserPortal({
                                     key={`job-leaf-${idx}-${item}`}
                                     id={`job-leaf-btn-${idx}`}
                                     onClick={async () => {
-                                      if (user.isGuest) {
-                                        checkGuestAccess(`"${item}" - জব সলিউশন MCQ সমাধান`);
-                                        return;
-                                      }
                                       let subcatQuestions = getQuestionsForJobNode(item, false);
                                       if (onFetchQuestionsLazy) {
                                         const fetched = await onFetchQuestionsLazy({ subcategory: item });
@@ -6242,11 +6141,6 @@ export default function UserPortal({
                                       <div className="flex flex-col">
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-extrabold text-gray-800 text-[13px] sm:text-[15px]">{item}</span>
-                                          {user.isGuest && (
-                                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300/80 font-black px-2 py-0.5 rounded-md text-[10px] shadow-2xs">
-                                              🔒 লক করা
-                                            </span>
-                                          )}
                                         </div>
                                         {subObj?.subHeading && (
                                           <span className="text-[10px] sm:text-[11px] text-emerald-700 font-bold mt-0.5">{subObj.subHeading}</span>
@@ -6277,15 +6171,11 @@ export default function UserPortal({
                                           </span>
                                         </div>
                                       </div>
-                                      {user.isGuest ? (
-                                        <span className="text-[10px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs flex items-center gap-1">
-                                          🔒 আনলক করুন
-                                        </span>
-                                      ) : showMcqCount ? (
+                                      {showMcqCount && (
                                         <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
-                                      ) : null}
+                                      )}
                                     </div>
                                   </button>
                                 );
@@ -6611,10 +6501,6 @@ export default function UserPortal({
                                               key={`year-exam-${exam.id}-${exIdx}`}
                                               id={`year-exam-btn-${exam.id}`}
                                               onClick={async () => {
-                                                if (user.isGuest) {
-                                                  checkGuestAccess(`"${exam.name}" - সালভিত্তিক প্রশ্ন সমাধান`);
-                                                  return;
-                                                }
                                                 let examQuestions = getQuestionsForJobNode(exam.name, false);
                                                 if (onFetchQuestionsLazy) {
                                                   const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
@@ -6650,11 +6536,6 @@ export default function UserPortal({
                                                     <span className="font-extrabold text-slate-900 text-[12.5px] sm:text-[13.5px] group-hover:text-amber-900 transition-colors truncate">
                                                       {exam.name}
                                                     </span>
-                                                    {user.isGuest && (
-                                                      <span className="inline-flex items-center gap-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-black px-1.5 py-0.2 rounded text-[9px] shadow-2xs">
-                                                        🔒 লক
-                                                      </span>
-                                                    )}
                                                   </div>
                                                   <div className="flex items-center gap-2 text-[9.5px] text-slate-500 font-semibold mt-0.5">
                                                     <span className="flex items-center gap-0.5 text-amber-800 font-bold">
@@ -6686,15 +6567,11 @@ export default function UserPortal({
                                                   </span>
                                                 </div>
 
-                                                {user.isGuest ? (
-                                                  <span className="text-[9px] bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded shadow-2xs">
-                                                    🔒 আনলক
-                                                  </span>
-                                                ) : showMcqCount ? (
+                                                {showMcqCount && (
                                                   <span className="text-[9px] bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
                                                     {exam.qCount.toLocaleString('bn-BD')} MCQ
                                                   </span>
-                                                ) : null}
+                                                )}
                                               </div>
                                             </button>
                                           );
@@ -6717,12 +6594,6 @@ export default function UserPortal({
 
           {/* VIEW: BOOKMARKS */}
           {activeTab === 'bookmarks' && (() => {
-            if (user.isGuest) {
-              return renderGuestLockCard(
-                'বুকমার্ক করা প্রশ্ন লক করা আছে',
-                'গেস্ট (Guest) হিসেবে সেভ করা প্রশ্ন ফিচার ব্যবহার করা সম্ভব নয়। গুরুত্বপূর্ণ প্রশ্ন সেভ ও পরবর্তীতে প্র্যাকটিস করতে রেজিস্ট্রেশন করুন।'
-              );
-            }
             const selectedItemsList = selectedBookmarkFolder ? groupedBookmarks[selectedBookmarkFolder] || [] : [];
             const hasBookmarks = bookmarks.length > 0;
 
@@ -7099,14 +6970,6 @@ export default function UserPortal({
                             {alreadyTaken && (
                               <button
                                 onClick={() => {
-                                  if (user.isGuest) {
-                                    showCustomAlert(
-                                      'গেস্ট (Guest) হিসেবে চ্যালেঞ্জ পোস্ট করা যাবে না।\n\nবিনামূল্যে একাউন্ট রেজিস্ট্রেশন করলে আপনার স্কোর দিয়ে বন্ধ্দের ফেসব্কে চ্যালেঞ্জ জানাতে পারবেন!',
-                                      undefined,
-                                      '🔒 রেজিস্ট্রেশন প্রয়োজন'
-                                    );
-                                    return;
-                                  }
                                   const userAttempt = attempts.find(a => a.examId === exam.id);
                                   const userScore = userAttempt ? userAttempt.score : 0;
                                   setChallengeModalData({ exam, score: userScore });
@@ -7152,12 +7015,6 @@ export default function UserPortal({
 
           {/* VIEW: EXAM RESULTS */}
           {activeTab === 'results' && (() => {
-            if (user.isGuest && !selectedAttemptForView) {
-              return renderGuestLockCard(
-                'পরীক্ষার ফলাফল ও সমাধান লক করা আছে',
-                'গেস্ট (Guest) হিসেবে দেওয়া পরীক্ষার উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন সম্পন্ন করুন।'
-              );
-            }
             const userCreatedAttempts = attempts.filter(a => a.examId.startsWith('prep_') || a.examId.startsWith('job_') || a.examId.startsWith('custom_') || a.examId.startsWith('demo_'));
             const adminCreatedAttempts = attempts.filter(a => !a.examId.startsWith('prep_') && !a.examId.startsWith('job_') && !a.examId.startsWith('custom_') && !a.examId.startsWith('demo_'));
             const activeFilteredAttempts = resultFilterMode === 'user' ? userCreatedAttempts : adminCreatedAttempts;
@@ -7228,28 +7085,12 @@ export default function UserPortal({
                         />
                         <span>📚 বিষয়ভিত্তিক মার্কিং টেবিল (PDF)</span>
                       </label>
-                      {user.isGuest ? (
-                        <button
-                          onClick={() => {
-                            showCustomAlert(
-                              'গেস্ট হিসেবে পরীক্ষা দিলে PDF ডাউনলোড করা যায় না।\n\nবিনামূল্যে রেজিস্ট্রেশন করলে প্রশ্নপত্র, ব্যাখ্যামূলক সমাধান ও PDF নামাতে পারবেন!',
-                              undefined,
-                              '🔒 PDF ডাউনলোডে সীমাবদ্ধতা'
-                            );
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer hover:bg-slate-300 transition"
-                          title="রেজিস্ট্রেশন করুন PDF ডাউনলোডের জন্য"
-                        >
-                          <span>🔒</span> PDF নামান (রেজিস্ট্রেশন প্রয়োজন)
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleDownloadPDF(selectedAttemptForView, includeMarkTableInPDF)}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                        >
-                          📄 PDF নামান
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDownloadPDF(selectedAttemptForView, includeMarkTableInPDF)}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        📄 PDF নামান
+                      </button>
                       <button
                         onClick={() => setSelectedAttemptForView(null)}
                         className="px-3 py-1.5 rounded-xl border font-bold text-xs hover:bg-gray-50 transition cursor-pointer text-gray-600"
@@ -7479,44 +7320,7 @@ export default function UserPortal({
                   })()}
 
                   {/* Detailed Analysis / Question Review */}
-                  {user.isGuest ? (
-                    <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 text-white rounded-3xl p-6 sm:p-8 my-6 shadow-xl border border-indigo-700/50 text-center space-y-4 animate-fade-in">
-                      <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-3xl mx-auto backdrop-blur-sm border border-white/20">
-                        🔒
-                      </div>
-                      <div className="space-y-2 max-w-lg mx-auto">
-                        <h4 className="font-black text-xl sm:text-2xl text-amber-300">
-                          বিস্তারিত ফলাফল ও ব্যাখ্যামূলক সমাধান আনলক করুন!
-                        </h4>
-                        <p className="text-xs sm:text-sm text-indigo-150 leading-relaxed font-medium">
-                          আপনি <strong>গেস্ট (Guest)</strong> হিসেবে এই পরীক্ষায় অংশ নিয়েছেন। আপনার অর্জিত প্রাপ্ত নম্বর: <strong className="text-amber-300 text-base">{selectedAttemptForView.score}</strong>।
-                        </p>
-                        <p className="text-[11.5px] sm:text-xs text-indigo-200/90 leading-relaxed">
-                          প্রতিটি প্রশ্নের সঠিক উত্তর, বিষয়ভিত্তিক ব্যাখ্যা এবং PDF রেজাল্ট শিট ডাউনলোড করতে একটি ফ্রি একাউন্ট তৈরি (রেজিস্ট্রেশন) করুন।
-                        </p>
-                      </div>
-
-                      <div className="bg-white/10 p-4 rounded-2xl border border-white/10 text-left max-w-md mx-auto space-y-2 text-xs text-indigo-100">
-                        <div className="font-extrabold text-amber-200 text-xs flex items-center gap-1.5">
-                          <span>✨</span> একাউন্ট রেজিস্ট্রেশন করার বিশেষ স্বিধা:
-                        </div>
-                        <ul className="space-y-1.5 text-[11px] text-indigo-150 list-disc list-inside">
-                          <li>এই ইমেইলে দেওয়া পূর্বের সকল গেস্ট পরীক্ষার ফলাফল স্বয়ংক্রিয়ভাবে পুরোফাইলে যুক্ত হবে।</li>
-                          <li>পরীক্ষার বিস্তারিত উত্তরপত্র ও ব্যাখ্যামূলক সমাধান দেখতে পাবেন।</li>
-                          <li>অফিশিয়াল PDF রেজাল্ট শিট যেকোনো সময় ডাউনলোড করতে পারবেন।</li>
-                        </ul>
-                      </div>
-
-                      <div className="pt-2">
-                        <button
-                          onClick={() => onRegisterPrompt ? onRegisterPrompt() : onLogout()}
-                          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm rounded-2xl shadow-lg hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"
-                        >
-                          <span>🚀</span> রেজিস্ট্রেশন সম্পূর্ণ করুন (ফ্রি)
-                        </button>
-                      </div>
-                    </div>
-                  ) : attemptQuestions.length === 0 ? (
+                  {attemptQuestions.length === 0 ? (
                     <p className="text-center py-8 text-gray-400 font-bold text-xs">
                       এই পরীক্ষার কোনো সংরক্ষিত প্রশ্ন পাওয়া যায়নি।
                     </p>
@@ -8291,12 +8095,6 @@ export default function UserPortal({
 
           {/* VIEW: ACADEMIC ROUTINES */}
           {activeTab === 'routines' && (
-            user.isGuest ? (
-              renderGuestLockCard(
-                'একাডেমিক রুটিন লক করা আছে',
-                'গেস্ট (Guest) হিসেবে শুধুমাত্র "লাইভ পরীক্ষা" দেওয়া যায়। একাডেমিক পরীক্ষার সময়সূচী ও রুটিন দেখতে অ্যাকাউন্ট রেজিস্ট্রেশন করুন।'
-              )
-            ) : (
             <div className="bg-white border border-gray-100 py-3 px-1 sm:px-4 sm:py-4 rounded-3xl shadow-sm flex flex-col gap-3 text-xs animate-fade-in">
               {/* PAGE 1 (Level 1): COURSE MAIN CARDS LIST */}
               {!selectedRoutineCourseId && (
@@ -9039,7 +8837,6 @@ export default function UserPortal({
                 );
               })()}
             </div>
-            )
           )}
 
           {/* VIEW: CURRENT AFFAIRS */}
@@ -9134,7 +8931,7 @@ export default function UserPortal({
 
                       <div className="flex items-center justify-center sm:justify-start gap-1 mt-0.5">
                         <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md font-mono">
-                          🆔 অটো ইউজার আইডি: {user.userId || 'MDH-GUEST'}
+                          🆔 অটো ইউজার আইডি: {user.userId || 'USER'}
                         </span>
                       </div>
 
@@ -9475,6 +9272,97 @@ export default function UserPortal({
                 className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
               >
                 পরীক্ষা শুরু করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- POPUP: CUSTOM CONFIRMATION DIALOG -------------------- */}
+      {customConfirm && customConfirm.open && (
+        <div 
+          id="custom-confirm-modal" 
+          className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col gap-4 text-xs border border-gray-100 animate-scale-up">
+            <h3 className="font-extrabold text-sm sm:text-base text-gray-900 border-b border-gray-100 pb-2.5 flex items-center gap-2">
+              <span className="text-amber-500 text-base">⚠️</span>
+              <span>{customConfirm.title || 'নিশ্চিতকরণ'}</span>
+            </h3>
+            <p className="text-gray-700 whitespace-pre-line leading-relaxed font-medium text-xs sm:text-sm">
+              {customConfirm.message}
+            </p>
+            <div className="flex gap-2.5 mt-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                id="custom-confirm-cancel-btn"
+                onClick={() => {
+                  if (customConfirm.onCancel) {
+                    customConfirm.onCancel();
+                  }
+                  setCustomConfirm(null);
+                }}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                id="custom-confirm-ok-btn"
+                onClick={() => {
+                  const cb = customConfirm.onConfirm;
+                  setCustomConfirm(null);
+                  if (cb) {
+                    cb();
+                  }
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-rose-200/50 transition cursor-pointer"
+              >
+                হ্যাঁ, নিশ্চিত
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- POPUP: CUSTOM ALERT DIALOG -------------------- */}
+      {customAlert && customAlert.open && (
+        <div 
+          id="custom-alert-modal" 
+          className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+        >
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col gap-4 text-xs border border-gray-100 animate-scale-up">
+            <h3 className="font-extrabold text-sm sm:text-base text-gray-900 border-b border-gray-100 pb-2.5 flex items-center gap-2">
+              <span className="text-indigo-600 text-base">📢</span>
+              <span>{customAlert.title || 'তথ্য'}</span>
+            </h3>
+            <p className="text-gray-700 whitespace-pre-line leading-relaxed font-medium text-xs sm:text-sm">
+              {customAlert.message}
+            </p>
+            <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
+              {customAlert.showCancel && (
+                <button
+                  type="button"
+                  id="custom-alert-cancel-btn"
+                  onClick={() => setCustomAlert(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  {customAlert.cancelText || 'বাতিল'}
+                </button>
+              )}
+              <button
+                type="button"
+                id="custom-alert-ok-btn"
+                onClick={() => {
+                  const cb = customAlert.onConfirm;
+                  setCustomAlert(null);
+                  if (cb) {
+                    cb();
+                  }
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer"
+              >
+                {customAlert.confirmText || 'ঠিক আছে'}
               </button>
             </div>
           </div>

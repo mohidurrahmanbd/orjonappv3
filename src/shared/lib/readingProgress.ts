@@ -9,9 +9,9 @@ export interface RoutineReadingProgress {
 }
 
 const getCleanUserKey = (userKey?: string): string => {
-  if (!userKey) return 'guest';
+  if (!userKey) return 'user';
   const clean = userKey.trim().toLowerCase();
-  return clean.replace(/[^a-z0-9_@.-]/gi, '_') || 'guest';
+  return clean.replace(/[^a-z0-9_@.-]/gi, '_') || 'user';
 };
 
 export const getRoutineStorageKey = (userKey: string | undefined, routineId: string): string => {

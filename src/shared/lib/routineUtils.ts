@@ -577,3 +577,59 @@ export const calculateSubjectWiseAnalysis = (
     };
   });
 };
+
+/**
+ * Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
+ */
+export const isJobSolutionVariation = (name: string): boolean => {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === 'জব সলিউশন পরীক্ষা' ||
+    normalized === 'জব সলউশন পরিক্ষা' ||
+    normalized === 'জব সলউশন পরীক্ষা' ||
+    normalized === 'জব সলিউশন ব্যাংক' ||
+    normalized === 'জব সリューション ব্যাংক' ||
+    normalized === 'job solution' ||
+    normalized === 'job solutions' ||
+    normalized === 'জব সলিউশন' ||
+    normalized === 'জব সলউশন' ||
+    normalized === 'জব সリューション'
+  );
+};
+
+/**
+ * Helper to detect variations/typos of "সাল ভিত্তিক জব সলিউশন"
+ */
+export const isYearJobSolutionVariation = (name: string): boolean => {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === 'সাল ভিত্তিক জব সলিউশন' ||
+    normalized === 'সাল ভিক্তিক জব সলউশন' ||
+    normalized === 'সাল ভিত্তিক জব সল্যুশন' ||
+    normalized === 'সাল ভিত্তিক জব সলিউশন ব্যাংক' ||
+    normalized === 'সাল ভিত্তিক জব সলিউশন পরীক্ষা' ||
+    normalized === 'year-based job solution' ||
+    normalized === 'year job solution' ||
+    normalized === 'সাল ভিত্তিক' ||
+    normalized === 'সাল ভিক্তিক'
+  );
+};
+
+/**
+ * Helper to detect variations/typos of "সাম্প্রতিক বিষয়াবলী"
+ */
+export const isCurrentAffairVariation = (name: string): boolean => {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'সাম্প্রতিক বিষয়' ||
+    normalized === 'current affairs' ||
+    normalized === 'current affair' ||
+    normalized === 'সাম্প্রতিক'
+  );
+};

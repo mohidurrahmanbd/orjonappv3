@@ -6,6 +6,7 @@ import {
   getQuestionsByCategory, 
   getQuestionsBySubcategory,
   insertQuestions,
+  deleteQuestions,
   getCategoryById,
   insertCategories,
   getSubcategoryById,
@@ -14,8 +15,8 @@ import {
 import { 
   getQuestionsFromIDB, 
   upsertQuestionsToIDB, 
-  saveCategoriesToIDB, 
-  saveSubcategoriesToIDB, 
+  upsertCategoriesToIDB, 
+  upsertSubcategoriesToIDB, 
   normalizeQuestion 
 } from '../indexedDB';
 import { 
@@ -131,9 +132,9 @@ async function fetchMissingQuestionsFromFirestore(missingIds: string[]): Promise
  * 4. Local cache update (IndexedDB + SQLite)
  */
 export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Promise<Question[]> {
+  let localMatches: Question[] = [];
   try {
     const boundLimit = target.limitCount || 100;
-    let localMatches: Question[] = [];
 
     const sub = (target.subcategoryName || target.subcategory || '').trim();
     const cat = (target.categoryName || target.category || '').trim();
@@ -246,32 +247,30 @@ export async function loadScopedQuestionsLazy(target: ScopedQuestionQuery): Prom
       });
     }
 
-    // 4. Local Cache Update
-    if (fetchedFromFirestore.length > 0) {
-      await insertQuestions(fetchedFromFirestore);
-      await upsertQuestionsToIDB(fetchedFromFirestore, []);
+    // 4. Local Cache Update & Reconciliation (Firestore is authoritative for requested scope)
+    const fetchedIdSet = new Set(fetchedFromFirestore.map(q => String(q.id)));
+    const removedIds = localMatches
+      .map(q => String(q.id))
+      .filter(id => !fetchedIdSet.has(id));
 
-      // Merge results
-      const map = new Map<string, Question>();
-      localMatches.forEach(q => map.set(String(q.id), q));
-      fetchedFromFirestore.forEach(q => map.set(String(q.id), q));
-      const combined = Array.from(map.values());
-
-      // Update local question version if server version was newer
-      if (isServerVersionNewer) {
-        const localVersions = await getLocalSyncVersions();
-        localVersions.questionVersion = serverQuestionVersion;
-        localVersions.updatedAt = new Date().toISOString();
-        await saveLocalSyncVersions(localVersions);
-      }
-
-      return combined;
+    // Delete stale or deleted scoped records from SQLite and IndexedDB
+    if (removedIds.length > 0) {
+      await deleteQuestions(removedIds);
+      await upsertQuestionsToIDB([], removedIds);
     }
 
-    return localMatches;
+    // Cache active records locally in SQLite and IndexedDB
+    if (fetchedFromFirestore.length > 0) {
+      await insertQuestions(fetchedFromFirestore);
+      await upsertQuestionsToIDB(fetchedFromFirestore, removedIds);
+    }
+
+    // Scoped lazy loader must NEVER advance global questionVersion sync checkpoint.
+    // Return the authoritative active records for the requested scope.
+    return fetchedFromFirestore;
   } catch (err) {
     console.warn('[HybridLoader] loadScopedQuestionsLazy notice (using local cache):', err);
-    return [];
+    return localMatches.filter(q => q && !q.isDeleted && !q.deletedAt);
   }
 }
 
@@ -308,10 +307,12 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
           const snap = await getDoc(doc(db, 'categories', catId));
           if (snap.exists()) {
             const data = snap.data();
-            const fetchedCat: CategoryItem = { id: snap.id, name: data.name, subHeading: data.subHeading };
-            resultCategories.push(fetchedCat);
-            await insertCategories([fetchedCat]);
-            await saveCategoriesToIDB([fetchedCat]);
+            if (!data.isDeleted && !data.deletedAt) {
+              const fetchedCat: CategoryItem = { id: snap.id, name: data.name, subHeading: data.subHeading };
+              resultCategories.push(fetchedCat);
+              await insertCategories([fetchedCat]);
+              await upsertCategoriesToIDB([fetchedCat]);
+            }
           }
         } catch (e) {
           console.warn(`[HybridLoader] Category fetch error for ${catId}:`, e);
@@ -330,20 +331,22 @@ export async function loadDataForExamOrRoutineOrCourse(target: {
           const snap = await getDoc(doc(db, 'subcategories', subId));
           if (snap.exists()) {
             const data = snap.data();
-            const fetchedSub: SubcategoryItem = {
-              id: snap.id,
-              name: data.name,
-              parentCategory: data.parentCategory || '',
-              parentCategoryId: data.parentCategoryId,
-              date: data.date,
-              subHeading: data.subHeading,
-              text: data.text,
-              details: data.details,
-              createdAt: data.createdAt
-            };
-            resultSubcategories.push(fetchedSub);
-            await insertSubcategories([fetchedSub]);
-            await saveSubcategoriesToIDB([fetchedSub]);
+            if (!data.isDeleted && !data.deletedAt) {
+              const fetchedSub: SubcategoryItem = {
+                id: snap.id,
+                name: data.name,
+                parentCategory: data.parentCategory || '',
+                parentCategoryId: data.parentCategoryId,
+                date: data.date,
+                subHeading: data.subHeading,
+                text: data.text,
+                details: data.details,
+                createdAt: data.createdAt
+              };
+              resultSubcategories.push(fetchedSub);
+              await insertSubcategories([fetchedSub]);
+              await upsertSubcategoriesToIDB([fetchedSub]);
+            }
           }
         } catch (e) {
           console.warn(`[HybridLoader] Subcategory fetch error for ${subId}:`, e);

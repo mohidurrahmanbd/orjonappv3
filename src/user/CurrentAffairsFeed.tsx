@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { SubcategoryItem, Question } from '../shared/types';
-import { isCurrentAffairVariation } from '../app/App';
+import { isCurrentAffairVariation } from '../shared/lib/routineUtils';
 import CurrentAffairsMCQModal from '../shared/components/CurrentAffairsMCQModal';
 import { 
   Globe, Calendar, ChevronRight, ChevronDown, ChevronUp, 

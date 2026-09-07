@@ -1,5 +1,4 @@
 import { CategoryItem, SubcategoryItem, Question } from '../../types';
-import { INITIAL_QUESTIONS } from '../../data';
 
 export const BUNDLED_CATEGORIES: CategoryItem[] = [
   { id: 'cat-1', name: 'বিষয়ভিত্তিক প্রস্তুতি', subHeading: 'বাংলা, ইংরেজি, গণিত ও সাধারণ জ্ঞান' },
@@ -33,4 +32,4 @@ export const BUNDLED_SUBCATEGORIES: SubcategoryItem[] = [
   { id: 'sub_ca_15aug', name: '১৫ আগস্ট ২০২৬', parentCategory: 'সাম্প্রতিক বিষয়াবলী', parentCategoryId: 'cat-4', date: '2026-08-15' }
 ];
 
-export const BUNDLED_QUESTIONS: Question[] = INITIAL_QUESTIONS;
+export const BUNDLED_QUESTIONS: Question[] = [];

@@ -103,11 +103,13 @@ export default function CourseEnrollmentModal({
   };
 
   const activeReceiveNumber = useMemo(() => {
-    if (paymentMethod === 'bkash') return paymentSettings.bkashNumber || '01711223344';
-    if (paymentMethod === 'nagad') return paymentSettings.nagadNumber || '01811223344';
-    if (paymentMethod === 'rocket') return paymentSettings.rocketNumber || '01911223344';
+    if (paymentMethod === 'bkash') return (paymentSettings.bkashNumber || '').trim();
+    if (paymentMethod === 'nagad') return (paymentSettings.nagadNumber || '').trim();
+    if (paymentMethod === 'rocket') return (paymentSettings.rocketNumber || '').trim();
     return '';
   }, [paymentMethod, paymentSettings]);
+
+  const hasValidReceiveNumber = Boolean(activeReceiveNumber && activeReceiveNumber.trim().length > 0);
 
   const activeAccountType = useMemo(() => {
     if (paymentMethod === 'bkash') return paymentSettings.bkashType || 'Personal';
@@ -117,7 +119,7 @@ export default function CourseEnrollmentModal({
   }, [paymentMethod, paymentSettings]);
 
   const handleCopyNumber = () => {
-    if (!activeReceiveNumber) return;
+    if (!hasValidReceiveNumber) return;
     const cleanNumber = activeReceiveNumber.replace(/\s+/g, '');
     navigator.clipboard.writeText(cleanNumber);
     setCopiedNumber(true);
@@ -128,6 +130,10 @@ export default function CourseEnrollmentModal({
     e.preventDefault();
     
     if (!isFree) {
+      if (!hasValidReceiveNumber) {
+        alert('পেমেন্ট নাম্বার এখনো সেট করা হয়নি। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।');
+        return;
+      }
       if (!senderPhone.trim()) {
         alert('অনুগ্রহ করে প্রেরকের মোবাইল নম্বর প্রদান করুন!');
         return;
@@ -383,40 +389,50 @@ export default function CourseEnrollmentModal({
                     </span>
                   </div>
 
-                  {/* Payment Number Highlight & Copy */}
-                  <div className="flex items-center justify-between bg-white/90 border border-amber-200 px-3 py-2 rounded-xl">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-slate-500">টাকা পাঠানোর নম্বর ({activeAccountType}):</span>
-                      <span className="font-mono text-sm font-black text-slate-900 tracking-wider">
-                        {activeReceiveNumber}
-                      </span>
+                  {!hasValidReceiveNumber ? (
+                    <div className="bg-amber-100/70 border border-amber-300 px-3.5 py-3 rounded-xl text-center">
+                      <p className="text-xs font-bold text-amber-900">
+                        পেমেন্ট নাম্বার এখনো সেট করা হয়নি।
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleCopyNumber}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 ${
-                        copiedNumber 
-                          ? 'bg-emerald-600 text-white' 
-                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
-                      }`}
-                    >
-                      {copiedNumber ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>কপি হয়েছে!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>নম্বর কপি</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Payment Number Highlight & Copy */}
+                      <div className="flex items-center justify-between bg-white/90 border border-amber-200 px-3 py-2 rounded-xl">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-slate-500">টাকা পাঠানোর নম্বর ({activeAccountType}):</span>
+                          <span className="font-mono text-sm font-black text-slate-900 tracking-wider">
+                            {activeReceiveNumber}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyNumber}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+                            copiedNumber 
+                              ? 'bg-emerald-600 text-white' 
+                              : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                          }`}
+                        >
+                          {copiedNumber ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>কপি হয়েছে!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>নম্বর কপি</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
 
-                  <p className="text-slate-700 text-[11px]">
-                    মোট <strong className="text-indigo-950 font-black">৳{finalPrice}</strong> টাকা উপরের নম্বরে <strong>Send Money / Payment</strong> করুন এবং নিচে প্রেরকের নম্বর ও ট্রানজেকশন আইডি (TrxID) লিখুন।
-                  </p>
+                      <p className="text-slate-700 text-[11px]">
+                        মোট <strong className="text-indigo-950 font-black">৳{finalPrice}</strong> টাকা উপরের নম্বরে <strong>Send Money / Payment</strong> করুন এবং নিচে প্রেরকের নম্বর ও ট্রানজেকশন আইডি (TrxID) লিখুন।
+                      </p>
+                    </>
+                  )}
 
                   {paymentSettings.instructions && (
                     <p className="text-[10.5px] text-amber-800 italic bg-amber-100/40 p-2 rounded-lg border border-amber-200/40">
@@ -464,11 +480,13 @@ export default function CourseEnrollmentModal({
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (!isFree && !hasValidReceiveNumber)}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-black py-3 rounded-2xl transition shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <span>প্রসেসিং হচ্ছে...</span>
+                ) : !isFree && !hasValidReceiveNumber ? (
+                  <span>পেমেন্ট নাম্বার সেট করার পর এনরোল করুন</span>
                 ) : (
                   <>
                     <GraduationCap className="w-4 h-4" />

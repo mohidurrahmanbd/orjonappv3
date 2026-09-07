@@ -1,4 +1,4 @@
-import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { Course, LiveExam, Routine, Attempt, User } from '../types';
 import { incrementGlobalVersion } from './sync/versionSyncService';
@@ -50,6 +50,61 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
     return 0;
   }
 
+  // 1. Immediately skip any locally deleted/tombstoned items (0 Firestore reads)
+  let activeItems = items.filter(item => {
+    if (!item) return false;
+    const raw: any = item;
+    if (raw.isDeleted === true || raw.deletedAt) {
+      return false;
+    }
+    return true;
+  });
+
+  if (activeItems.length === 0) {
+    return 0;
+  }
+
+  // 2. For protected collections (questions, courses, routines, live_exams),
+  // query Firestore for active tombstones in a single batched query (reads = count of deleted docs only).
+  // If Firestore has an active tombstone for that ID -> SKIP upload to prevent resurrection of deleted records.
+  const isProtectedCollection = collectionName === 'questions' || collectionName === 'courses' || collectionName === 'routines' || collectionName === 'live_exams';
+  if (isProtectedCollection) {
+    try {
+      const tombstoneQuery = query(
+        collection(db, collectionName),
+        where('isDeleted', '==', true)
+      );
+      const tombstoneSnap = await getDocs(tombstoneQuery);
+      if (!tombstoneSnap.empty) {
+        const tombstonedIds = new Set<string>();
+        tombstoneSnap.forEach(docSnap => {
+          tombstonedIds.add(docSnap.id);
+        });
+
+        const prevCount = activeItems.length;
+        activeItems = activeItems.filter(item => {
+          const docId = String((item as any)?.id || '');
+          if (docId && tombstonedIds.has(docId)) {
+            console.log(`[Migration] Skipping tombstoned ${collectionName} item: ${docId}`);
+            return false;
+          }
+          return true;
+        });
+
+        const skipped = prevCount - activeItems.length;
+        if (skipped > 0 && onProgress) {
+          onProgress(`[Tombstone Guard] ${skipped} টি মুছে ফেলা ${collectionName} রিস্টোর থেকে স্কিপ করা হয়েছে...`);
+        }
+      }
+    } catch (tombstoneErr) {
+      console.warn(`[Migration] Notice checking tombstones for ${collectionName}:`, tombstoneErr);
+    }
+  }
+
+  if (activeItems.length === 0) {
+    return 0;
+  }
+
   const versionKey = getVersionKeyForCollection(collectionName);
   let newVersion: number | null = null;
   if (versionKey) {
@@ -61,8 +116,8 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
   const chunkSize = 400;
   let successCount = 0;
 
-  for (let i = 0; i < items.length; i += chunkSize) {
-    const chunk = items.slice(i, i + chunkSize);
+  for (let i = 0; i < activeItems.length; i += chunkSize) {
+    const chunk = activeItems.slice(i, i + chunkSize);
     const batch = writeBatch(db);
 
     chunk.forEach((item, index) => {
@@ -112,7 +167,7 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
     await batch.commit();
     successCount += chunk.length;
     if (onProgress) {
-      onProgress(`${collectionName}: ${successCount}/${items.length} টি ডকুমেন্ট মাইগ্রেট করা হয়েছে...`);
+      onProgress(`${collectionName}: ${successCount}/${activeItems.length} টি ডকুমেন্ট মাইগ্রেট করা হয়েছে...`);
     }
   }
 
@@ -339,10 +394,12 @@ export async function fetchQuestionsFromFirestore(): Promise<any[]> {
       const docs: any[] = [];
       snap.forEach(d => {
         const data = d.data();
-        docs.push({
-          ...data,
-          id: data.id || d.id
-        });
+        if (!data.isDeleted && !data.deletedAt) {
+          docs.push({
+            ...data,
+            id: data.id || d.id
+          });
+        }
       });
       return docs;
     }
@@ -468,10 +525,12 @@ export async function fetchCollectionFromFirestore<T = any>(colName: string): Pr
       const docs: T[] = [];
       snap.forEach(d => {
         const data = d.data();
-        docs.push({
-          ...data,
-          id: data.id || d.id
-        } as T);
+        if (!data.isDeleted && !data.deletedAt) {
+          docs.push({
+            ...data,
+            id: data.id || d.id
+          } as T);
+        }
       });
       return docs;
     }
@@ -567,6 +626,44 @@ export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[
 export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colName: string, items: T[], idPrefix: string = 'doc'): Promise<boolean> {
   if (!items || items.length === 0) return true;
   try {
+    // 1. Immediately skip locally deleted/tombstoned items (0 Firestore reads)
+    let activeItems = items.filter(item => {
+      if (!item) return false;
+      const raw: any = item;
+      if (raw.isDeleted === true || raw.deletedAt) {
+        return false;
+      }
+      return true;
+    });
+
+    if (activeItems.length === 0) return true;
+
+    // 2. Query Firestore for active tombstones in a single batched query
+    const isProtectedCollection = colName === 'questions' || colName === 'courses' || colName === 'routines' || colName === 'live_exams';
+    if (isProtectedCollection) {
+      try {
+        const tombstoneQuery = query(
+          collection(db, colName),
+          where('isDeleted', '==', true)
+        );
+        const tombstoneSnap = await getDocs(tombstoneQuery);
+        if (!tombstoneSnap.empty) {
+          const tombstonedIds = new Set<string>();
+          tombstoneSnap.forEach(docSnap => {
+            tombstonedIds.add(docSnap.id);
+          });
+          activeItems = activeItems.filter(item => {
+            const docId = String((item as any)?.id || '');
+            return !docId || !tombstonedIds.has(docId);
+          });
+        }
+      } catch (tombstoneErr) {
+        console.warn(`[Migration] Notice checking tombstones for ${colName}:`, tombstoneErr);
+      }
+    }
+
+    if (activeItems.length === 0) return true;
+
     const versionKey = getVersionKeyForCollection(colName);
     let newVersion: number | null = null;
     if (versionKey) {
@@ -576,8 +673,8 @@ export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colNam
     }
     const nowIso = new Date().toISOString();
     const chunkSize = 400;
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
+    for (let i = 0; i < activeItems.length; i += chunkSize) {
+      const chunk = activeItems.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach((item, idx) => {
         const docId = String(item.id || `${idPrefix}_${Date.now()}_${i + idx}`);
@@ -669,7 +766,7 @@ export async function syncSingleAttemptToFirestore(attempt: Attempt): Promise<bo
 }
 
 /**
- * Batch saves multiple official attempts (e.g. for guest migration) directly to Firestore
+ * Batch saves multiple official attempts directly to Firestore
  * using writeBatch without downloading the attempts collection (0 reads, N writes).
  */
 export async function syncMultipleAttemptsToFirestore(attempts: Attempt[]): Promise<number> {
@@ -720,13 +817,15 @@ export async function fetchCoursesFromFirestore(): Promise<Course[]> {
       const docs: Course[] = [];
       snap.forEach(d => {
         const data = d.data();
-        const nowIso = new Date().toISOString();
-        docs.push({
-          ...data,
-          id: data.id || d.id,
-          createdAt: data.createdAt || nowIso,
-          updatedAt: data.updatedAt || data.createdAt || nowIso
-        } as Course);
+        if (!data.isDeleted && !data.deletedAt) {
+          const nowIso = new Date().toISOString();
+          docs.push({
+            ...data,
+            id: data.id || d.id,
+            createdAt: data.createdAt || nowIso,
+            updatedAt: data.updatedAt || data.createdAt || nowIso
+          } as Course);
+        }
       });
       return docs;
     }
@@ -873,13 +972,15 @@ export async function fetchLiveExamsFromFirestore(): Promise<LiveExam[]> {
       const docs: LiveExam[] = [];
       snap.forEach(d => {
         const data = d.data();
-        const nowIso = new Date().toISOString();
-        docs.push({
-          ...data,
-          id: data.id || d.id,
-          createdAt: data.createdAt || nowIso,
-          updatedAt: data.updatedAt || data.createdAt || nowIso
-        } as LiveExam);
+        if (!data.isDeleted && !data.deletedAt) {
+          const nowIso = new Date().toISOString();
+          docs.push({
+            ...data,
+            id: data.id || d.id,
+            createdAt: data.createdAt || nowIso,
+            updatedAt: data.updatedAt || data.createdAt || nowIso
+          } as LiveExam);
+        }
       });
       return docs;
     }
@@ -981,13 +1082,15 @@ export async function fetchRoutinesFromFirestore(): Promise<Routine[]> {
       const docs: Routine[] = [];
       snap.forEach(d => {
         const data = d.data();
-        const nowIso = new Date().toISOString();
-        docs.push({
-          ...data,
-          id: data.id || d.id,
-          createdAt: data.createdAt || nowIso,
-          updatedAt: data.updatedAt || data.createdAt || nowIso
-        } as Routine);
+        if (!data.isDeleted && !data.deletedAt) {
+          const nowIso = new Date().toISOString();
+          docs.push({
+            ...data,
+            id: data.id || d.id,
+            createdAt: data.createdAt || nowIso,
+            updatedAt: data.updatedAt || data.createdAt || nowIso
+          } as Routine);
+        }
       });
       return docs;
     }

@@ -4,16 +4,27 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(({mode}) => {
+  const isAdmin = mode === 'admin' || process.env.BUILD_TARGET === 'admin';
+  const isUser = mode === 'user' || process.env.BUILD_TARGET === 'user';
   const isMobile = mode === 'mobile' || process.env.BUILD_TARGET === 'mobile';
-  const outDir = isMobile ? 'dist-mobile' : 'dist';
+  const outDir = isAdmin ? 'dist-admin' : isUser ? 'dist-user' : isMobile ? 'dist-mobile' : 'dist';
+  const isStandalone = isAdmin || isUser || isMobile;
 
   return {
     plugins: [react(), tailwindcss()],
-    base: isMobile ? './' : '/',
+    base: isStandalone ? './' : '/',
     build: {
       outDir,
       emptyOutDir: true,
-      rollupOptions: isMobile ? {
+      rollupOptions: isAdmin ? {
+        input: {
+          main: path.resolve(__dirname, 'index-admin.html'),
+        },
+      } : isUser ? {
+        input: {
+          main: path.resolve(__dirname, 'index-user.html'),
+        },
+      } : isMobile ? {
         input: {
           main: path.resolve(__dirname, 'index-mobile.html'),
         },

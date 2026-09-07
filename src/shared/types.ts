@@ -71,7 +71,6 @@ export interface User {
   lifetimeCorrect: number;
   lifetimeWrong: number;
   createdAt: string;
-  isGuest?: boolean;      // Flag if user is participating as guest
 }
 
 export const generateAutoUserId = (): string => {
@@ -99,8 +98,7 @@ export interface Attempt {
   activeQuizQuestions: Question[]; // Snapshots of questions at that exam
   submittedAt: string;
   updatedAt?: string;
-  userEmail?: string;     // Guest or registered user email
-  isGuestAttempt?: boolean; // Flag indicating if attempt was taken as a guest
+  userEmail?: string;     // User email address
 }
 
 export interface Notice {
@@ -153,11 +151,11 @@ export interface PaymentSettings {
 }
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
-  bkashNumber: '01711223344',
+  bkashNumber: '',
   bkashType: 'Personal',
-  nagadNumber: '01811223344',
+  nagadNumber: '',
   nagadType: 'Personal',
-  rocketNumber: '01911223344',
+  rocketNumber: '',
   rocketType: 'Personal',
   instructions: 'টাকা পাঠানোর পর ট্রানজেকশন আইডি (TrxID) এবং আপনার মোবাইল নম্বর নিচে প্রদান করুন।'
 };

@@ -1,32 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, generateAutoUserId } from '../shared/types';
-import { 
-  INITIAL_QUESTIONS, 
-  INITIAL_NOTICES, 
-  INITIAL_ROUTINES, 
-  INITIAL_LIVE_EXAMS, 
-  INITIAL_USERS,
-  INITIAL_COURSES,
-  INITIAL_COUPONS
-} from '../shared/data';
 import AdminApp from './AdminApp';
 import UserApp from './UserApp';
 import { 
   fetchQuestionsFromFirestore, 
   addQuestionToFirestore, 
   updateQuestionInFirestore, 
-  deleteQuestionFromFirestore, 
   bulkUploadQuestionsToFirestore, 
-  bulkDeleteQuestionsFromFirestore,
   fetchCollectionFromFirestore,
   saveItemToFirestore,
   deleteItemFromFirestore,
-  bulkDeleteItemsFromFirestore,
   syncCollectionToFirestore,
   syncSingleUserToFirestore,
   syncSingleAttemptToFirestore,
   syncMultipleAttemptsToFirestore
 } from '../shared/lib/migration';
+import {
+  softDeleteQuestion,
+  bulkSoftDeleteQuestions,
+  softDeleteCategory,
+  softDeleteSubcategory,
+  bulkSoftDeleteSubcategories,
+  softDeleteCourse,
+  softDeleteLiveExam,
+  softDeleteRoutine
+} from '../shared/lib/sync/versionSyncService';
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
@@ -80,58 +78,16 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../shared/lib/firebase';
+import orjonLogo from '../assets/orjon-logo.png';
 import { verifyAdminClaim } from '../shared/lib/useAdminAuth';
 import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
-// Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
-const isJobSolutionVariation = (name: string): boolean => {
-  if (!name) return false;
-  const normalized = name.trim().toLowerCase();
-  return (
-    normalized === 'জব সলিউশন পরীক্ষা' ||
-    normalized === 'জব সলউশন পরিক্ষা' ||
-    normalized === 'জব সলউশন পরীক্ষা' ||
-    normalized === 'জব সলিউশন ব্যাংক' ||
-    normalized === 'জব সリューション ব্যাংক' ||
-    normalized === 'job solution' ||
-    normalized === 'job solutions' ||
-    normalized === 'জব সলিউশন' ||
-    normalized === 'জব সলউশন' ||
-    normalized === 'জব সリューション'
-  );
-};
-
-// Helper to detect variations/typos of "সাল ভিত্তিক জব সলিউশন"
-const isYearJobSolutionVariation = (name: string): boolean => {
-  if (!name) return false;
-  const normalized = name.trim().toLowerCase();
-  return (
-    normalized === 'সাল ভিত্তিক জব সলিউশন' ||
-    normalized === 'সাল ভিক্তিক জব সলউশন' ||
-    normalized === 'সাল ভিত্তিক জব সল্যুশন' ||
-    normalized === 'সাল ভিত্তিক জব সলিউশন ব্যাংক' ||
-    normalized === 'সাল ভিত্তিক জব সলিউশন পরীক্ষা' ||
-    normalized === 'year-based job solution' ||
-    normalized === 'year job solution' ||
-    normalized === 'সাল ভিত্তিক' ||
-    normalized === 'সাল ভিক্তিক'
-  );
-};
-
-// Helper to detect variations/typos of "সাম্প্রতিক বিষয়াবলী"
-export const isCurrentAffairVariation = (name: string): boolean => {
-  if (!name) return false;
-  const normalized = name.trim().toLowerCase();
-  return (
-    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
-    normalized === 'সাম্প্রতিক বিষয়াবলী' ||
-    normalized === 'সাম্প্রতিক বিষয়' ||
-    normalized === 'সাম্প্রতিক বিষয়' ||
-    normalized === 'current affairs' ||
-    normalized === 'current affair' ||
-    normalized === 'সাম্প্রতিক'
-  );
-};
+import { 
+  isJobSolutionVariation, 
+  isYearJobSolutionVariation, 
+  isCurrentAffairVariation 
+} from '../shared/lib/routineUtils';
+export { isCurrentAffairVariation };
 
 export default function App() {
   // Database States
@@ -145,7 +101,7 @@ export default function App() {
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return INITIAL_COUPONS;
+    return [];
   });
   const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>(() => {
     const saved = localStorage.getItem('orjon_course_enrollments');
@@ -335,12 +291,8 @@ export default function App() {
   const [adminUsernameInput, setAdminUsernameInput] = useState('');
   const [adminForgotQuery, setAdminForgotQuery] = useState('');
 
-  // Guest Live Exam states
+  // Direct Exam Navigation state
   const [directExamId, setDirectExamId] = useState<string | null>(null);
-  const [guestEmailModalOpen, setGuestEmailModalOpen] = useState(false);
-  const [guestExamTarget, setGuestExamTarget] = useState<LiveExam | null>(null);
-  const [guestEmailInput, setGuestEmailInput] = useState('');
-  const [guestError, setGuestError] = useState<string | null>(null);
 
   // Security Session Timeout states
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(null);
@@ -375,75 +327,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlParams);
   }, []);
 
-  useEffect(() => {
-    if (directExamId && !currentUser && liveExams.length > 0) {
-      const targetExam = liveExams.find(e => e.id === directExamId);
-      if (targetExam) {
-        setGuestExamTarget(targetExam);
-        setGuestEmailModalOpen(true);
-      }
-    }
-  }, [directExamId, currentUser, liveExams]);
-
-  const handleStartGuestExam = (exam: LiveExam, email: string) => {
-    const trimmed = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!trimmed || !emailRegex.test(trimmed)) {
-      setGuestError('অনুগ্রহ করে সঠিক ইমেইল এড্রেস প্রদান করুন (যেমন: student@gmail.com)');
-      return;
-    }
-
-    const guestObj: User = {
-      userId: `GUEST-${Date.now().toString(36).toUpperCase()}`,
-      name: `গেস্ট (${trimmed.split('@')[0]})`,
-      phone: trimmed,
-      email: trimmed,
-      gender: 'অন্যান্য',
-      education: 'গেস্ট পরীক্ষার্থী',
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(trimmed)}`,
-      lifetimeAnswered: 0,
-      lifetimeCorrect: 0,
-      lifetimeWrong: 0,
-      createdAt: new Date().toISOString(),
-      isGuest: true
-    };
-
-    setCurrentUser(guestObj);
-    setGuestEmailModalOpen(false);
-    setGuestExamTarget(null);
-    setGuestError(null);
-  };
-
-  const associateGuestAttemptsWithUser = (userObj: User) => {
-    const emailLower = userObj.email?.toLowerCase();
-    if (!emailLower) return;
-
-    const userIdentifier = userObj.phone || userObj.userId || userObj.email;
-    const migratedAttempts: Attempt[] = [];
-    const updatedAttempts = attempts.map(a => {
-      const aEmailLower = a.userEmail?.toLowerCase();
-      const aPhoneLower = a.userPhone?.toLowerCase();
-      if (aEmailLower === emailLower || aPhoneLower === emailLower) {
-        const migrated = {
-          ...a,
-          userPhone: userIdentifier,
-          userEmail: userObj.email,
-          username: userObj.name,
-          isGuestAttempt: false
-        };
-        migratedAttempts.push(migrated);
-        return migrated;
-      }
-      return a;
-    });
-
-    setAttempts(updatedAttempts);
-    localStorage.setItem('orjon_attempts', JSON.stringify(updatedAttempts));
-    if (migratedAttempts.length > 0) {
-      syncMultipleAttemptsToFirestore(migratedAttempts);
-    }
-  };
-
   // 1. Load database on mount with IndexedDB for instant startup & Timestamp-Based Incremental Sync
   useEffect(() => {
     // Fast initial fallback setup
@@ -453,10 +336,10 @@ export default function App() {
       try {
         loadedQ = JSON.parse(storedQ);
       } catch (e) {
-        loadedQ = INITIAL_QUESTIONS;
+        loadedQ = [];
       }
     } else {
-      loadedQ = INITIAL_QUESTIONS;
+      loadedQ = [];
     }
 
     let normalizedQ = loadedQ.map(q => {
@@ -513,7 +396,7 @@ export default function App() {
           setQuestions(dedupedQ);
           localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
           saveQuestionsToIDB(dedupedQ).catch(() => {});
-        } else {
+        } else if (normalizedQ.length > 0) {
           insertSQLiteQuestions(normalizedQ).catch(() => {});
         }
       } catch (sqlErr) {
@@ -528,7 +411,8 @@ export default function App() {
     // ==========================================
     getQuestionsFromIDB().then((idbQuestions) => {
       if (idbQuestions && idbQuestions.length > 0) {
-        const loadedFromIDB = idbQuestions.map(q => {
+        const activeIDBQuestions = idbQuestions.filter(q => q && !q.isDeleted && !q.deletedAt);
+        const loadedFromIDB = activeIDBQuestions.map(q => {
           let cat = q.category || '';
           if (isJobSolutionVariation(cat)) {
             cat = 'জব সলিউশন পরীক্ষা';
@@ -554,13 +438,16 @@ export default function App() {
       console.warn("IndexedDB questions initialization notice:", err);
     });
 
-    // Notices seed (Cache-First)
+    // Notices (Cache-First)
     const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
     if (storedN) {
-      setNotices(JSON.parse(storedN));
+      try {
+        setNotices(JSON.parse(storedN));
+      } catch {
+        setNotices([]);
+      }
     } else {
-      localStorage.setItem('orjon_notices', JSON.stringify(INITIAL_NOTICES));
-      setNotices(INITIAL_NOTICES);
+      setNotices([]);
       fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
         if (fsN && fsN.length > 0) {
           setNotices(fsN);
@@ -577,20 +464,16 @@ export default function App() {
       try {
         setCourses(dedupeCourses(JSON.parse(storedCourses)));
       } catch {
-        setCourses(dedupeCourses(INITIAL_COURSES));
+        setCourses([]);
       }
     } else {
-      localStorage.setItem('orjon_courses', JSON.stringify(dedupeCourses(INITIAL_COURSES)));
-      setCourses(dedupeCourses(INITIAL_COURSES));
+      setCourses([]);
     }
 
     getCoursesFromIDB().then((idbCourses) => {
       if (idbCourses && idbCourses.length > 0) {
         const dedupedC = dedupeCourses(idbCourses);
         setCourses(dedupedC);
-      } else {
-        const localC = storedCourses ? JSON.parse(storedCourses) : INITIAL_COURSES;
-        saveCoursesToIDB(dedupeCourses(localC));
       }
     }).catch(err => {
       console.warn("IndexedDB courses initialization notice:", err);
@@ -604,11 +487,10 @@ export default function App() {
       try {
         setLiveExams(dedupeLiveExams(JSON.parse(storedLE)));
       } catch {
-        setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
+        setLiveExams([]);
       }
     } else {
-      localStorage.setItem('orjon_live_exams', JSON.stringify(dedupeLiveExams(INITIAL_LIVE_EXAMS)));
-      setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
+      setLiveExams([]);
     }
 
     const storedR = localStorage.getItem('orjon_routines') || localStorage.getItem('medha_routines');
@@ -616,87 +498,27 @@ export default function App() {
       try {
         setRoutines(dedupeRoutines(JSON.parse(storedR)));
       } catch {
-        setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+        setRoutines([]);
       }
     } else {
-      localStorage.setItem('orjon_routines', JSON.stringify(dedupeRoutines(INITIAL_ROUTINES)));
-      setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+      setRoutines([]);
     }
 
     Promise.all([getLiveExamsFromIDB(), getRoutinesFromIDB()]).then(([idbLE, idbR]) => {
       if (idbLE && idbLE.length > 0) {
         setLiveExams(dedupeLiveExams(idbLE));
-      } else {
-        const localLE = storedLE ? JSON.parse(storedLE) : INITIAL_LIVE_EXAMS;
-        saveLiveExamsToIDB(dedupeLiveExams(localLE));
       }
 
       if (idbR && idbR.length > 0) {
         setRoutines(dedupeRoutines(idbR));
-      } else {
-        const localR = storedR ? JSON.parse(storedR) : INITIAL_ROUTINES;
-        saveRoutinesToIDB(dedupeRoutines(localR));
       }
     }).catch(err => {
       console.warn("IndexedDB exams initialization notice:", err);
     });
 
-    // ==========================================
-    // 4. BACKGROUND INCREMENTAL SYNC
-    // - Courses & Exams sync incrementally in background
-    // - Questions use version-gated page-level lazy synchronization
-    // ==========================================
-
-    performIncrementalCourseSyncFromFirestore((updatedCourses) => {
-      if (updatedCourses && updatedCourses.length > 0) {
-        const dedupedC = dedupeCourses(updatedCourses);
-        setCourses(dedupedC);
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
-        } catch (e) {
-          console.warn("localStorage quota notice for courses:", e);
-        }
-      }
-    }).catch(err => {
-      console.warn("Background courses incremental sync notice:", err);
-    });
-
-    performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
-      if (updatedLE && updatedLE.length > 0) {
-        const dedupedLE = dedupeLiveExams(updatedLE);
-        setLiveExams(dedupedLE);
-        try {
-          localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
-        } catch (e) {
-          console.warn("localStorage quota notice for live exams:", e);
-        }
-      }
-      if (updatedR && updatedR.length > 0) {
-        const dedupedR = dedupeRoutines(updatedR);
-        setRoutines(dedupedR);
-        try {
-          localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
-        } catch (e) {
-          console.warn("localStorage quota notice for routines:", e);
-        }
-      }
-    }).catch(err => {
-      console.warn("Background exams incremental sync notice:", err);
-    });
-
-    // Background incremental question sync
-    performIncrementalSyncFromFirestore((updatedQuestions) => {
-      if (updatedQuestions && updatedQuestions.length > 0) {
-        setQuestions(prev => {
-          const idMap = new Map<string | number, Question>();
-          prev.forEach(q => idMap.set(String(q.id), q));
-          updatedQuestions.forEach(q => idMap.set(String(q.id), q));
-          return Array.from(idMap.values());
-        });
-      }
-    }).catch(err => {
-      console.warn("Background questions incremental sync notice:", err);
-    });
+    // Phase A: Automatic startup background sync of Courses, Exams, Routines, and Questions
+    // has been removed to eliminate unauthenticated Firestore reads before login.
+    // Sync will be triggered on-demand when the respective Admin tabs are opened.
 
     // Audit logs initial seed (Local Cache)
     const storedAudit = localStorage.getItem('orjon_audit_logs');
@@ -713,36 +535,40 @@ export default function App() {
       try {
         rawUsers = JSON.parse(storedU);
       } catch (e) {
-        rawUsers = INITIAL_USERS;
+        rawUsers = [];
       }
     } else {
-      rawUsers = INITIAL_USERS;
+      rawUsers = [];
     }
 
-    const migratedUsers = rawUsers.map((u, idx) => {
-      const { password, ...rest } = u as any;
-      const updated: User = { ...rest };
-      if (!updated.userId) {
-        updated.userId = `ORJ-${(1000 + idx).toString()}A`;
-      }
-      if (!updated.email) {
-        updated.email = `${updated.phone}@orjon.edu.bd`;
-      }
-      if (updated.emailVerified === undefined) {
-        updated.emailVerified = true;
-      }
-      return updated;
-    });
+    if (rawUsers.length > 0) {
+      const migratedUsers = rawUsers.map((u, idx) => {
+        const { password, ...rest } = u as any;
+        const updated: User = { ...rest };
+        if (!updated.userId) {
+          updated.userId = `ORJ-${(1000 + idx).toString()}A`;
+        }
+        if (!updated.email) {
+          updated.email = `${updated.phone}@orjon.edu.bd`;
+        }
+        if (updated.emailVerified === undefined) {
+          updated.emailVerified = true;
+        }
+        return updated;
+      });
 
-    const userMap = new Map<string, User>();
-    migratedUsers.forEach(u => {
-      const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
-      if (k) userMap.set(k, u);
-    });
-    const dedupedMigratedUsers = Array.from(userMap.values());
+      const userMap = new Map<string, User>();
+      migratedUsers.forEach(u => {
+        const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
+        if (k) userMap.set(k, u);
+      });
+      const dedupedMigratedUsers = Array.from(userMap.values());
 
-    setUsers(dedupedMigratedUsers);
-    localStorage.setItem('orjon_users', JSON.stringify(dedupedMigratedUsers));
+      setUsers(dedupedMigratedUsers);
+      localStorage.setItem('orjon_users', JSON.stringify(dedupedMigratedUsers));
+    } else {
+      setUsers([]);
+    }
 
     // Attempts database (Local Cache)
     const storedAttempts = localStorage.getItem('orjon_attempts') || localStorage.getItem('medha_attempts');
@@ -815,45 +641,6 @@ export default function App() {
         }
       });
     }
-
-    // Ensure default year categories exist if none present under 'সাল ভিত্তিক জব সলিউশন'
-    const defaultYearList = ['২০২৬ সাল', '২০২৫ সাল', '২০২৪ সাল', '২০২৩ সাল', '২০২২ সাল', '২০২১ সাল', '২০২০ সাল', '২০১৯ সাল', '২০১৮ সাল', '২০১৭ সাল', '২০১৬ সাল', '২০১৫ সাল'];
-    defaultYearList.forEach((yr, idx) => {
-      const exists = loadedSubcats.some(s => s.name.trim() === yr && isYearJobSolutionVariation(s.parentCategory));
-      if (!exists) {
-        loadedSubcats.push({
-          id: `subcat-year-seed-${yr}-${idx}`,
-          name: yr,
-          parentCategory: 'সাল ভিত্তিক জব সলিউশন'
-        });
-      }
-    });
-
-    // Ensure default Current Affairs date categories exist if none present
-    const defaultCurrentAffairs = [
-      {
-        id: 'subcat-ca-2026-08-18',
-        name: '১৮ আগস্ট ২০২৬',
-        parentCategory: 'সাম্প্রতিক বিষয়াবলী',
-        date: '2026-08-18',
-        text: `জাতীয় সংসদ ভবনে গুরুত্বপূর্ণ বাজেট অধিবেশন সম্পন্ন হয়েছে।\nবাংলাদেশ ব্যাংক মুদ্রাস্ফীতি নিয়ন্ত্রণে নতুন পলিসি রেপো রেট ১০% ঘোষণা করেছে।\nআন্তর্জাতিক সৌর জোটে (ISA) নতুন সদস্য হিসেবে যুক্ত হয়েছে একাধিক দেশ।\nপ্যারিস অলিম্পিকে সর্বকালের সর্বোচ্চ পদক তালিকা প্রকাশ।`,
-        createdAt: '2026-08-18T10:00:00.000Z'
-      },
-      {
-        id: 'subcat-ca-2026-08-15',
-        name: '১৫ আগস্ট ২০২৬',
-        parentCategory: 'সাম্প্রতিক বিষয়াবলী',
-        date: '2026-08-15',
-        text: `বঙ্গবন্ধু শেখ মুজিবুর রহমান টানেলে দৈনিক যান চলাচলের নতুন রেকর্ড স্থাপিত হয়েছে।\nচাঁদে নতুন অনুসন্ধান মিশনের সফল উৎক্ষেপণ পরিচালনা করেছে নাসা।\nটেস্ট ক্রিকেটে দ্রুততম ৫০০ উইকেটের নতুন বিশ্বরেকর্ড অর্জিত।`,
-        createdAt: '2026-08-15T09:00:00.000Z'
-      }
-    ];
-    defaultCurrentAffairs.forEach(ca => {
-      const exists = loadedSubcats.some(s => s.name.trim() === ca.name && isCurrentAffairVariation(s.parentCategory));
-      if (!exists) {
-        loadedSubcats.push(ca);
-      }
-    });
 
     // Deduplicate loadedSubcats by ID and by combo key (name + parent)
     const seenIds = new Set<string>();
@@ -1195,7 +982,7 @@ export default function App() {
     localStorage.setItem('orjon_categories', JSON.stringify(newC));
   };
 
-  const syncSubcategoriesWithFirestoreQuestions = async (questionsList: Question[]) => {
+  const syncSubcategoriesWithFirestoreQuestions = async (_questionsList?: Question[]) => {
     let fsSubcats: SubcategoryItem[] = [];
     try {
       fsSubcats = await fetchCollectionFromFirestore<SubcategoryItem>('subcategories');
@@ -1203,59 +990,9 @@ export default function App() {
       console.warn('Subcategories fetch notice:', err);
     }
 
-    let combinedSubcats = [...fsSubcats];
-
-    const addedKeys = new Set<string>(
-      combinedSubcats.map(s => `${s.name.trim().toLowerCase()}|${(s.parentCategory || '').trim().toLowerCase()}`)
-    );
-
-    // Only sync SUBJECT hierarchy categories/subcategories from question records.
-    // NEVER auto-create categories from upload destination or exam hierarchy.
-    questionsList.forEach((q, idx) => {
-      const subjCat = (q.subjectCategory || q.csvCategory || '').trim();
-      const subjSub = (q.subjectSubcategory || q.csvSubcategory || '').trim();
-
-      if (subjCat && !isJobSolutionVariation(subjCat) && !isYearJobSolutionVariation(subjCat) && subjCat !== 'বিষয়ভিত্তিক প্রস্তুতি' && subjCat !== 'সাধারণ জ্ঞান') {
-        const key = `${subjCat.toLowerCase()}|বিষয়ভিত্তিক প্রস্তুতি`;
-        if (!addedKeys.has(key)) {
-          addedKeys.add(key);
-          combinedSubcats.push({
-            id: `fs-subcat-cat-${idx}-${Math.random().toString(36).substr(2, 5)}`,
-            name: subjCat,
-            parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি'
-          });
-        }
-      }
-
-      if (subjCat && subjSub && subjSub.toLowerCase() !== subjCat.toLowerCase() && !isJobSolutionVariation(subjSub) && !isYearJobSolutionVariation(subjSub) && !isJobSolutionVariation(subjCat) && !isYearJobSolutionVariation(subjCat)) {
-        const targetParent = subjCat || 'সাধারণ জ্ঞান';
-        const key = `${subjSub.toLowerCase()}|${targetParent.toLowerCase()}`;
-        if (!addedKeys.has(key)) {
-          addedKeys.add(key);
-          combinedSubcats.push({
-            id: `fs-subcat-sub-${idx}-${Math.random().toString(36).substr(2, 5)}`,
-            name: subjSub,
-            parentCategory: targetParent,
-            date: q.date || undefined
-          });
-        }
-      }
-    });
-
-    const defaultYearList = ['২০২৬ সাল', '২০২৫ সাল', '২০২৪ সাল', '২০২৩ সাল', '২০২২ সাল', '২০২১ সাল', '২০২০ সাল', '২০১৯ সাল', '২০১৮ সাল', '২০১৭ সাল', '২০১৬ সাল', '২০১৫ সাল'];
-    defaultYearList.forEach((yr, idx) => {
-      const key = `${yr.toLowerCase()}|সাল ভিত্তিক জব সলিউশন`;
-      if (!addedKeys.has(key)) {
-        addedKeys.add(key);
-        combinedSubcats.push({
-          id: `subcat-year-seed-${yr}-${idx}`,
-          name: yr,
-          parentCategory: 'সাল ভিত্তিক জব সলিউশন'
-        });
-      }
-    });
-
-    const sanitized = sanitizeSubcategoriesList(combinedSubcats);
+    // Firestore subcategories are authoritative. Strictly filter out deleted or tombstoned records.
+    const activeSubcats = (fsSubcats || []).filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+    const sanitized = sanitizeSubcategoriesList(activeSubcats);
 
     const seenIds = new Set<string>();
     const seenKeys = new Set<string>();
@@ -1633,7 +1370,6 @@ export default function App() {
     }
 
     setCurrentUser(activeUser);
-    associateGuestAttemptsWithUser(activeUser);
     localStorage.setItem('orjon_last_activity', Date.now().toString());
     setSessionTimeoutNotice(null);
     setShowInactivityWarning(false);
@@ -1767,7 +1503,6 @@ export default function App() {
               updatedUsers.push(verifiedUser);
             }
             updateUsersDB(updatedUsers, verifiedUser);
-            associateGuestAttemptsWithUser(verifiedUser);
           }
           setOtpDeliveryMessage({
             text: 'Your email has been verified successfully!',
@@ -2156,6 +1891,110 @@ export default function App() {
     }
   };
 
+  // Cooldown tracker for Admin on-demand tab syncs (60s cooldown to prevent redundant reads)
+  const lastSyncTimes = useRef<Record<string, number>>({});
+
+  const handleLoadQuestionsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['questions'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['questions'] = now;
+    try {
+      if (questions.length === 0) {
+        const localCached = await getQuestionsFromIDB();
+        if (localCached.length > 0) {
+          setQuestions(localCached);
+        }
+      }
+      await performIncrementalSyncFromFirestore((updatedQuestions) => {
+        if (updatedQuestions && updatedQuestions.length > 0) {
+          setQuestions(updatedQuestions);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand questions load notice:', e);
+    }
+  };
+
+  const handleLoadCoursesOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['courses'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['courses'] = now;
+    try {
+      if (courses.length === 0) {
+        const localCached = await getCoursesFromIDB();
+        if (localCached.length > 0) {
+          setCourses(localCached);
+        }
+      }
+      await performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+        if (updatedCourses && updatedCourses.length > 0) {
+          setCourses(updatedCourses);
+          try {
+            localStorage.setItem('orjon_courses', JSON.stringify(updatedCourses));
+          } catch {}
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand courses load notice:', e);
+    }
+  };
+
+  const handleLoadRoutinesOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['routines'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['routines'] = now;
+    try {
+      if (routines.length === 0) {
+        const localCached = await getRoutinesFromIDB();
+        if (localCached.length > 0) {
+          setRoutines(localCached);
+        }
+      }
+      await performIncrementalExamSyncFromFirestore(({ routines: updatedRoutines }) => {
+        if (updatedRoutines && updatedRoutines.length > 0) {
+          setRoutines(updatedRoutines);
+          try {
+            localStorage.setItem('orjon_routines', JSON.stringify(updatedRoutines));
+          } catch {}
+        }
+      }, 'routines');
+    } catch (e) {
+      console.warn('On-demand routines load notice:', e);
+    }
+  };
+
+  const handleLoadLiveExamsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['exams'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['exams'] = now;
+    try {
+      if (liveExams.length === 0) {
+        const localCached = await getLiveExamsFromIDB();
+        if (localCached.length > 0) {
+          setLiveExams(localCached);
+        }
+      }
+      await performIncrementalExamSyncFromFirestore(({ liveExams: updatedLiveExams }) => {
+        if (updatedLiveExams && updatedLiveExams.length > 0) {
+          setLiveExams(updatedLiveExams);
+          try {
+            localStorage.setItem('orjon_live_exams', JSON.stringify(updatedLiveExams));
+          } catch {}
+        }
+      }, 'exams');
+    } catch (e) {
+      console.warn('On-demand live exams load notice:', e);
+    }
+  };
+
   const handleAddQuestion = (q: Omit<Question, 'id'>) => {
     let cat = q.category || '';
     if (isJobSolutionVariation(cat)) {
@@ -2199,7 +2038,7 @@ export default function App() {
   const handleDeleteQuestion = async (id: string): Promise<boolean> => {
     const targetQ = questions.find(item => item.id === id);
     const qSnippet = targetQ ? `"${targetQ.text.slice(0, 45)}..."` : `ID: ${id}`;
-    const ok = await deleteQuestionFromFirestore(id);
+    const ok = await softDeleteQuestion(id);
     if (!ok) return false;
     const updatedQ = questions.filter(item => item.id !== id);
     updateQuestionsDB(updatedQ);
@@ -2216,7 +2055,7 @@ export default function App() {
 
   const handleBulkDeleteQuestions = async (ids: string[]): Promise<boolean> => {
     if (!ids || ids.length === 0) return true;
-    const ok = await bulkDeleteQuestionsFromFirestore(ids);
+    const ok = await bulkSoftDeleteQuestions(ids);
     if (!ok) return false;
     const updatedQ = questions.filter(item => !ids.includes(item.id));
     updateQuestionsDB(updatedQ);
@@ -2398,7 +2237,7 @@ export default function App() {
 
   const handleDeleteLiveExam = async (id: string): Promise<boolean> => {
     const target = liveExams.find(e => e.id === id);
-    const ok = await deleteItemFromFirestore('live_exams', id);
+    const ok = await softDeleteLiveExam(id);
     if (!ok) return false;
     const remaining = liveExams.filter(item => item.id !== id);
     setLiveExams(remaining);
@@ -2432,7 +2271,7 @@ export default function App() {
 
   const handleDeleteCourse = async (id: string): Promise<boolean> => {
     const target = courses.find(c => c.id === id);
-    const ok = await deleteItemFromFirestore('courses', id);
+    const ok = await softDeleteCourse(id);
     if (!ok) return false;
     const remaining = courses.filter(item => item.id !== id);
     setCourses(remaining);
@@ -2594,7 +2433,7 @@ export default function App() {
 
   const handleDeleteRoutine = async (id: string): Promise<boolean> => {
     const target = routines.find(r => r.id === id);
-    const ok = await deleteItemFromFirestore('routines', id);
+    const ok = await softDeleteRoutine(id);
     if (!ok) return false;
     const remaining = routines.filter(item => item.id !== id);
     setRoutines(remaining);
@@ -2740,12 +2579,12 @@ export default function App() {
       alert('সতর্কতা: মূল রুট ক্যাটাগরি ডিলিট করা সম্ভব নয়!');
       return false;
     }
-    const ok = await deleteItemFromFirestore('categories', id);
-    if (!ok) return false;
     const subcatIdsToDelete = subcategories.filter(s => s.parentCategory === cat.name).map(s => s.id);
     if (subcatIdsToDelete.length > 0) {
-      await bulkDeleteItemsFromFirestore('subcategories', subcatIdsToDelete);
+      await bulkSoftDeleteSubcategories(subcatIdsToDelete);
     }
+    const ok = await softDeleteCategory(id);
+    if (!ok) return false;
     const remainingCats = categories.filter(c => c.id !== id);
     const remainingSubcats = subcategories.filter(s => s.parentCategory !== cat.name);
     updateCategoriesDB(remainingCats);
@@ -2784,7 +2623,7 @@ export default function App() {
       }
     });
 
-    const ok = await bulkDeleteItemsFromFirestore('subcategories', toDeleteIds);
+    const ok = await bulkSoftDeleteSubcategories(toDeleteIds);
     if (!ok) return false;
 
     const remainingSubcats = subcategories.filter(s => s.id !== id && !toDelete.has(s.name));
@@ -2821,7 +2660,7 @@ export default function App() {
       }
     });
 
-    const ok = await bulkDeleteItemsFromFirestore('subcategories', toDeleteIds);
+    const ok = await bulkSoftDeleteSubcategories(toDeleteIds);
     if (!ok) return false;
 
     const remainingSubcats = subcategories.filter(s => !ids.includes(s.id) && !toDelete.has(s.name));
@@ -3144,13 +2983,11 @@ export default function App() {
             showMcqCount={showMcqCount}
             directExamId={directExamId}
             onFetchQuestionsLazy={handleFetchQuestionsLazy}
+            onLoadCoursesOnDemand={handleLoadCoursesOnDemand}
+            onLoadRoutinesOnDemand={handleLoadRoutinesOnDemand}
             onRegisterPrompt={() => {
-              const guestEmail = currentUser.email || '';
               setCurrentUser(null);
               setAuthScreen('register');
-              if (guestEmail) {
-                setRegEmail(guestEmail);
-              }
             }}
           />
         )}
@@ -3214,6 +3051,10 @@ export default function App() {
             onLoadUsersOnDemand={handleLoadUsersOnDemand}
             onLoadAttemptsOnDemand={handleLoadAttemptsOnDemand}
             onLoadAuditLogsOnDemand={handleLoadAuditLogsOnDemand}
+            onLoadQuestionsOnDemand={handleLoadQuestionsOnDemand}
+            onLoadCoursesOnDemand={handleLoadCoursesOnDemand}
+            onLoadRoutinesOnDemand={handleLoadRoutinesOnDemand}
+            onLoadLiveExamsOnDemand={handleLoadLiveExamsOnDemand}
           />
         )}
 
@@ -3224,37 +3065,49 @@ export default function App() {
               
               {/* Header */}
               <div className="text-center flex flex-col items-center gap-2">
-                <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100">
-                  <span className="text-white text-2xl font-black">ORJON</span>
-                </div>
+                <img 
+                  src={orjonLogo} 
+                  alt="ORJON MCQ Logo" 
+                  className="mx-auto object-contain w-[100px] sm:w-[140px] max-w-[160px] h-auto"
+                />
                 <h1 className="text-base font-bold text-gray-900 tracking-tight">Quiz & Exam Portal</h1>
               </div>
 
-              {/* Live Exam Quick Callout for Guests */}
+              {/* Live Exam Announcement for Unauthenticated Users */}
               {liveExams.length > 0 && (
-                <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-amber-300/80 rounded-2xl p-3.5 flex flex-col gap-2">
+                <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 rounded-2xl p-3.5 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-amber-900 flex items-center gap-1.5">
+                    <span className="text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
                       ⏱️ লাইভ পরীক্ষা চলছে
                     </span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-md">
-                      গেস্ট মোড
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-md">
+                      লাইভ এক্সাম
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-700 font-medium leading-tight">
-                    লগইন ছাড়া শুধু ইমেইল আইডি দিয়ে সরাসরি লাইভ পরীক্ষায় অংশ নিতে পারবেন!
+                    লাইভ পরীক্ষায় অংশ নিতে লগইন করুন অথবা বিনামূল্যে নতুন অ্যাকাউন্ট তৈরি করুন!
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGuestExamTarget(liveExams[0]);
-                      setGuestEmailModalOpen(true);
-                    }}
-                    className="w-full py-2 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <span>🎯</span> গেস্ট হিসেবে পরীক্ষা দিন ➔
-                  </button>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthScreen('login');
+                      }}
+                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      লগইন করুন ➔
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthScreen('register');
+                      }}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      রেজিস্ট্রেশন ➔
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -3373,9 +3226,9 @@ export default function App() {
 
                   <button
                     type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-indigo-100 flex items-center justify-center mt-1 cursor-pointer"
                   >
-                    <LogIn className="w-4 h-4" /> Sign In
+                    Sign In
                   </button>
 
                   <div className="text-center pt-2 border-t border-gray-100 mt-1">
@@ -4043,86 +3896,6 @@ export default function App() {
                 className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3 rounded-2xl text-xs transition shadow-md shadow-rose-100 cursor-pointer"
               >
                 হ্যাঁ, লগআউট করুন
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Guest Email Modal Overlay */}
-      {guestEmailModalOpen && guestExamTarget && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[99999] animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 border border-gray-100 shadow-2xl flex flex-col gap-4 text-xs">
-            <div className="flex justify-between items-center border-b pb-3 border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                  লাইভ পরীক্ষা (গেস্ট মোড)
-                </h3>
-              </div>
-              <button
-                onClick={() => {
-                  setGuestEmailModalOpen(false);
-                  setGuestExamTarget(null);
-                  setGuestError(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 font-extrabold text-base p-1 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="bg-indigo-50/80 border border-indigo-100 rounded-2xl p-3.5 space-y-1">
-              <h4 className="font-black text-indigo-950 text-sm">{guestExamTarget.title}</h4>
-              <div className="flex flex-wrap gap-2 text-[10.5px] text-indigo-700 font-bold pt-0.5">
-                <span>প্রস্তুতি বিষয়: {guestExamTarget.category === 'ALL' ? 'সব বিষয়' : guestExamTarget.category}</span>
-                <span>•</span>
-                <span>প্রশ্ন: {guestExamTarget.qLimit}টি</span>
-                <span>•</span>
-                <span>সময়: {guestExamTarget.timeLimit} মিনিট</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-slate-800 font-bold text-xs">
-                আপনার ইমেইল এড্রেস প্রদান করুন: <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={guestEmailInput}
-                onChange={(e) => {
-                  setGuestEmailInput(e.target.value);
-                  setGuestError(null);
-                }}
-                placeholder="যেমন: student@gmail.com"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-              />
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
-                💡 পাসওয়ার্ড বা ইমেইল ভেরিফিকেশনের প্রয়োজন নেই। পরীক্ষা শেষে অর্জিত নম্বর দেখতে পাবেন। পরবর্তীতে অ্যাকাউন্ট রেজিস্ট্রেশন করলে আপনার সকল আগের গেস্ট পরীক্ষার বিস্তারিত সমাধান ও PDF রেজাল্ট কার্ড আনলক হয়ে যাবে।
-              </p>
-              {guestError && (
-                <p className="text-[11px] text-rose-600 font-extrabold bg-rose-50 border border-rose-200 p-2 rounded-lg">
-                  ⚠️ {guestError}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-gray-100">
-              <button
-                onClick={() => handleStartGuestExam(guestExamTarget, guestEmailInput)}
-                className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>🎯</span> পরীক্ষা শুরু করুন ➔
-              </button>
-              <button
-                onClick={() => {
-                  setGuestEmailModalOpen(false);
-                  setAuthScreen('login');
-                }}
-                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
-              >
-                লগইন করুন
               </button>
             </div>
           </div>

@@ -1261,6 +1261,49 @@ export async function softDeleteQuestion(id: string): Promise<boolean> {
 }
 
 /**
+ * Bulk soft delete questions: marks deletedAt timestamp, isDeleted: true, updatedAt, version in chunks of 400.
+ * Increments questionVersion once. Cleans local SQLite and IndexedDB.
+ */
+export async function bulkSoftDeleteQuestions(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const nowIso = new Date().toISOString();
+    const newVersion = await incrementGlobalVersion('questionVersion');
+
+    // 1. Update Firestore in batches of 400
+    const chunkSize = 400;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        const qDocRef = doc(db, 'questions', String(id));
+        batch.set(qDocRef, {
+          deletedAt: nowIso,
+          isDeleted: true,
+          updatedAt: nowIso,
+          version: newVersion
+        }, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    // 2. Remove locally from SQLite & IDB
+    await deleteQuestionsFromSQLite(ids);
+    await upsertQuestionsToIDB([], ids);
+
+    // 3. Update local version checkpoint
+    const local = await getLocalSyncVersions();
+    local.questionVersion = newVersion;
+    await saveLocalSyncVersions(local);
+
+    return true;
+  } catch (err) {
+    console.error('[VersionSync] bulkSoftDeleteQuestions error:', err);
+    return false;
+  }
+}
+
+/**
  * Soft delete a category.
  */
 export async function softDeleteCategory(id: string): Promise<boolean> {
@@ -1316,6 +1359,51 @@ export async function softDeleteSubcategory(id: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('[VersionSync] softDeleteSubcategory error:', err);
+    return false;
+  }
+}
+
+/**
+ * Bulk soft delete subcategories: marks deletedAt timestamp, isDeleted: true, updatedAt, version in chunks of 400.
+ * Increments subcategoryVersion once. Cleans local SQLite and IndexedDB.
+ */
+export async function bulkSoftDeleteSubcategories(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const nowIso = new Date().toISOString();
+    const newVersion = await incrementGlobalVersion('subcategoryVersion');
+
+    // 1. Update Firestore in batches of 400
+    const chunkSize = 400;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        const subDocRef = doc(db, 'subcategories', String(id));
+        batch.set(subDocRef, {
+          deletedAt: nowIso,
+          isDeleted: true,
+          updatedAt: nowIso,
+          version: newVersion
+        }, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    // 2. Remove locally from SQLite & IDB
+    for (const id of ids) {
+      await deleteSubcategoryFromSQLite(id);
+    }
+    await upsertSubcategoriesToIDB([], ids);
+
+    // 3. Update local version checkpoint
+    const local = await getLocalSyncVersions();
+    local.subcategoryVersion = newVersion;
+    await saveLocalSyncVersions(local);
+
+    return true;
+  } catch (err) {
+    console.error('[VersionSync] bulkSoftDeleteSubcategories error:', err);
     return false;
   }
 }

@@ -16,15 +16,6 @@ import {
   DEFAULT_PAYMENT_SETTINGS, 
   generateAutoUserId 
 } from '../shared/types';
-import { 
-  INITIAL_QUESTIONS, 
-  INITIAL_NOTICES, 
-  INITIAL_ROUTINES, 
-  INITIAL_LIVE_EXAMS, 
-  INITIAL_USERS,
-  INITIAL_COURSES,
-  INITIAL_COUPONS
-} from '../shared/data';
 import UserApp from './UserApp';
 import { 
   fetchQuestionsFromFirestore, 
@@ -78,6 +69,7 @@ import {
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../shared/lib/firebase';
+import orjonLogo from '../assets/orjon-logo.png';
 import { LogIn, Sparkles, BookOpen, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
@@ -142,7 +134,7 @@ export default function MobileApp() {
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return INITIAL_COUPONS;
+    return [];
   });
   const [courseEnrollments, setCourseEnrollments] = useState<CourseEnrollment[]>(() => {
     const saved = localStorage.getItem('orjon_course_enrollments');
@@ -216,12 +208,8 @@ export default function MobileApp() {
   const [forgotUser, setForgotUser] = useState<User | null>(null);
   const [forgotTargetEmail, setForgotTargetEmail] = useState('');
 
-  // Guest Live Exam states
+  // Direct Exam Navigation state
   const [directExamId, setDirectExamId] = useState<string | null>(null);
-  const [guestEmailModalOpen, setGuestEmailModalOpen] = useState(false);
-  const [guestExamTarget, setGuestExamTarget] = useState<LiveExam | null>(null);
-  const [guestEmailInput, setGuestEmailInput] = useState('');
-  const [guestError, setGuestError] = useState<string | null>(null);
 
   // Security Session Timeout states
   const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(null);
@@ -236,87 +224,23 @@ export default function MobileApp() {
     }
   }, []);
 
-  useEffect(() => {
-    if (directExamId && !currentUser && liveExams.length > 0) {
-      const targetExam = liveExams.find(e => e.id === directExamId);
-      if (targetExam) {
-        setGuestExamTarget(targetExam);
-        setGuestEmailModalOpen(true);
-      }
-    }
-  }, [directExamId, currentUser, liveExams]);
-
-  const handleStartGuestExam = (exam: LiveExam, email: string) => {
-    const trimmed = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!trimmed || !emailRegex.test(trimmed)) {
-      setGuestError('অনুগ্রহ করে সঠিক ইমেইল এড্রেস প্রদান করুন (যেমন: student@gmail.com)');
-      return;
-    }
-
-    const guestObj: User = {
-      userId: `GUEST-${Date.now().toString(36).toUpperCase()}`,
-      name: `গেস্ট (${trimmed.split('@')[0]})`,
-      phone: trimmed,
-      email: trimmed,
-      gender: 'অন্যান্য',
-      education: 'গেস্ট পরীক্ষার্থী',
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(trimmed)}`,
-      lifetimeAnswered: 0,
-      lifetimeCorrect: 0,
-      lifetimeWrong: 0,
-      createdAt: new Date().toISOString(),
-      isGuest: true
-    };
-
-    setCurrentUser(guestObj);
-    setGuestEmailModalOpen(false);
-    setGuestExamTarget(null);
-    setGuestError(null);
-  };
-
-  const associateGuestAttemptsWithUser = (userObj: User) => {
-    const emailLower = userObj.email?.toLowerCase();
-    if (!emailLower) return;
-
-    const userIdentifier = userObj.phone || userObj.userId || userObj.email;
-    const migratedAttempts: Attempt[] = [];
-    const updatedAttempts = attempts.map(a => {
-      const aEmailLower = a.userEmail?.toLowerCase();
-      const aPhoneLower = a.userPhone?.toLowerCase();
-      if (aEmailLower === emailLower || aPhoneLower === emailLower) {
-        const migrated = {
-          ...a,
-          userPhone: userIdentifier,
-          userEmail: userObj.email,
-          username: userObj.name,
-          isGuestAttempt: false
-        };
-        migratedAttempts.push(migrated);
-        return migrated;
-      }
-      return a;
-    });
-
-    setAttempts(updatedAttempts);
-    localStorage.setItem('orjon_attempts', JSON.stringify(updatedAttempts));
-    if (migratedAttempts.length > 0) {
-      syncMultipleAttemptsToFirestore(migratedAttempts);
-    }
-  };
-
   // 1. Load database on mount with SQLite as Primary Source, fallback to IndexedDB & Firestore
   useEffect(() => {
     const storedQ = localStorage.getItem('orjon_questions') || localStorage.getItem('medha_questions');
     let loadedQ: Question[] = [];
     if (storedQ) {
       try {
-        loadedQ = JSON.parse(storedQ);
+        const parsed = JSON.parse(storedQ);
+        if (Array.isArray(parsed)) {
+          loadedQ = parsed.filter(q => q && !q.isDeleted && !q.deletedAt);
+        } else {
+          loadedQ = [];
+        }
       } catch (e) {
-        loadedQ = INITIAL_QUESTIONS;
+        loadedQ = [];
       }
     } else {
-      loadedQ = INITIAL_QUESTIONS;
+      loadedQ = [];
     }
 
     let normalizedQ = loadedQ.map(q => {
@@ -338,11 +262,15 @@ export default function MobileApp() {
     initSQLite().then(async () => {
       try {
         console.log('[SQLite] Initialized successfully. Loading primary data from SQLite...');
-        const [sqliteCats, sqliteSubs, sqliteQs] = await Promise.all([
+        const [rawCats, rawSubs, rawQs] = await Promise.all([
           getSQLiteCategories(),
           getSQLiteSubcategories(),
           getSQLiteQuestions(10000, 0)
         ]);
+
+        const sqliteCats = (rawCats || []).filter(item => item && !(item as any).isDeleted && !(item as any).deletedAt);
+        const sqliteSubs = (rawSubs || []).filter(item => item && !(item as any).isDeleted && !(item as any).deletedAt);
+        const sqliteQs = (rawQs || []).filter(item => item && !item.isDeleted && !item.deletedAt);
 
         if (sqliteCats && sqliteCats.length > 0) {
           setCategories(sqliteCats);
@@ -373,8 +301,7 @@ export default function MobileApp() {
           setQuestions(dedupedQ);
           localStorage.setItem('orjon_questions', JSON.stringify(dedupedQ));
           saveQuestionsToIDB(dedupedQ).catch(() => {});
-        } else {
-          // If SQLite was empty, insert local seed questions
+        } else if (normalizedQ.length > 0) {
           insertSQLiteQuestions(normalizedQ).catch(() => {});
         }
       } catch (sqlErr) {
@@ -386,7 +313,8 @@ export default function MobileApp() {
 
     getQuestionsFromIDB().then((idbQuestions) => {
       if (idbQuestions && idbQuestions.length > 0) {
-        const loadedFromIDB = idbQuestions.map(q => {
+        const activeIDBQ = idbQuestions.filter(q => q && !q.isDeleted && !q.deletedAt);
+        const loadedFromIDB = activeIDBQ.map(q => {
           let cat = q.category || '';
           if (isJobSolutionVariation(cat)) {
             cat = 'জব সলিউশন পরীক্ষা';
@@ -406,20 +334,23 @@ export default function MobileApp() {
         });
         insertSQLiteQuestions(dedupedQ).catch(() => {});
         syncSubcategoriesWithFirestoreQuestions(dedupedQ);
-      } else {
+      } else if (normalizedQ.length > 0) {
         saveQuestionsToIDB(normalizedQ);
       }
     }).catch(err => {
       console.warn("IndexedDB questions initialization notice:", err);
     });
 
-    // Notices seed
+    // Notices (Cache-First)
     const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
     if (storedN) {
-      setNotices(JSON.parse(storedN));
+      try {
+        setNotices(JSON.parse(storedN));
+      } catch {
+        setNotices([]);
+      }
     } else {
-      localStorage.setItem('orjon_notices', JSON.stringify(INITIAL_NOTICES));
-      setNotices(INITIAL_NOTICES);
+      setNotices([]);
       fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
         if (fsN && fsN.length > 0) {
           setNotices(fsN);
@@ -428,69 +359,66 @@ export default function MobileApp() {
       }).catch(() => {});
     }
 
-    // Courses seed
+    // Courses (Cache-First)
     const storedCourses = localStorage.getItem('orjon_courses') || localStorage.getItem('medha_courses');
     if (storedCourses) {
       try {
-        setCourses(dedupeCourses(JSON.parse(storedCourses)));
+        const parsed = JSON.parse(storedCourses);
+        const filtered = Array.isArray(parsed) ? parsed.filter(c => c && !c.isDeleted && !c.deletedAt) : [];
+        setCourses(dedupeCourses(filtered));
       } catch {
-        setCourses(dedupeCourses(INITIAL_COURSES));
+        setCourses([]);
       }
     } else {
-      localStorage.setItem('orjon_courses', JSON.stringify(dedupeCourses(INITIAL_COURSES)));
-      setCourses(dedupeCourses(INITIAL_COURSES));
+      setCourses([]);
     }
 
     getCoursesFromIDB().then((idbCourses) => {
-      if (idbCourses && idbCourses.length > 0) {
-        const dedupedC = dedupeCourses(idbCourses);
+      if (idbCourses && Array.isArray(idbCourses) && idbCourses.length > 0) {
+        const filtered = idbCourses.filter(c => c && !c.isDeleted && !c.deletedAt);
+        const dedupedC = dedupeCourses(filtered);
         setCourses(dedupedC);
-      } else {
-        const localC = storedCourses ? JSON.parse(storedCourses) : INITIAL_COURSES;
-        saveCoursesToIDB(dedupeCourses(localC));
       }
     }).catch(err => {
       console.warn("IndexedDB courses initialization notice:", err);
     });
 
-    // Live exams & routines
+    // Live exams & routines (Cache-First)
     const storedLE = localStorage.getItem('orjon_live_exams') || localStorage.getItem('medha_live_exams');
     if (storedLE) {
       try {
-        setLiveExams(dedupeLiveExams(JSON.parse(storedLE)));
+        const parsed = JSON.parse(storedLE);
+        const filtered = Array.isArray(parsed) ? parsed.filter(e => e && !e.isDeleted && !e.deletedAt) : [];
+        setLiveExams(dedupeLiveExams(filtered));
       } catch {
-        setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
+        setLiveExams([]);
       }
     } else {
-      localStorage.setItem('orjon_live_exams', JSON.stringify(dedupeLiveExams(INITIAL_LIVE_EXAMS)));
-      setLiveExams(dedupeLiveExams(INITIAL_LIVE_EXAMS));
+      setLiveExams([]);
     }
 
     const storedR = localStorage.getItem('orjon_routines') || localStorage.getItem('medha_routines');
     if (storedR) {
       try {
-        setRoutines(dedupeRoutines(JSON.parse(storedR)));
+        const parsed = JSON.parse(storedR);
+        const filtered = Array.isArray(parsed) ? parsed.filter(r => r && !r.isDeleted && !r.deletedAt) : [];
+        setRoutines(dedupeRoutines(filtered));
       } catch {
-        setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+        setRoutines([]);
       }
     } else {
-      localStorage.setItem('orjon_routines', JSON.stringify(dedupeRoutines(INITIAL_ROUTINES)));
-      setRoutines(dedupeRoutines(INITIAL_ROUTINES));
+      setRoutines([]);
     }
 
     Promise.all([getLiveExamsFromIDB(), getRoutinesFromIDB()]).then(([idbLE, idbR]) => {
-      if (idbLE && idbLE.length > 0) {
-        setLiveExams(dedupeLiveExams(idbLE));
-      } else {
-        const localLE = storedLE ? JSON.parse(storedLE) : INITIAL_LIVE_EXAMS;
-        saveLiveExamsToIDB(dedupeLiveExams(localLE));
+      if (idbLE && Array.isArray(idbLE) && idbLE.length > 0) {
+        const filteredLE = idbLE.filter(e => e && !e.isDeleted && !e.deletedAt);
+        setLiveExams(dedupeLiveExams(filteredLE));
       }
 
-      if (idbR && idbR.length > 0) {
-        setRoutines(dedupeRoutines(idbR));
-      } else {
-        const localR = storedR ? JSON.parse(storedR) : INITIAL_ROUTINES;
-        saveRoutinesToIDB(dedupeRoutines(localR));
+      if (idbR && Array.isArray(idbR) && idbR.length > 0) {
+        const filteredR = idbR.filter(r => r && !r.isDeleted && !r.deletedAt);
+        setRoutines(dedupeRoutines(filteredR));
       }
     }).catch(err => {
       console.warn("IndexedDB exams initialization notice:", err);
@@ -499,8 +427,9 @@ export default function MobileApp() {
     // Background incremental sync for Courses and Exams
     // Questions use version-gated page-level lazy synchronization
     performIncrementalCourseSyncFromFirestore((updatedCourses) => {
-      if (updatedCourses && updatedCourses.length > 0) {
-        const dedupedC = dedupeCourses(updatedCourses);
+      if (Array.isArray(updatedCourses)) {
+        const activeCourses = updatedCourses.filter(c => c && !c.isDeleted && !c.deletedAt);
+        const dedupedC = dedupeCourses(activeCourses);
         setCourses(dedupedC);
         try {
           localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
@@ -509,15 +438,17 @@ export default function MobileApp() {
     }).catch(err => {});
 
     performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
-      if (updatedLE && updatedLE.length > 0) {
-        const dedupedLE = dedupeLiveExams(updatedLE);
+      if (Array.isArray(updatedLE)) {
+        const activeLE = updatedLE.filter(e => e && !e.isDeleted && !e.deletedAt);
+        const dedupedLE = dedupeLiveExams(activeLE);
         setLiveExams(dedupedLE);
         try {
           localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
         } catch (e) {}
       }
-      if (updatedR && updatedR.length > 0) {
-        const dedupedR = dedupeRoutines(updatedR);
+      if (Array.isArray(updatedR)) {
+        const activeR = updatedR.filter(r => r && !r.isDeleted && !r.deletedAt);
+        const dedupedR = dedupeRoutines(activeR);
         setRoutines(dedupedR);
         try {
           localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
@@ -525,17 +456,16 @@ export default function MobileApp() {
       }
     }).catch(err => {});
 
-    // Users database seed
+    // Users database (Cache-First)
     const storedU = localStorage.getItem('orjon_users') || localStorage.getItem('medha_users');
     if (storedU) {
       try {
         setUsers(JSON.parse(storedU));
       } catch (e) {
-        setUsers(INITIAL_USERS);
+        setUsers([]);
       }
     } else {
-      localStorage.setItem('orjon_users', JSON.stringify(INITIAL_USERS));
-      setUsers(INITIAL_USERS);
+      setUsers([]);
     }
 
     // Attempts database seed
@@ -571,14 +501,20 @@ export default function MobileApp() {
     const storedSub = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
     if (storedSub) {
       try {
-        setSubcategories(JSON.parse(storedSub));
+        const parsedSubs = JSON.parse(storedSub);
+        if (Array.isArray(parsedSubs)) {
+          setSubcategories(parsedSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt));
+        }
       } catch (e) {}
     }
 
     fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSub => {
-      if (fsSub && fsSub.length > 0) {
-        setSubcategories(fsSub);
-        localStorage.setItem('orjon_subcategories', JSON.stringify(fsSub));
+      if (Array.isArray(fsSub)) {
+        const activeSubs = fsSub.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+        setSubcategories(activeSubs);
+        try {
+          localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+        } catch {}
       }
     }).catch(() => {});
 
@@ -797,7 +733,6 @@ export default function MobileApp() {
     }
 
     setCurrentUser(activeUser);
-    associateGuestAttemptsWithUser(activeUser);
 
     if (rememberMe) {
       localStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
@@ -922,7 +857,6 @@ export default function MobileApp() {
               updatedUsers.push(verifiedUser);
             }
             updateUsersDB(updatedUsers, verifiedUser);
-            associateGuestAttemptsWithUser(verifiedUser);
           }
           setOtpDeliveryMessage({
             text: 'Your email has been verified successfully!',
@@ -1183,12 +1117,8 @@ export default function MobileApp() {
             directExamId={directExamId}
             onFetchQuestionsLazy={handleFetchQuestionsLazy}
             onRegisterPrompt={() => {
-              const guestEmail = currentUser.email || '';
               setCurrentUser(null);
               setAuthScreen('register');
-              if (guestEmail) {
-                setRegEmail(guestEmail);
-              }
             }}
           />
         )}
@@ -1200,37 +1130,49 @@ export default function MobileApp() {
               
               {/* Header */}
               <div className="text-center flex flex-col items-center gap-2">
-                <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100">
-                  <span className="text-white text-2xl font-black">ORJON</span>
-                </div>
+                <img 
+                  src={orjonLogo} 
+                  alt="ORJON MCQ Logo" 
+                  className="mx-auto object-contain w-[100px] sm:w-[140px] max-w-[160px] h-auto"
+                />
                 <h1 className="text-base font-bold text-gray-900 tracking-tight">Quiz & Exam Portal</h1>
               </div>
 
-              {/* Live Exam Quick Callout for Guests */}
+              {/* Live Exam Announcement for Unauthenticated Users */}
               {liveExams.length > 0 && (
-                <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-amber-300/80 rounded-2xl p-3.5 flex flex-col gap-2">
+                <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 rounded-2xl p-3.5 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-amber-900 flex items-center gap-1.5">
+                    <span className="text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
                       ⏱️ লাইভ পরীক্ষা চলছে
                     </span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-md">
-                      গেস্ট মোড
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-md">
+                      লাইভ এক্সাম
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-700 font-medium leading-tight">
-                    লগইন ছাড়া শুধু ইমেইল আইডি দিয়ে সরাসরি লাইভ পরীক্ষায় অংশ নিতে পারবেন!
+                    লাইভ পরীক্ষায় অংশ নিতে লগইন করুন অথবা বিনামূল্যে নতুন অ্যাকাউন্ট তৈরি করুন!
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGuestExamTarget(liveExams[0]);
-                      setGuestEmailModalOpen(true);
-                    }}
-                    className="w-full py-2 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 hover:from-amber-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <span>🎯</span> গেস্ট হিসেবে পরীক্ষা দিন ➔
-                  </button>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthScreen('login');
+                      }}
+                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      লগইন করুন ➔
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthScreen('register');
+                      }}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      রেজিস্ট্রেশন ➔
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1332,9 +1274,9 @@ export default function MobileApp() {
 
                   <button
                     type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 mt-1"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-indigo-100 flex items-center justify-center mt-1 cursor-pointer"
                   >
-                    <LogIn className="w-4 h-4" /> Sign In
+                    Sign In
                   </button>
                 </form>
               )}
@@ -1570,56 +1512,6 @@ export default function MobileApp() {
           </div>
         )}
       </div>
-
-      {/* Guest Email Modal */}
-      {guestEmailModalOpen && guestExamTarget && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl flex flex-col gap-4 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-base text-gray-900">গেস্ট হিসেবে পরীক্ষা দিন</h3>
-              <button 
-                onClick={() => setGuestEmailModalOpen(false)}
-                className="text-gray-400 hover:text-gray-700 font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-xs text-gray-600 leading-relaxed">
-              পরীক্ষা: <strong className="text-indigo-600">{guestExamTarget.title}</strong>
-              <br />
-              আপনার ফলাফল ও পজিশন নির্ভুলভাবে সংরক্ষণের জন্য একটি ইমেইল দিন।
-            </p>
-            {guestError && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium">
-                {guestError}
-              </div>
-            )}
-            <input 
-              type="email"
-              value={guestEmailInput}
-              onChange={e => setGuestEmailInput(e.target.value)}
-              placeholder="student@example.com"
-              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setGuestEmailModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition"
-              >
-                বাতিল
-              </button>
-              <button
-                type="button"
-                onClick={() => handleStartGuestExam(guestExamTarget, guestEmailInput)}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-md shadow-indigo-100"
-              >
-                শুরু করুন ➔
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirmModal && (

@@ -4,6 +4,7 @@ import { Question, Course, LiveExam, Routine, CategoryItem, SubcategoryItem } fr
 import { 
   insertCourses as insertCoursesToSQLite, 
   deleteCourse as deleteCourseFromSQLite, 
+  clearCourses as clearCoursesFromSQLite,
   insertLiveExams as insertLiveExamsToSQLite, 
   deleteLiveExam as deleteLiveExamFromSQLite, 
   insertRoutines as insertRoutinesToSQLite, 
@@ -356,6 +357,9 @@ export async function performIncrementalSyncFromFirestore(
     if (snap.empty) {
       // Zero bandwidth downloaded! Update lastSyncedAt timestamp so future queries only check after this point
       await updateQuestionsMetaTimestamp(syncStartTime);
+      if (onUpdate && localCachedQuestions.length > 0) {
+        onUpdate(localCachedQuestions);
+      }
       return { hasChanges: false, totalCount: localCachedQuestions.length };
     }
 
@@ -383,9 +387,18 @@ export async function performIncrementalSyncFromFirestore(
     }
 
     await updateQuestionsMetaTimestamp(syncStartTime);
+    if (onUpdate && localCachedQuestions.length > 0) {
+      onUpdate(localCachedQuestions);
+    }
     return { hasChanges: false, totalCount: localCachedQuestions.length };
   } catch (err) {
     console.warn('Incremental sync check error (using local cache):', err);
+    if (onUpdate) {
+      try {
+        const fallback = await getQuestionsFromIDB();
+        if (fallback.length > 0) onUpdate(fallback);
+      } catch {}
+    }
     return { hasChanges: false, totalCount: 0 };
   }
 }
@@ -673,8 +686,8 @@ export async function performIncrementalCourseSyncFromFirestore(
     const meta = await getCoursesMetaFromIDB();
     const localCached = await getCoursesFromIDB();
     
-    // Fresh install check: Only trust localVersion if a verified sync timestamp exists
-    const hasVerifiedSync = Boolean(meta && meta.lastCourseSyncedAt && typeof meta.version === 'number' && meta.version > 0);
+    // Fresh install check: Only trust localVersion if a verified sync timestamp exists AND local cache is populated
+    const hasVerifiedSync = Boolean(meta && meta.lastCourseSyncedAt && typeof meta.version === 'number' && meta.version > 0 && localCached.length > 0);
     const localVersion = hasVerifiedSync ? Number(meta!.version) : 0;
 
     // 1. Fetch server meta/versions
@@ -690,12 +703,14 @@ export async function performIncrementalCourseSyncFromFirestore(
       }
     } catch (e) {
       console.warn('[IndexedDB] Could not check meta/versions for courses:', e);
+      if (onUpdate && localCached.length > 0) onUpdate(localCached);
       return { hasChanges: false, totalCount: localCached.length };
     }
 
     // 2. Zero-reads optimization: If versions match and verified local data exists -> 0 collection reads!
     if (localVersion >= serverCourseVersion && hasVerifiedSync && localCached.length > 0) {
       console.log(`[IndexedDB] Courses up to date (v${localVersion}). 0 collection reads.`);
+      if (onUpdate) onUpdate(localCached);
       return { hasChanges: false, totalCount: localCached.length };
     }
 
@@ -716,30 +731,30 @@ export async function performIncrementalCourseSyncFromFirestore(
         }
       });
 
+      await saveCoursesToIDB(activeCourses);
       if (activeCourses.length > 0) {
-        await saveCoursesToIDB(activeCourses);
         await insertCoursesToSQLite(activeCourses);
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
-        } catch {}
-        if (onUpdate) onUpdate(activeCourses);
+      } else {
+        await clearCoursesFromSQLite();
       }
-
-      // Save version to metadata
       try {
-        const idb = await getDB();
-        const tx = idb.transaction(STORE_META, 'readwrite');
-        tx.objectStore(STORE_META).put({
-          key: 'courses_meta',
-          lastCourseSyncedAt: syncStartTimeIso,
-          count: activeCourses.length > 0 ? activeCourses.length : localCached.length,
-          version: serverCourseVersion
-        });
+        localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
       } catch {}
+      if (onUpdate) onUpdate(activeCourses);
+
+      // Save version to metadata ONLY after IDB and SQLite updates succeed
+      const idb = await getDB();
+      const tx = idb.transaction(STORE_META, 'readwrite');
+      tx.objectStore(STORE_META).put({
+        key: 'courses_meta',
+        lastCourseSyncedAt: syncStartTimeIso,
+        count: activeCourses.length,
+        version: serverCourseVersion
+      });
 
       return {
-        hasChanges: activeCourses.length > 0,
-        totalCount: activeCourses.length > 0 ? activeCourses.length : localCached.length
+        hasChanges: true,
+        totalCount: activeCourses.length
       };
     }
 
@@ -758,6 +773,7 @@ export async function performIncrementalCourseSyncFromFirestore(
           version: serverCourseVersion
         });
       } catch {}
+      if (onUpdate && localCached.length > 0) onUpdate(localCached);
       return { hasChanges: false, totalCount: localCached.length };
     }
 
@@ -790,23 +806,28 @@ export async function performIncrementalCourseSyncFromFirestore(
       } catch {}
       if (onUpdate) onUpdate(freshlyMerged);
 
-      try {
-        const idb = await getDB();
-        const tx = idb.transaction(STORE_META, 'readwrite');
-        tx.objectStore(STORE_META).put({
-          key: 'courses_meta',
-          lastCourseSyncedAt: syncStartTimeIso,
-          count: freshlyMerged.length,
-          version: serverCourseVersion
-        });
-      } catch {}
+      const idb = await getDB();
+      const tx = idb.transaction(STORE_META, 'readwrite');
+      tx.objectStore(STORE_META).put({
+        key: 'courses_meta',
+        lastCourseSyncedAt: syncStartTimeIso,
+        count: freshlyMerged.length,
+        version: serverCourseVersion
+      });
 
       return { hasChanges: true, totalCount: freshlyMerged.length };
     }
 
+    if (onUpdate && localCached.length > 0) onUpdate(localCached);
     return { hasChanges: false, totalCount: localCached.length };
   } catch (err) {
     console.warn('Incremental course sync notice (using local cache):', err);
+    if (onUpdate) {
+      try {
+        const fallback = await getCoursesFromIDB();
+        if (fallback.length > 0) onUpdate(fallback);
+      } catch {}
+    }
     return { hasChanges: false, totalCount: 0 };
   }
 }
@@ -1080,7 +1101,8 @@ export async function updateExamsMetaTimestamp(lastExamSyncedAt: string = new Da
  * 5. Updates both IndexedDB and SQLite stores.
  */
 export async function performIncrementalExamSyncFromFirestore(
-  onUpdate?: (data: { liveExams: LiveExam[]; routines: Routine[] }) => void
+  onUpdate?: (data: { liveExams: LiveExam[]; routines: Routine[] }) => void,
+  target: 'all' | 'routines' | 'exams' = 'all'
 ): Promise<{ hasChanges: boolean; liveExamChanges: number; routineChanges: number }> {
   try {
     const syncStartTimeIso = new Date().toISOString();
@@ -1088,10 +1110,13 @@ export async function performIncrementalExamSyncFromFirestore(
     const localLiveExams = await getLiveExamsFromIDB();
     const localRoutines = await getRoutinesFromIDB();
 
-    // Fresh install check: Only trust local versions if a verified sync timestamp exists
+    const syncLiveExams = target === 'all' || target === 'exams';
+    const syncRoutines = target === 'all' || target === 'routines';
+
+    // Fresh install check: Only trust local versions if a verified sync timestamp exists and local store is populated
     const hasVerifiedSync = Boolean(meta && meta.lastExamSyncedAt);
-    const localExamVersion = hasVerifiedSync && typeof (meta as any)?.examVersion === 'number' ? Number((meta as any).examVersion) : 0;
-    const localRoutineVersion = hasVerifiedSync && typeof (meta as any)?.routineVersion === 'number' ? Number((meta as any).routineVersion) : 0;
+    const localExamVersion = hasVerifiedSync && typeof (meta as any)?.examVersion === 'number' && (localLiveExams.length > 0 || !syncLiveExams) ? Number((meta as any).examVersion) : 0;
+    const localRoutineVersion = hasVerifiedSync && typeof (meta as any)?.routineVersion === 'number' && (localRoutines.length > 0 || !syncRoutines) ? Number((meta as any).routineVersion) : 0;
 
     // 1. Fetch server meta/versions
     let serverExamVersion = 1;
@@ -1106,17 +1131,21 @@ export async function performIncrementalExamSyncFromFirestore(
       }
     } catch (e) {
       console.warn('[IndexedDB] Could not check meta/versions for exams:', e);
+      if (onUpdate) {
+        onUpdate({ liveExams: localLiveExams, routines: localRoutines });
+      }
       return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
     }
 
-    // 2. Zero-reads optimization: If both versions match and verified local data exists -> 0 collection reads!
-    if (
-      hasVerifiedSync &&
-      localExamVersion >= serverExamVersion &&
-      localRoutineVersion >= serverRoutineVersion &&
-      (localLiveExams.length > 0 || localRoutines.length > 0)
-    ) {
-      console.log(`[IndexedDB] Live Exams & Routines up to date (exam v${localExamVersion}, routine v${localRoutineVersion}). 0 collection reads.`);
+    // 2. Zero-reads optimization: If targeted versions match and verified local data exists -> 0 collection reads!
+    const isExamUpToDate = !syncLiveExams || (hasVerifiedSync && localExamVersion >= serverExamVersion && localLiveExams.length > 0);
+    const isRoutineUpToDate = !syncRoutines || (hasVerifiedSync && localRoutineVersion >= serverRoutineVersion && localRoutines.length > 0);
+
+    if (isExamUpToDate && isRoutineUpToDate) {
+      console.log(`[IndexedDB] ${target === 'all' ? 'Live Exams & Routines' : target} up to date. 0 collection reads.`);
+      if (onUpdate) {
+        onUpdate({ liveExams: localLiveExams, routines: localRoutines });
+      }
       return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
     }
 
@@ -1126,138 +1155,158 @@ export async function performIncrementalExamSyncFromFirestore(
     let removedRIds: string[] = [];
 
     // 3. Process Live Exams (Full fetch on fresh install / localExamVersion === 0)
-    if (localExamVersion === 0) {
-      console.log(`[IndexedDB] Initial live exams sync from Firestore (server v${serverExamVersion})...`);
-      const snapLE = await getDocs(collection(db, 'live_exams'));
-      snapLE.forEach((d) => {
-        const data = d.data();
-        if (!data.isDeleted && !data.deletedAt) {
-          modifiedLE.push(normalizeLiveExam({
-            ...data,
-            id: String(data.id || d.id),
-            version: data.version || serverExamVersion,
-            updatedAt: data.updatedAt || syncStartTimeIso
-          }));
-        }
-      });
-      if (modifiedLE.length > 0) {
+    if (syncLiveExams) {
+      if (localExamVersion === 0) {
+        console.log(`[IndexedDB] Initial live exams sync from Firestore (server v${serverExamVersion})...`);
+        const snapLE = await getDocs(collection(db, 'live_exams'));
+        snapLE.forEach((d) => {
+          const data = d.data();
+          if (!data.isDeleted && !data.deletedAt) {
+            modifiedLE.push(normalizeLiveExam({
+              ...data,
+              id: String(data.id || d.id),
+              version: data.version || serverExamVersion,
+              updatedAt: data.updatedAt || syncStartTimeIso
+            }));
+          }
+        });
         await saveLiveExamsToIDB(modifiedLE);
-        await insertLiveExamsToSQLite(modifiedLE);
+        if (modifiedLE.length > 0) {
+          await insertLiveExamsToSQLite(modifiedLE);
+        }
         try {
           localStorage.setItem('orjon_live_exams', JSON.stringify(modifiedLE));
         } catch {}
-      }
-    } else if (serverExamVersion > localExamVersion) {
-      const qLE = query(collection(db, 'live_exams'), where('version', '>', localExamVersion));
-      const snapLE = await getDocs(qLE);
-      snapLE.forEach((docSnap) => {
-        const data = docSnap.data();
-        const id = String(data.id || docSnap.id);
-        if (data.isDeleted || data.deletedAt) {
-          removedLEIds.push(id);
-        } else {
-          modifiedLE.push(normalizeLiveExam({
-            ...data,
-            id,
-            version: data.version || serverExamVersion,
-            updatedAt: data.updatedAt || syncStartTimeIso
-          }));
-        }
-      });
+      } else if (serverExamVersion > localExamVersion) {
+        const qLE = query(collection(db, 'live_exams'), where('version', '>', localExamVersion));
+        const snapLE = await getDocs(qLE);
+        snapLE.forEach((docSnap) => {
+          const data = docSnap.data();
+          const id = String(data.id || docSnap.id);
+          if (data.isDeleted || data.deletedAt) {
+            removedLEIds.push(id);
+          } else {
+            modifiedLE.push(normalizeLiveExam({
+              ...data,
+              id,
+              version: data.version || serverExamVersion,
+              updatedAt: data.updatedAt || syncStartTimeIso
+            }));
+          }
+        });
 
-      if (modifiedLE.length > 0 || removedLEIds.length > 0) {
-        await upsertLiveExamsToIDB(modifiedLE, removedLEIds);
-        if (modifiedLE.length > 0) await insertLiveExamsToSQLite(modifiedLE);
-        for (const id of removedLEIds) await deleteLiveExamFromSQLite(id);
+        if (modifiedLE.length > 0 || removedLEIds.length > 0) {
+          await upsertLiveExamsToIDB(modifiedLE, removedLEIds);
+          if (modifiedLE.length > 0) await insertLiveExamsToSQLite(modifiedLE);
+          for (const id of removedLEIds) await deleteLiveExamFromSQLite(id);
+        }
       }
     }
 
     // 4. Process Routines (Full fetch on fresh install / localRoutineVersion === 0)
-    if (localRoutineVersion === 0) {
-      console.log(`[IndexedDB] Initial routines sync from Firestore (server v${serverRoutineVersion})...`);
-      const snapR = await getDocs(collection(db, 'routines'));
-      snapR.forEach((d) => {
-        const data = d.data();
-        if (!data.isDeleted && !data.deletedAt) {
-          modifiedR.push(normalizeRoutine({
-            ...data,
-            id: String(data.id || d.id),
-            version: data.version || serverRoutineVersion,
-            updatedAt: data.updatedAt || syncStartTimeIso
-          }));
-        }
-      });
-      if (modifiedR.length > 0) {
+    if (syncRoutines) {
+      if (localRoutineVersion === 0) {
+        console.log(`[IndexedDB] Initial routines sync from Firestore (server v${serverRoutineVersion})...`);
+        const snapR = await getDocs(collection(db, 'routines'));
+        snapR.forEach((d) => {
+          const data = d.data();
+          if (!data.isDeleted && !data.deletedAt) {
+            modifiedR.push(normalizeRoutine({
+              ...data,
+              id: String(data.id || d.id),
+              version: data.version || serverRoutineVersion,
+              updatedAt: data.updatedAt || syncStartTimeIso
+            }));
+          }
+        });
         await saveRoutinesToIDB(modifiedR);
-        await insertRoutinesToSQLite(modifiedR);
+        if (modifiedR.length > 0) {
+          await insertRoutinesToSQLite(modifiedR);
+        }
         try {
           localStorage.setItem('orjon_routines', JSON.stringify(modifiedR));
         } catch {}
-      }
-    } else if (serverRoutineVersion > localRoutineVersion) {
-      const qR = query(collection(db, 'routines'), where('version', '>', localRoutineVersion));
-      const snapR = await getDocs(qR);
-      snapR.forEach((docSnap) => {
-        const data = docSnap.data();
-        const id = String(data.id || docSnap.id);
-        if (data.isDeleted || data.deletedAt) {
-          removedRIds.push(id);
-        } else {
-          modifiedR.push(normalizeRoutine({
-            ...data,
-            id,
-            version: data.version || serverRoutineVersion,
-            updatedAt: data.updatedAt || syncStartTimeIso
-          }));
+      } else if (serverRoutineVersion > localRoutineVersion) {
+        const qR = query(collection(db, 'routines'), where('version', '>', localRoutineVersion));
+        const snapR = await getDocs(qR);
+        snapR.forEach((docSnap) => {
+          const data = docSnap.data();
+          const id = String(data.id || docSnap.id);
+          if (data.isDeleted || data.deletedAt) {
+            removedRIds.push(id);
+          } else {
+            modifiedR.push(normalizeRoutine({
+              ...data,
+              id,
+              version: data.version || serverRoutineVersion,
+              updatedAt: data.updatedAt || syncStartTimeIso
+            }));
+          }
+        });
+
+        if (modifiedR.length > 0 || removedRIds.length > 0) {
+          await upsertRoutinesToIDB(modifiedR, removedRIds);
+          if (modifiedR.length > 0) await insertRoutinesToSQLite(modifiedR);
+          for (const id of removedRIds) await deleteRoutineFromSQLite(id);
         }
-      });
-
-      if (modifiedR.length > 0 || removedRIds.length > 0) {
-        await upsertRoutinesToIDB(modifiedR, removedRIds);
-        if (modifiedR.length > 0) await insertRoutinesToSQLite(modifiedR);
-        for (const id of removedRIds) await deleteRoutineFromSQLite(id);
       }
     }
 
-    const hasLEChanges = modifiedLE.length > 0 || removedLEIds.length > 0;
-    const hasRChanges = modifiedR.length > 0 || removedRIds.length > 0;
+    const hasLEChanges = syncLiveExams && (modifiedLE.length > 0 || removedLEIds.length > 0 || localExamVersion === 0);
+    const hasRChanges = syncRoutines && (modifiedR.length > 0 || removedRIds.length > 0 || localRoutineVersion === 0);
 
-    // 5. Update metadata store
-    try {
-      const [freshLE, freshR] = await Promise.all([
-        getLiveExamsFromIDB(),
-        getRoutinesFromIDB()
-      ]);
-      const idb = await getDB();
-      const tx = idb.transaction(STORE_META, 'readwrite');
-      tx.objectStore(STORE_META).put({
-        key: 'exams_meta',
-        lastExamSyncedAt: syncStartTimeIso,
-        liveExamCount: freshLE.length,
-        routineCount: freshR.length,
-        version: Math.max(serverExamVersion, serverRoutineVersion),
-        examVersion: serverExamVersion,
-        routineVersion: serverRoutineVersion
-      });
+    // 5. Update metadata store & propagate fresh state
+    const [freshLE, freshR] = await Promise.all([
+      hasLEChanges ? getLiveExamsFromIDB() : Promise.resolve(localLiveExams),
+      hasRChanges ? getRoutinesFromIDB() : Promise.resolve(localRoutines)
+    ]);
 
-      if ((hasLEChanges || hasRChanges) && onUpdate) {
-        onUpdate({ liveExams: freshLE, routines: freshR });
-      }
-
-      return {
-        hasChanges: hasLEChanges || hasRChanges,
-        liveExamChanges: modifiedLE.length + removedLEIds.length,
-        routineChanges: modifiedR.length + removedRIds.length
-      };
-    } catch {
-      return {
-        hasChanges: hasLEChanges || hasRChanges,
-        liveExamChanges: modifiedLE.length,
-        routineChanges: modifiedR.length
-      };
+    if (hasLEChanges) {
+      try {
+        localStorage.setItem('orjon_live_exams', JSON.stringify(freshLE));
+      } catch {}
     }
+    if (hasRChanges) {
+      try {
+        localStorage.setItem('orjon_routines', JSON.stringify(freshR));
+      } catch {}
+    }
+
+    const idb = await getDB();
+    const tx = idb.transaction(STORE_META, 'readwrite');
+    tx.objectStore(STORE_META).put({
+      key: 'exams_meta',
+      lastExamSyncedAt: syncStartTimeIso,
+      liveExamCount: freshLE.length,
+      routineCount: freshR.length,
+      version: Math.max(
+        syncLiveExams ? serverExamVersion : localExamVersion,
+        syncRoutines ? serverRoutineVersion : localRoutineVersion
+      ),
+      examVersion: syncLiveExams ? serverExamVersion : localExamVersion,
+      routineVersion: syncRoutines ? serverRoutineVersion : localRoutineVersion
+    });
+
+    if (onUpdate) {
+      onUpdate({ liveExams: freshLE, routines: freshR });
+    }
+
+    return {
+      hasChanges: hasLEChanges || hasRChanges,
+      liveExamChanges: modifiedLE.length + removedLEIds.length,
+      routineChanges: modifiedR.length + removedRIds.length
+    };
   } catch (err) {
     console.warn('Incremental exam sync notice (using local cache):', err);
+    if (onUpdate) {
+      try {
+        const [fallbackLE, fallbackR] = await Promise.all([
+          getLiveExamsFromIDB(),
+          getRoutinesFromIDB()
+        ]);
+        onUpdate({ liveExams: fallbackLE, routines: fallbackR });
+      } catch {}
+    }
     return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
   }
 }
