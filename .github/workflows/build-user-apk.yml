@@ -29,25 +29,14 @@ jobs:
         run: |
           echo "Checking dist-user..."
 
-          if [ ! -d "dist-user" ]; then
-            echo "ERROR: dist-user directory does not exist."
+          if [ ! -f "dist-user/index-user.html" ]; then
+            echo "ERROR: dist-user/index-user.html not found."
             exit 1
           fi
 
-          echo "dist-user contents:"
-          find dist-user -maxdepth 2 -type f -print
+          cp dist-user/index-user.html dist-user/index.html
 
-          if [ -f "dist-user/main.html" ]; then
-            cp dist-user/main.html dist-user/index.html
-            echo "Created dist-user/index.html from dist-user/main.html"
-          elif [ -f "dist-user/index.html" ]; then
-            echo "dist-user/index.html already exists."
-          else
-            echo "ERROR: Neither main.html nor index.html exists in dist-user."
-            exit 1
-          fi
-
-          echo "Final Capacitor entry:"
+          echo "Created Capacitor entry point:"
           ls -lh dist-user/index.html
 
       - name: Setup Java JDK 21
