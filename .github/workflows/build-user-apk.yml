@@ -1,42 +1,40 @@
-name: Build User APK
+name: Build User Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build-user-apk:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Setup Java
+      - name: Install Dependencies
+        run: |
+          npm install
+          npm install --no-save @capacitor/cli @capacitor/android
+
+      - name: Build User Application
+        run: |
+          npm run build:user
+
+      - name: Setup Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: 21
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Install Capacitor Android
-        run: npm install @capacitor/android
-
-      - name: Build User Web App
-        run: npm run build:user
-
-      - name: Create temporary Capacitor config
+      - name: Create Temporary Capacitor Config
         run: |
+          cp capacitor.config.ts capacitor.config.ts.backup
+
           cat > capacitor.config.ts <<'EOF'
           import type { CapacitorConfig } from '@capacitor/cli';
 
@@ -52,19 +50,21 @@ jobs:
           export default config;
           EOF
 
-      - name: Create Android project
-        run: npx cap add android
+      - name: Generate Android Project
+        run: |
+          npx cap add android
 
       - name: Sync Capacitor
-        run: npx cap sync android
-
-      - name: Build User Debug APK
-        working-directory: android
         run: |
+          npx cap sync android
+
+      - name: Build Debug APK
+        run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Upload User APK
+      - name: Upload User Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: Orjon-User-Debug-APK
