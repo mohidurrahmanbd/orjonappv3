@@ -5,6 +5,8 @@ export interface GlobalSyncVersions {
   courseVersion: number;
   examVersion: number;
   routineVersion: number;
+  couponVersion?: number;
+  paymentSettingsVersion?: number;
   updatedAt?: string;
 }
 
@@ -118,6 +120,9 @@ export interface Coupon {
   isActive: boolean;
   createdAt: string;
   usageCount?: number;
+  version?: number;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface CourseEnrollment {
@@ -147,6 +152,7 @@ export interface PaymentSettings {
   rocketNumber: string;
   rocketType: 'Personal' | 'Merchant' | 'Agent';
   instructions?: string;
+  version?: number;
   updatedAt?: string;
 }
 

@@ -45,6 +45,9 @@ export interface UserAppProps {
   onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
   onLoadCoursesOnDemand?: () => Promise<void> | void;
   onLoadRoutinesOnDemand?: () => Promise<void> | void;
+  onLoadLiveExamsOnDemand?: () => Promise<void> | void;
+  onLoadCouponsOnDemand?: () => Promise<void> | void;
+  onLoadPaymentSettingsOnDemand?: () => Promise<void> | void;
 }
 
 export default function UserApp(props: UserAppProps) {

@@ -23,7 +23,10 @@ import {
   bulkSoftDeleteSubcategories,
   softDeleteCourse,
   softDeleteLiveExam,
-  softDeleteRoutine
+  softDeleteRoutine,
+  softDeleteCoupon,
+  syncCouponsMetadataFirst,
+  syncPaymentSettingsMetadataFirst
 } from '../shared/lib/sync/versionSyncService';
 import {
   getQuestionsFromIDB,
@@ -1995,6 +1998,40 @@ export default function App() {
     }
   };
 
+  const handleLoadCouponsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['coupons'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['coupons'] = now;
+    try {
+      await syncCouponsMetadataFirst((updatedCoupons) => {
+        if (updatedCoupons && updatedCoupons.length > 0) {
+          setCoupons(updatedCoupons);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand coupons load notice:', e);
+    }
+  };
+
+  const handleLoadPaymentSettingsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['paymentSettings'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['paymentSettings'] = now;
+    try {
+      await syncPaymentSettingsMetadataFirst((updatedSettings) => {
+        if (updatedSettings) {
+          setPaymentSettings(updatedSettings);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand payment settings load notice:', e);
+    }
+  };
+
   const handleAddQuestion = (q: Omit<Question, 'id'>) => {
     let cat = q.category || '';
     if (isJobSolutionVariation(cat)) {
@@ -2293,7 +2330,9 @@ export default function App() {
     setCoupons(prev => {
       const updated = [newCoupon, ...prev];
       localStorage.setItem('orjon_coupons', JSON.stringify(updated));
-      syncCollectionToFirestore('coupons', updated, 'item');
+      saveItemToFirestore('coupons', newCoupon, 'cpn').catch(err => {
+        console.warn('Could not save coupon to Firestore:', err);
+      });
       return updated;
     });
     addAuditLog('নতুন কুপন তৈরি (Coupon)', `কুপন: ${newCoupon.code}, ছাড়: ${newCoupon.discountPercent}%`, 'create');
@@ -2303,14 +2342,19 @@ export default function App() {
     setCoupons(prev => {
       const updated = prev.map(c => c.id === id ? { ...c, ...updatedCoupon } : c);
       localStorage.setItem('orjon_coupons', JSON.stringify(updated));
-      syncCollectionToFirestore('coupons', updated, 'item');
+      const target = updated.find(c => c.id === id);
+      if (target) {
+        saveItemToFirestore('coupons', target, 'cpn').catch(err => {
+          console.warn('Could not update coupon in Firestore:', err);
+        });
+      }
       return updated;
     });
     addAuditLog('কুপন আপডেট (Update Coupon)', `ID: ${id}`, 'update');
   };
 
   const handleDeleteCoupon = async (id: string): Promise<boolean> => {
-    const ok = await deleteItemFromFirestore('coupons', id);
+    const ok = await softDeleteCoupon(id);
     if (!ok) return false;
     setCoupons(prev => {
       const updated = prev.filter(c => c.id !== id);
@@ -2330,7 +2374,10 @@ export default function App() {
     setCourseEnrollments(prev => {
       const updated = [newEnrollment, ...prev];
       localStorage.setItem('orjon_course_enrollments', JSON.stringify(updated));
-      syncCollectionToFirestore('course_enrollments', updated, 'item');
+      // Save ONLY the newly created enrollment document to Firestore to preserve security rules
+      saveItemToFirestore('course_enrollments', newEnrollment, 'enr').catch(err => {
+        console.warn('Could not save enrollment to Firestore:', err);
+      });
       return updated;
     });
     if (enrollmentData.couponCode) {
@@ -2985,6 +3032,9 @@ export default function App() {
             onFetchQuestionsLazy={handleFetchQuestionsLazy}
             onLoadCoursesOnDemand={handleLoadCoursesOnDemand}
             onLoadRoutinesOnDemand={handleLoadRoutinesOnDemand}
+            onLoadLiveExamsOnDemand={handleLoadLiveExamsOnDemand}
+            onLoadCouponsOnDemand={handleLoadCouponsOnDemand}
+            onLoadPaymentSettingsOnDemand={handleLoadPaymentSettingsOnDemand}
             onRegisterPrompt={() => {
               setCurrentUser(null);
               setAuthScreen('register');

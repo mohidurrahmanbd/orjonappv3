@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../shared/types';
+import { syncUserEnrollmentsOnDemand } from '../shared/lib/sync/versionSyncService';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -354,6 +355,9 @@ interface UserPortalProps {
   onFetchQuestionsLazy?: (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }) => Promise<Question[]>;
   onLoadCoursesOnDemand?: () => Promise<void> | void;
   onLoadRoutinesOnDemand?: () => Promise<void> | void;
+  onLoadLiveExamsOnDemand?: () => Promise<void> | void;
+  onLoadCouponsOnDemand?: () => Promise<void> | void;
+  onLoadPaymentSettingsOnDemand?: () => Promise<void> | void;
 }
 
 // Helper to calculate merit rank (+71 to actual rank, +296 to actual users)
@@ -522,7 +526,10 @@ export default function UserPortal({
   onRegisterPrompt,
   onFetchQuestionsLazy,
   onLoadCoursesOnDemand,
-  onLoadRoutinesOnDemand
+  onLoadRoutinesOnDemand,
+  onLoadLiveExamsOnDemand,
+  onLoadCouponsOnDemand,
+  onLoadPaymentSettingsOnDemand
 }: UserPortalProps) {
   // Navigation
   const [activeTab, setActiveTab] = useState<'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
@@ -606,6 +613,18 @@ export default function UserPortal({
     }
     return [];
   });
+
+  const handleRestoreUserEnrollments = useCallback(async () => {
+    try {
+      const { enrolledCourseIds: restoredIds } = await syncUserEnrollmentsOnDemand(user);
+      if (restoredIds && restoredIds.length > 0) {
+        setEnrolledCourseIds(prev => Array.from(new Set([...prev, ...restoredIds])));
+      }
+    } catch (e) {
+      console.warn('Enrollment restoration notice:', e);
+    }
+  }, [user]);
+
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<'enrolled' | 'all' | 'active' | 'upcoming' | 'completed'>('all');
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [expandedSyllabusMap, setExpandedSyllabusMap] = useState<Record<string, boolean>>({});
@@ -628,6 +647,8 @@ export default function UserPortal({
     } else {
       const courseObj = (courses || []).find(c => c.id === courseId);
       if (courseObj) {
+        if (onLoadCouponsOnDemand) onLoadCouponsOnDemand();
+        if (onLoadPaymentSettingsOnDemand) onLoadPaymentSettingsOnDemand();
         setSelectedCourseForEnrollment(courseObj);
       } else {
         updated = [...enrolledCourseIds, courseId];
@@ -1284,6 +1305,7 @@ export default function UserPortal({
       if (onLoadCoursesOnDemand) {
         onLoadCoursesOnDemand();
       }
+      handleRestoreUserEnrollments();
     }
     if (tab === 'routines') {
       setSelectedRoutineCourseId(null);
@@ -1291,17 +1313,35 @@ export default function UserPortal({
       if (onLoadRoutinesOnDemand) {
         onLoadRoutinesOnDemand();
       }
+      handleRestoreUserEnrollments();
+    }
+    if (tab === 'exams') {
+      if (onLoadLiveExamsOnDemand) {
+        onLoadLiveExamsOnDemand();
+      }
+      handleRestoreUserEnrollments();
     }
     setActiveTab(tab);
   };
 
   useEffect(() => {
-    if (activeTab === 'courses' && onLoadCoursesOnDemand) {
-      onLoadCoursesOnDemand();
-    } else if (activeTab === 'routines' && onLoadRoutinesOnDemand) {
-      onLoadRoutinesOnDemand();
+    if (activeTab === 'courses') {
+      if (onLoadCoursesOnDemand) onLoadCoursesOnDemand();
+      handleRestoreUserEnrollments();
+    } else if (activeTab === 'routines') {
+      if (onLoadRoutinesOnDemand) onLoadRoutinesOnDemand();
+      handleRestoreUserEnrollments();
+    } else if (activeTab === 'exams') {
+      if (onLoadLiveExamsOnDemand) onLoadLiveExamsOnDemand();
+      handleRestoreUserEnrollments();
     }
-  }, [activeTab, onLoadCoursesOnDemand, onLoadRoutinesOnDemand]);
+  }, [activeTab, onLoadCoursesOnDemand, onLoadRoutinesOnDemand, onLoadLiveExamsOnDemand, handleRestoreUserEnrollments]);
+
+  useEffect(() => {
+    if (directExamId && onLoadLiveExamsOnDemand) {
+      onLoadLiveExamsOnDemand();
+    }
+  }, [directExamId, onLoadLiveExamsOnDemand]);
 
   // Stack Unwinding Engine: unwinds one layer of navigation/state stack.
   const handleStackUnwind = (): boolean => {
@@ -3061,21 +3101,26 @@ export default function UserPortal({
   const startOfficialLiveExam = async (exam: LiveExam) => {
     // Check if course is enrolled if this exam belongs to an unenrolled course
     if (exam.courseId && !enrolledCourseIds.includes(exam.courseId)) {
-      const course = courses ? courses.find(c => c.id === exam.courseId) : undefined;
-      const courseTitle = course?.title || exam.courseName || 'এই কোর্সটি';
-      showCustomAlert(
-        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের অফিশিয়াল লাইভ পরীক্ষায় অংশগ্রহণ করতে অন্গ্রহ করে প্রথমে কোর্সে এনরোল (Enroll) করুন।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন।`,
-        () => {
-          if (exam.courseId) {
-            handleToggleEnrollCourse(exam.courseId, courseTitle);
-          }
-        },
-        '🔒 কোর্সটি লক করা আছে',
-        true,
-        'এনরোল করুন',
-        'বন্ধ করুন'
-      );
-      return;
+      const { enrolledCourseIds: freshIds } = await syncUserEnrollmentsOnDemand(user);
+      if (freshIds && freshIds.includes(exam.courseId)) {
+        setEnrolledCourseIds(freshIds);
+      } else {
+        const course = courses ? courses.find(c => c.id === exam.courseId) : undefined;
+        const courseTitle = course?.title || exam.courseName || 'এই কোর্সটি';
+        showCustomAlert(
+          `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${courseTitle}" কোর্সের অফিশিয়াল লাইভ পরীক্ষায় অংশগ্রহণ করতে অনুগ্রহ করে প্রথমে কোর্সে এনরোল (Enroll) করুন।\n\nআপনি বর্তমানে শুধুমাত্র রুটিন ও সিলেবাস দেখতে পারবেন।`,
+          () => {
+            if (exam.courseId) {
+              handleToggleEnrollCourse(exam.courseId, courseTitle);
+            }
+          },
+          '🔒 কোর্সটি লক করা আছে',
+          true,
+          'এনরোল করুন',
+          'বন্ধ করুন'
+        );
+        return;
+      }
     }
 
     // Check if already completed
@@ -3992,6 +4037,8 @@ export default function UserPortal({
             coupons={coupons}
             paymentSettings={paymentSettings}
             onEnrollSuccess={handleEnrollSuccess}
+            onLoadCouponsOnDemand={onLoadCouponsOnDemand}
+            onLoadPaymentSettingsOnDemand={onLoadPaymentSettingsOnDemand}
           />
         )}
 

@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Course, Coupon, CourseEnrollment, User, PaymentSettings, DEFAULT_PAYMENT_SETTINGS } from '../shared/types';
+import { auth } from '../shared/lib/firebase';
 import { 
   X, CheckCircle2, Tag, Percent, Sparkles, ShieldCheck, 
   AlertCircle, GraduationCap, ArrowRight, Wallet, Check, Copy
@@ -14,6 +15,8 @@ interface CourseEnrollmentModalProps {
   coupons?: Coupon[];
   paymentSettings?: PaymentSettings;
   onEnrollSuccess: (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => void;
+  onLoadCouponsOnDemand?: () => Promise<void> | void;
+  onLoadPaymentSettingsOnDemand?: () => Promise<void> | void;
 }
 
 export default function CourseEnrollmentModal({
@@ -23,8 +26,17 @@ export default function CourseEnrollmentModal({
   user,
   coupons = [],
   paymentSettings = DEFAULT_PAYMENT_SETTINGS,
-  onEnrollSuccess
+  onEnrollSuccess,
+  onLoadCouponsOnDemand,
+  onLoadPaymentSettingsOnDemand
 }: CourseEnrollmentModalProps) {
+  useEffect(() => {
+    if (isOpen) {
+      if (onLoadCouponsOnDemand) onLoadCouponsOnDemand();
+      if (onLoadPaymentSettingsOnDemand) onLoadPaymentSettingsOnDemand();
+    }
+  }, [isOpen, onLoadCouponsOnDemand, onLoadPaymentSettingsOnDemand]);
+
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -146,13 +158,14 @@ export default function CourseEnrollmentModal({
 
     setIsSubmitting(true);
 
+    const authUser = auth.currentUser;
     const enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'> = {
       courseId: course.id,
       courseTitle: course.title,
       userPhone: senderPhone || user.phone || 'N/A',
       userName: user.name,
-      userEmail: user.email,
-      userId: user.userId,
+      userEmail: (authUser?.email || user.email || '').trim().toLowerCase(),
+      userId: authUser?.uid || user.userId,
       originalPrice: rawPrice,
       discountPercent,
       discountAmount,

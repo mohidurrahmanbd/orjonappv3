@@ -10,7 +10,7 @@ import {
   writeBatch,
   increment
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import {
   GlobalSyncVersions,
   Question,
@@ -18,7 +18,10 @@ import {
   SubcategoryItem,
   Course,
   LiveExam,
-  Routine
+  Routine,
+  Coupon,
+  CourseEnrollment,
+  PaymentSettings
 } from '../../types';
 import {
   getSQLiteDatabase
@@ -87,6 +90,8 @@ export const DEFAULT_GLOBAL_VERSIONS: GlobalSyncVersions = {
   courseVersion: 1,
   examVersion: 1,
   routineVersion: 1,
+  couponVersion: 1,
+  paymentSettingsVersion: 1,
   updatedAt: new Date().toISOString()
 };
 
@@ -141,6 +146,8 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
         courseVersion: Number(data.courseVersion || 1),
         examVersion: Number(data.examVersion || 1),
         routineVersion: Number(data.routineVersion || 1),
+        couponVersion: Number(data.couponVersion || 1),
+        paymentSettingsVersion: Number(data.paymentSettingsVersion || 1),
         updatedAt: data.updatedAt || new Date().toISOString()
       };
     }
@@ -164,7 +171,7 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
  * Atomically increment a specific collection version in `meta/versions`.
  */
 export async function incrementGlobalVersion(
-  entity: 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion'
+  entity: 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion'
 ): Promise<number> {
   try {
     const versionDocRef = doc(db, 'meta', 'versions');
@@ -209,6 +216,8 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
     courseVersion: 0,
     examVersion: 0,
     routineVersion: 0,
+    couponVersion: 0,
+    paymentSettingsVersion: 0,
     updatedAt: ''
   };
 
@@ -224,6 +233,8 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
         courseVersion: Number(parsed.courseVersion || 0),
         examVersion: Number(parsed.examVersion || 0),
         routineVersion: Number(parsed.routineVersion || 0),
+        couponVersion: Number(parsed.couponVersion || 0),
+        paymentSettingsVersion: Number(parsed.paymentSettingsVersion || 0),
         updatedAt: parsed.updatedAt || ''
       };
     }
@@ -243,6 +254,8 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
       if (k === 'courseVersion' && v > versions.courseVersion) versions.courseVersion = v;
       if (k === 'examVersion' && v > versions.examVersion) versions.examVersion = v;
       if (k === 'routineVersion' && v > versions.routineVersion) versions.routineVersion = v;
+      if (k === 'couponVersion' && v > (versions.couponVersion || 0)) versions.couponVersion = v;
+      if (k === 'paymentSettingsVersion' && v > (versions.paymentSettingsVersion || 0)) versions.paymentSettingsVersion = v;
     });
   } catch {}
 
@@ -260,6 +273,8 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     courseVersion: Number(versions.courseVersion || 0),
     examVersion: Number(versions.examVersion || 0),
     routineVersion: Number(versions.routineVersion || 0),
+    couponVersion: Number(versions.couponVersion || 0),
+    paymentSettingsVersion: Number(versions.paymentSettingsVersion || 0),
     updatedAt: versions.updatedAt || new Date().toISOString()
   };
 
@@ -277,6 +292,8 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['courseVersion', String(cleanVersions.courseVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['examVersion', String(cleanVersions.examVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['routineVersion', String(cleanVersions.routineVersion)]);
+    await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['couponVersion', String(cleanVersions.couponVersion)]);
+    await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['paymentSettingsVersion', String(cleanVersions.paymentSettingsVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['updatedAt', cleanVersions.updatedAt || '']);
   } catch (err) {
     console.warn('[VersionSync] SQLite sync_meta write notice:', err);
@@ -675,6 +692,293 @@ export async function syncExamsAndRoutinesMetadataFirst(
   } catch (err) {
     console.warn('[VersionSync] syncExamsAndRoutinesMetadataFirst notice:', err);
     return { hasChanges: false, liveExamChanges: 0, routineChanges: 0 };
+  }
+}
+
+/**
+ * Metadata-First Coupon Sync
+ * 1. Checks `meta/versions` (1 doc read).
+ * 2. If local couponVersion matches server couponVersion: 0 collection reads!
+ * 3. If server couponVersion > local couponVersion: fetches only modified coupons (version > localCouponVersion).
+ * 4. Filters out soft-deleted / tombstoned coupons.
+ */
+export async function syncCouponsMetadataFirst(
+  onUpdate?: (coupons: Coupon[]) => void
+): Promise<{ hasChanges: boolean; updatedCount: number; removedCount: number }> {
+  try {
+    const serverVersions = await getGlobalSyncVersions();
+    const localVersions = await getLocalSyncVersions();
+
+    let localCoupons: Coupon[] = [];
+    try {
+      const raw = localStorage.getItem('orjon_coupons');
+      if (raw) localCoupons = JSON.parse(raw);
+    } catch {}
+
+    const localCouponVersion = localVersions.couponVersion || 0;
+    const serverCouponVersion = serverVersions.couponVersion || 1;
+
+    // Zero reads optimization: version matches and local data present
+    if (localCouponVersion >= serverCouponVersion && localCoupons.length > 0) {
+      console.log(`[VersionSync] Coupons up to date (v${localCouponVersion}). 0 collection reads.`);
+      return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+    }
+
+    // Initial fresh sync (local version is 0)
+    if (localCouponVersion === 0) {
+      console.log(`[VersionSync] Initial coupons sync (v${serverCouponVersion})...`);
+      const snap = await getDocs(collection(db, 'coupons'));
+      const activeCoupons: Coupon[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          activeCoupons.push({
+            ...data,
+            id: String(data.id || d.id),
+            version: data.version || serverCouponVersion,
+            createdAt: data.createdAt || new Date().toISOString()
+          } as Coupon);
+        }
+      });
+
+      try {
+        localStorage.setItem('orjon_coupons', JSON.stringify(activeCoupons));
+      } catch {}
+      if (onUpdate) onUpdate(activeCoupons);
+
+      localVersions.couponVersion = serverCouponVersion;
+      localVersions.updatedAt = new Date().toISOString();
+      await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: activeCoupons.length > 0, updatedCount: activeCoupons.length, removedCount: 0 };
+    }
+
+    // Differential sync: fetch only coupons with version > localCouponVersion
+    if (serverCouponVersion > localCouponVersion) {
+      console.log(`[VersionSync] Differential coupons sync: local v${localCouponVersion} -> server v${serverCouponVersion}`);
+      const qDiff = query(
+        collection(db, 'coupons'),
+        where('version', '>', localCouponVersion)
+      );
+      const snap = await getDocs(qDiff);
+
+      if (!snap.empty) {
+        const toUpsertMap = new Map<string, Coupon>();
+        const toRemoveIds = new Set<string>();
+
+        snap.forEach((d) => {
+          const data = d.data();
+          const couponId = String(data.id || d.id);
+          if (data.deletedAt || data.isDeleted) {
+            toRemoveIds.add(couponId);
+          } else {
+            toUpsertMap.set(couponId, {
+              ...data,
+              id: couponId,
+              version: data.version || serverCouponVersion,
+              createdAt: data.createdAt || new Date().toISOString()
+            } as Coupon);
+          }
+        });
+
+        let merged = localCoupons.filter(c => !toRemoveIds.has(c.id) && !toUpsertMap.has(c.id));
+        merged = [...merged, ...Array.from(toUpsertMap.values())];
+
+        try {
+          localStorage.setItem('orjon_coupons', JSON.stringify(merged));
+        } catch {}
+        if (onUpdate) onUpdate(merged);
+
+        localVersions.couponVersion = serverCouponVersion;
+        localVersions.updatedAt = new Date().toISOString();
+        await saveLocalSyncVersions(localVersions);
+
+        return { hasChanges: true, updatedCount: toUpsertMap.size, removedCount: toRemoveIds.size };
+      }
+
+      localVersions.couponVersion = serverCouponVersion;
+      localVersions.updatedAt = new Date().toISOString();
+      await saveLocalSyncVersions(localVersions);
+    }
+
+    return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+  } catch (err) {
+    console.warn('[VersionSync] syncCouponsMetadataFirst notice:', err);
+    return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+  }
+}
+
+/**
+ * Metadata-First Payment Settings Sync
+ * 1. Checks `meta/versions` (1 doc read).
+ * 2. If local paymentSettingsVersion matches server paymentSettingsVersion: 0 collection reads!
+ * 3. Reads Firestore collection only when version changes.
+ */
+export async function syncPaymentSettingsMetadataFirst(
+  onUpdate?: (settings: PaymentSettings) => void
+): Promise<{ hasChanges: boolean }> {
+  try {
+    const serverVersions = await getGlobalSyncVersions();
+    const localVersions = await getLocalSyncVersions();
+
+    let localSettings: PaymentSettings | null = null;
+    try {
+      const raw = localStorage.getItem('orjon_payment_settings');
+      if (raw) localSettings = JSON.parse(raw);
+    } catch {}
+
+    const localPSVersion = localVersions.paymentSettingsVersion || 0;
+    const serverPSVersion = serverVersions.paymentSettingsVersion || 1;
+
+    // Zero reads optimization: version matches and local data present with numbers
+    if (localPSVersion >= serverPSVersion && localSettings && (localSettings.bkashNumber || localSettings.nagadNumber || localSettings.rocketNumber)) {
+      console.log(`[VersionSync] Payment settings up to date (v${localPSVersion}). 0 collection reads.`);
+      return { hasChanges: false };
+    }
+
+    // Version differs or empty local settings: fetch from Firestore
+    console.log(`[VersionSync] Fetching payment_settings from Firestore (server v${serverPSVersion})...`);
+    const snap = await getDocs(collection(db, 'payment_settings'));
+    if (!snap.empty) {
+      const docData = snap.docs[0].data() as PaymentSettings;
+      const cleanSettings: PaymentSettings = {
+        bkashNumber: docData.bkashNumber || '',
+        bkashType: docData.bkashType || 'Personal',
+        nagadNumber: docData.nagadNumber || '',
+        nagadType: docData.nagadType || 'Personal',
+        rocketNumber: docData.rocketNumber || '',
+        rocketType: docData.rocketType || 'Personal',
+        instructions: docData.instructions || '',
+        version: docData.version || serverPSVersion,
+        updatedAt: docData.updatedAt || new Date().toISOString()
+      };
+
+      try {
+        localStorage.setItem('orjon_payment_settings', JSON.stringify(cleanSettings));
+      } catch {}
+      if (onUpdate) onUpdate(cleanSettings);
+
+      localVersions.paymentSettingsVersion = serverPSVersion;
+      localVersions.updatedAt = new Date().toISOString();
+      await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: true };
+    }
+
+    localVersions.paymentSettingsVersion = serverPSVersion;
+    localVersions.updatedAt = new Date().toISOString();
+    await saveLocalSyncVersions(localVersions);
+    return { hasChanges: false };
+  } catch (err) {
+    console.warn('[VersionSync] syncPaymentSettingsMetadataFirst notice:', err);
+    return { hasChanges: false };
+  }
+}
+
+/**
+ * On-Demand User Course Enrollment Sync
+ * Restores user enrollments only when opening Courses, Purchased Courses, or Course-linked Exams.
+ * Queries ONLY the authenticated user's records to minimize reads and prevent full collection downloads.
+ */
+export async function syncUserEnrollmentsOnDemand(
+  user?: { userId?: string; phone?: string; email?: string } | null,
+  onUpdate?: (enrolledCourseIds: string[], enrollments: CourseEnrollment[]) => void
+): Promise<{ enrolledCourseIds: string[]; enrollments: CourseEnrollment[] }> {
+  const userKey = user?.userId || user?.phone || user?.email || 'user';
+  let cachedCourseIds: string[] = [];
+  try {
+    const raw = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
+    if (raw) cachedCourseIds = JSON.parse(raw);
+  } catch {}
+
+  let cachedEnrollments: CourseEnrollment[] = [];
+  try {
+    const raw = localStorage.getItem('orjon_course_enrollments');
+    if (raw) cachedEnrollments = JSON.parse(raw);
+  } catch {}
+
+  const authUser = auth.currentUser;
+  const userEmail = (authUser?.email || user?.email || '').trim().toLowerCase();
+  const userId = authUser?.uid || user?.userId;
+
+  if (!userEmail && !userId && !user?.phone) {
+    return { enrolledCourseIds: cachedCourseIds, enrollments: cachedEnrollments };
+  }
+
+  try {
+    const enrollmentsCol = collection(db, 'course_enrollments');
+    let snap;
+    if (userEmail) {
+      const q = query(enrollmentsCol, where('userEmail', '==', userEmail));
+      snap = await getDocs(q);
+      if (snap.empty && user?.phone) {
+        const qPhone = query(enrollmentsCol, where('userPhone', '==', user.phone));
+        snap = await getDocs(qPhone);
+      }
+    } else if (userId) {
+      const q = query(enrollmentsCol, where('userId', '==', userId));
+      snap = await getDocs(q);
+    } else if (user?.phone) {
+      const qPhone = query(enrollmentsCol, where('userPhone', '==', user.phone));
+      snap = await getDocs(qPhone);
+    }
+
+    if (snap && !snap.empty) {
+      const serverEnrollments: CourseEnrollment[] = [];
+      const serverCourseIds: string[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as CourseEnrollment;
+        if (data.courseId) {
+          serverCourseIds.push(data.courseId);
+          serverEnrollments.push({
+            ...data,
+            id: d.id,
+            enrolledAt: data.enrolledAt || new Date().toISOString()
+          });
+        }
+      });
+
+      const mergedCourseIds = Array.from(new Set([...cachedCourseIds, ...serverCourseIds]));
+
+      const enrollmentMap = new Map<string, CourseEnrollment>();
+      cachedEnrollments.forEach(e => { if (e.id) enrollmentMap.set(e.id, e); });
+      serverEnrollments.forEach(e => { if (e.id) enrollmentMap.set(e.id, e); });
+      const mergedEnrollments = Array.from(enrollmentMap.values());
+
+      try {
+        localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(mergedCourseIds));
+        localStorage.setItem('orjon_course_enrollments', JSON.stringify(mergedEnrollments));
+      } catch {}
+
+      if (onUpdate) {
+        onUpdate(mergedCourseIds, mergedEnrollments);
+      }
+
+      return { enrolledCourseIds: mergedCourseIds, enrollments: mergedEnrollments };
+    }
+  } catch (err) {
+    console.warn('[VersionSync] syncUserEnrollmentsOnDemand notice:', err);
+  }
+
+  return { enrolledCourseIds: cachedCourseIds, enrollments: cachedEnrollments };
+}
+
+export async function softDeleteCoupon(id: string): Promise<boolean> {
+  const versionKey = 'couponVersion';
+  const nowIso = new Date().toISOString();
+  try {
+    const docRef = doc(db, 'coupons', String(id));
+    const newVersion = await incrementGlobalVersion(versionKey);
+    await setDoc(docRef, {
+      isDeleted: true,
+      deletedAt: nowIso,
+      version: newVersion,
+      updatedAt: nowIso
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error soft-deleting coupon:', err);
+    return false;
   }
 }
 
