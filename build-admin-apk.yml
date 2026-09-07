@@ -1,0 +1,174 @@
+name: Build Admin APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-admin-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: |
+          npm install
+          npm install --no-save @capacitor/cli @capacitor/android
+
+      - name: Build Admin Application
+        run: |
+          npm run build:admin
+
+      - name: Prepare Capacitor Web Assets
+        run: |
+          echo "Checking dist-admin..."
+
+          if [ ! -f "dist-admin/index-admin.html" ]; then
+            echo "ERROR: dist-admin/index-admin.html not found."
+            exit 1
+          fi
+
+          cp dist-admin/index-admin.html dist-admin/index.html
+
+          echo "Created Capacitor entry point:"
+          ls -lh dist-admin/index.html
+
+      - name: Read-Only Audit Admin Build for User Code
+        run: |
+          echo "========================================"
+          echo "ADMIN BUILD - USER CODE AUDIT"
+          echo "========================================"
+
+          echo "Scanning dist-admin..."
+
+          USER_MATCHES=$(grep -RniI -E \
+            'UserPortal|CourseEnrollmentModal|CurrentAffairsFeed|index-user|BUILD_TARGET.?user|mode.?user' \
+            dist-admin 2>/dev/null || true)
+
+          if [ -n "$USER_MATCHES" ]; then
+            echo ""
+            echo "========================================"
+            echo "FAIL: POSSIBLE USER CODE DETECTED"
+            echo "========================================"
+            echo "$USER_MATCHES"
+            echo ""
+            echo "ADMIN BUILD AUDIT: FAIL"
+            exit 1
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "ADMIN BUILD USER-CODE AUDIT: PASS"
+          echo "No known User-only identifiers detected."
+          echo "========================================"
+
+      - name: Setup Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Backup Capacitor Config
+        run: |
+          cp capacitor.config.ts capacitor.config.ts.backup
+
+      - name: Configure Capacitor for Admin APK
+        run: |
+          cat > capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.orjonmcq.admin',
+            appName: 'Orjon MCQ Admin',
+            webDir: 'dist-admin',
+            server: {
+              androidScheme: 'https'
+            }
+          };
+
+          export default config;
+          EOF
+
+      - name: Generate Android Project
+        run: |
+          npx cap add android
+
+      - name: Sync Capacitor
+        run: |
+          npx cap sync android
+
+      - name: Build Admin Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Verify APK
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+
+          echo "========================================"
+          echo "ADMIN APK CREATED SUCCESSFULLY"
+          echo "========================================"
+
+          echo "Package ID: com.orjonmcq.admin"
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Read-Only Audit Final Admin APK for User Code
+        run: |
+          echo "========================================"
+          echo "FINAL ADMIN APK - USER CODE AUDIT"
+          echo "========================================"
+
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: Admin APK not found."
+            exit 1
+          fi
+
+          rm -rf admin-apk-audit
+          mkdir -p admin-apk-audit
+
+          echo "Extracting APK for read-only inspection..."
+
+          unzip -q "$APK" -d admin-apk-audit
+
+          echo "Scanning final APK..."
+
+          USER_MATCHES=$(grep -RniI -E \
+            'UserPortal|CourseEnrollmentModal|CurrentAffairsFeed|index-user|BUILD_TARGET.?user|mode.?user' \
+            admin-apk-audit 2>/dev/null || true)
+
+          if [ -n "$USER_MATCHES" ]; then
+            echo ""
+            echo "========================================"
+            echo "FAIL: POSSIBLE USER CODE DETECTED"
+            echo "IN FINAL ADMIN APK"
+            echo "========================================"
+
+            echo "$USER_MATCHES"
+
+            echo ""
+            echo "FINAL ADMIN APK AUDIT: FAIL"
+            exit 1
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "FINAL ADMIN APK USER-CODE AUDIT: PASS"
+          echo "No known User-only identifiers detected."
+          echo "========================================"
+
+      - name: Upload Admin Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Orjon-Admin-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
