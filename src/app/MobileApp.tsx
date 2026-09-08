@@ -52,7 +52,8 @@ import {
   saveRoutinesToIDB,
   performIncrementalExamSyncFromFirestore,
   saveCategoriesToIDB,
-  saveSubcategoriesToIDB
+  saveSubcategoriesToIDB,
+  getSubcategoriesFromIDB
 } from '../shared/lib/indexedDB';
 import { 
   initSQLite, 
@@ -557,14 +558,43 @@ export default function MobileApp() {
   }, []);
 
   const syncSubcategoriesWithFirestoreQuestions = async (questionsList: Question[]) => {
-    let fsSubcats: SubcategoryItem[] = [];
+    let localSubcats: SubcategoryItem[] = [];
     try {
-      fsSubcats = await fetchCollectionFromFirestore<SubcategoryItem>('subcategories');
-    } catch (err) {}
+      const sqliteSubs = await getSQLiteSubcategories();
+      if (sqliteSubs && sqliteSubs.length > 0) {
+        localSubcats = sqliteSubs;
+      }
+    } catch (err) {
+      console.warn('SQLite subcategories read notice:', err);
+    }
 
-    let combinedSubcats = [...fsSubcats];
-    setSubcategories(combinedSubcats);
-    localStorage.setItem('orjon_subcategories', JSON.stringify(combinedSubcats));
+    if (localSubcats.length === 0) {
+      try {
+        const idbSubs = await getSubcategoriesFromIDB();
+        if (idbSubs && idbSubs.length > 0) {
+          localSubcats = idbSubs;
+        }
+      } catch (err) {
+        console.warn('IDB subcategories read notice:', err);
+      }
+    }
+
+    if (localSubcats.length === 0) {
+      try {
+        const raw = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
+        if (raw) {
+          localSubcats = JSON.parse(raw);
+        }
+      } catch {}
+    }
+
+    if (localSubcats.length === 0 && subcategories.length > 0) {
+      localSubcats = subcategories;
+    }
+
+    const activeSubcats = (localSubcats || []).filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+    setSubcategories(activeSubcats);
+    localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubcats));
   };
 
   const dedupeQuestions = (rawList: Question[]): Question[] => {

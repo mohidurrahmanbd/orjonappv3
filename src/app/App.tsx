@@ -986,15 +986,42 @@ export default function App() {
   };
 
   const syncSubcategoriesWithFirestoreQuestions = async (_questionsList?: Question[]) => {
-    let fsSubcats: SubcategoryItem[] = [];
+    let localSubcats: SubcategoryItem[] = [];
     try {
-      fsSubcats = await fetchCollectionFromFirestore<SubcategoryItem>('subcategories');
+      const sqliteSubs = await getSQLiteSubcategories();
+      if (sqliteSubs && sqliteSubs.length > 0) {
+        localSubcats = sqliteSubs;
+      }
     } catch (err) {
-      console.warn('Subcategories fetch notice:', err);
+      console.warn('SQLite subcategories read notice:', err);
     }
 
-    // Firestore subcategories are authoritative. Strictly filter out deleted or tombstoned records.
-    const activeSubcats = (fsSubcats || []).filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+    if (localSubcats.length === 0) {
+      try {
+        const idbSubs = await getSubcategoriesFromIDB();
+        if (idbSubs && idbSubs.length > 0) {
+          localSubcats = idbSubs;
+        }
+      } catch (err) {
+        console.warn('IDB subcategories read notice:', err);
+      }
+    }
+
+    if (localSubcats.length === 0) {
+      try {
+        const raw = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
+        if (raw) {
+          localSubcats = JSON.parse(raw);
+        }
+      } catch {}
+    }
+
+    if (localSubcats.length === 0 && subcategories.length > 0) {
+      localSubcats = subcategories;
+    }
+
+    // Filter out deleted or tombstoned records
+    const activeSubcats = (localSubcats || []).filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
     const sanitized = sanitizeSubcategoriesList(activeSubcats);
 
     const seenIds = new Set<string>();
