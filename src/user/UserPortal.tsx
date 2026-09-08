@@ -14,7 +14,9 @@ import {
   ChevronDown, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { downloadCourseRoutinePDF } from '../shared/lib/pdfGenerator';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { downloadCourseRoutinePDF, renderHtmlToPdfAndSave } from '../shared/lib/pdfGenerator';
 import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchicalMCQModal';
 import CircularProgressBar from '../shared/components/CircularProgressBar';
 import CurrentAffairsFeed from './CurrentAffairsFeed';
@@ -1380,6 +1382,26 @@ export default function UserPortal({
       setSetupModalOpen(false);
       return true;
     }
+    if (selectedCourseForEnrollment) {
+      setSelectedCourseForEnrollment(null);
+      return true;
+    }
+    if (profileModalOpen) {
+      setProfileModalOpen(false);
+      return true;
+    }
+    if (challengeModalData) {
+      setChallengeModalData(null);
+      return true;
+    }
+    if (selectedRoutineItem) {
+      setSelectedRoutineItem(null);
+      return true;
+    }
+    if (selectedRecentJobMonth) {
+      setSelectedRecentJobMonth(null);
+      return true;
+    }
 
     // 3. Sub-views / Full screen modes
     if (quizActive) {
@@ -1467,8 +1489,26 @@ export default function UserPortal({
     };
 
     window.addEventListener('popstate', handlePopState);
+
+    let removeCapacitorListener: (() => void) | null = null;
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener('backButton', () => {
+        const unwound = stackUnwindRef.current();
+        if (!unwound) {
+          onLogout();
+        }
+      }).then(handle => {
+        removeCapacitorListener = () => handle.remove();
+      }).catch(err => {
+        console.warn('[UserPortal] Capacitor backButton listener notice:', err);
+      });
+    }
+
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      if (removeCapacitorListener) {
+        removeCapacitorListener();
+      }
     };
   }, [onLogout]);
 
@@ -1482,7 +1522,7 @@ export default function UserPortal({
     }
   }, [directExamId, liveExams]);
 
-  const handleDownloadPDF = (attempt: Attempt, includeMarkCalcTable: boolean = true) => {
+  const handleDownloadPDF = async (attempt: Attempt, includeMarkCalcTable: boolean = true) => {
     const attemptQuestions = 
       (attempt.activeQuizQuestions && attempt.activeQuizQuestions.length > 0)
         ? attempt.activeQuizQuestions
@@ -1502,9 +1542,6 @@ export default function UserPortal({
     const negativeDeduction = (wrongC * 0.5).toFixed(2);
     const netScore = attempt.score;
     const subjectBreakdown = calculateSubjectWiseAnalysis(attemptQuestions, attempt);
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -1824,6 +1861,23 @@ export default function UserPortal({
       </body>
       </html>
     `;
+
+    // APK path: directly generate PDF without window.open/window.print or external browser
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const sanitizedTitle = (attempt.examTitle || 'Exam').replace(/[^a-zA-Z0-9\u0980-\u09FF]/g, '_');
+        const fileName = `Result_${sanitizedTitle}.pdf`;
+        await renderHtmlToPdfAndSave(htmlContent, fileName, `${attempt.examTitle} - পরীক্ষার ফলাফল`);
+      } catch (err) {
+        console.error('[UserPortal] Failed to generate result PDF in APK:', err);
+        showCustomAlert('বিজ্ঞপ্তি', 'PDF তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
+      return;
+    }
+
+    // Browser path: unchanged window.open and window.print flow
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();

@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { 
   Question, 
   LiveExam, 
@@ -17,6 +19,10 @@ import {
   generateAutoUserId 
 } from '../shared/types';
 import UserApp from './UserApp';
+import { 
+  syncCouponsMetadataFirst, 
+  syncPaymentSettingsMetadataFirst 
+} from '../shared/lib/sync/versionSyncService';
 import { 
   fetchQuestionsFromFirestore, 
   addQuestionToFirestore, 
@@ -1060,6 +1066,165 @@ export default function MobileApp() {
     saveItemToFirestore('course_enrollments', newEnrollment, 'enroll').catch(() => {});
   };
 
+  const lastSyncTimes = useRef<Record<string, number>>({});
+
+  const handleLoadCouponsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['coupons'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['coupons'] = now;
+    try {
+      await syncCouponsMetadataFirst((updatedCoupons) => {
+        if (updatedCoupons && updatedCoupons.length > 0) {
+          setCoupons(updatedCoupons);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand coupons load notice:', e);
+    }
+  };
+
+  const handleLoadPaymentSettingsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['paymentSettings'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['paymentSettings'] = now;
+    try {
+      await syncPaymentSettingsMetadataFirst((updatedSettings) => {
+        if (updatedSettings) {
+          setPaymentSettings(updatedSettings);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand payment settings load notice:', e);
+    }
+  };
+
+  const handleLoadCoursesOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['courses'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['courses'] = now;
+    try {
+      if (courses.length === 0) {
+        const localCached = await getCoursesFromIDB();
+        if (localCached.length > 0) {
+          setCourses(localCached);
+        }
+      }
+      await performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+        if (updatedCourses && updatedCourses.length > 0) {
+          setCourses(updatedCourses);
+          try {
+            localStorage.setItem('orjon_courses', JSON.stringify(updatedCourses));
+          } catch {}
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand courses load notice:', e);
+    }
+  };
+
+  const handleLoadRoutinesOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['routines'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['routines'] = now;
+    try {
+      if (routines.length === 0) {
+        const localCached = await getRoutinesFromIDB();
+        if (localCached.length > 0) {
+          setRoutines(localCached);
+        }
+      }
+      await performIncrementalExamSyncFromFirestore(({ routines: updatedRoutines }) => {
+        if (updatedRoutines && updatedRoutines.length > 0) {
+          setRoutines(updatedRoutines);
+          try {
+            localStorage.setItem('orjon_routines', JSON.stringify(updatedRoutines));
+          } catch {}
+        }
+      }, 'routines');
+    } catch (e) {
+      console.warn('On-demand routines load notice:', e);
+    }
+  };
+
+  const handleLoadLiveExamsOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['exams'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['exams'] = now;
+    try {
+      if (liveExams.length === 0) {
+        const localCached = await getLiveExamsFromIDB();
+        if (localCached.length > 0) {
+          setLiveExams(localCached);
+        }
+      }
+      await performIncrementalExamSyncFromFirestore(({ liveExams: updatedLiveExams }) => {
+        if (updatedLiveExams && updatedLiveExams.length > 0) {
+          setLiveExams(updatedLiveExams);
+          try {
+            localStorage.setItem('orjon_live_exams', JSON.stringify(updatedLiveExams));
+          } catch {}
+        }
+      }, 'exams');
+    } catch (e) {
+      console.warn('On-demand live exams load notice:', e);
+    }
+  };
+
+  // Hardware Back Button handling for non-UserPortal states (unauthenticated portal & root exit confirmation)
+  const showLogoutConfirmModalRef = useRef(showLogoutConfirmModal);
+  showLogoutConfirmModalRef.current = showLogoutConfirmModal;
+  const authScreenRef = useRef(authScreen);
+  authScreenRef.current = authScreen;
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const lastRootBackTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let removeListener: (() => void) | null = null;
+    CapacitorApp.addListener('backButton', () => {
+      // If user is in unauthenticated portal (login / register / forgot-password)
+      if (!currentUserRef.current) {
+        if (authScreenRef.current !== 'login') {
+          setAuthScreen('login');
+          return;
+        }
+        // At root login screen: exit app
+        CapacitorApp.exitApp();
+        return;
+      }
+    }).then(handle => {
+      removeListener = () => handle.remove();
+    }).catch(err => {
+      console.warn('[MobileApp] Capacitor backButton listener notice:', err);
+    });
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, []);
+
+  const handlePortalLogoutRequested = () => {
+    const now = Date.now();
+    if (showLogoutConfirmModalRef.current && (now - lastRootBackTimeRef.current < 3000)) {
+      CapacitorApp.exitApp();
+    } else {
+      lastRootBackTimeRef.current = now;
+      setShowLogoutConfirmModal(true);
+    }
+  };
+
   const handleFetchQuestionsLazy = async (filter: { category?: string; subcategory?: string; topic?: string; examId?: string; forceRefresh?: boolean }): Promise<Question[]> => {
     try {
       const fetched = await loadScopedQuestionsLazy(filter);
@@ -1111,7 +1276,7 @@ export default function MobileApp() {
             onSaveAttempt={handleSaveAttempt}
             onUpdateQuestion={handleUpdateQuestion}
             onUpdateUser={handleUpdateUserProfile}
-            onLogout={() => setShowLogoutConfirmModal(true)}
+            onLogout={handlePortalLogoutRequested}
             allowUserExplanation={allowUserExplanation}
             showMcqCount={showMcqCount}
             directExamId={directExamId}
@@ -1120,6 +1285,11 @@ export default function MobileApp() {
               setCurrentUser(null);
               setAuthScreen('register');
             }}
+            onLoadCoursesOnDemand={handleLoadCoursesOnDemand}
+            onLoadRoutinesOnDemand={handleLoadRoutinesOnDemand}
+            onLoadLiveExamsOnDemand={handleLoadLiveExamsOnDemand}
+            onLoadCouponsOnDemand={handleLoadCouponsOnDemand}
+            onLoadPaymentSettingsOnDemand={handleLoadPaymentSettingsOnDemand}
           />
         )}
 

@@ -103,6 +103,10 @@ jobs:
         run: |
           npx cap sync android
 
+      - name: Apply Android Adaptive Launcher Icons
+        run: |
+          node scripts/apply_launcher_icons.mjs
+
       - name: Build Admin Debug APK
         run: |
           cd android

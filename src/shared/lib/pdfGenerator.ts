@@ -1,7 +1,135 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { Routine, Question, CategoryItem, SubcategoryItem, formatBengaliDateTime } from '../types';
 import { formatRoutineSyllabusPaths } from './routineUtils';
+
+/**
+ * Saves and opens/shares a generated PDF file.
+ * In APK (native): Writes using Capacitor Filesystem and opens Android native share/save sheet.
+ * In Browser: Triggers standard browser download via jsPDF.save().
+ */
+export const saveAndSharePdf = async (
+  pdf: jsPDF,
+  fileName: string,
+  shareTitle?: string
+): Promise<void> => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const dataUri = pdf.output('datauristring');
+      const base64Data = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+
+      let fileUri = '';
+      try {
+        const res = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true
+        });
+        fileUri = res.uri;
+      } catch (fsErr) {
+        console.warn('[PDF] Documents directory write notice, falling back to Cache:', fsErr);
+        const fallbackRes = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true
+        });
+        fileUri = fallbackRes.uri;
+      }
+
+      if (fileUri) {
+        try {
+          await Share.share({
+            title: fileName,
+            text: shareTitle || fileName,
+            url: fileUri,
+            dialogTitle: 'PDF ওপেন বা সংরক্ষণ করুন'
+          });
+        } catch (shareErr) {
+          console.log('[PDF] Native share sheet dismissed or completed:', shareErr);
+        }
+      }
+    } catch (nativeErr) {
+      console.error('[PDF] Native PDF save failed, falling back to browser save:', nativeErr);
+      pdf.save(fileName);
+    }
+  } else {
+    // Existing browser download behavior
+    pdf.save(fileName);
+  }
+};
+
+/**
+ * Renders HTML string directly to a PDF canvas and saves it.
+ * Used for APK result sheet generation without browser or print dialog dependencies.
+ */
+export const renderHtmlToPdfAndSave = async (
+  htmlContent: string,
+  fileName: string,
+  shareTitle: string
+): Promise<void> => {
+  // Strip any <script> tags to ensure no print() dialog or popups execute
+  const cleanHtml = htmlContent.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+  const container = document.createElement('div');
+  container.style.position = 'absolute';
+  container.style.top = '-9999px';
+  container.style.left = '-9999px';
+  container.style.width = '800px';
+  container.style.backgroundColor = '#ffffff';
+  container.style.color = '#0f172a';
+  container.style.fontFamily = "'Noto Sans Bengali', 'Hind Siliguri', 'Kalpurush', sans-serif, system-ui";
+  container.style.padding = '30px';
+  container.style.boxSizing = 'border-box';
+
+  container.innerHTML = cleanHtml;
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff'
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const imgWidth = 210; // A4 width in mm
+    const pageHeight = 297; // A4 height in mm
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    await saveAndSharePdf(pdf, fileName, shareTitle);
+  } catch (err) {
+    console.error('[PDF] Failed to generate PDF from HTML:', err);
+    throw err;
+  } finally {
+    if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  }
+};
 
 export const downloadCourseRoutinePDF = async (
   courseTitle: string,
@@ -154,7 +282,7 @@ export const downloadCourseRoutinePDF = async (
     }
 
     const sanitizedTitle = courseTitle.replace(/[^a-zA-Z0-9\u0980-\u09FF]/g, '_');
-    pdf.save(`Routine_${sanitizedTitle}.pdf`);
+    await saveAndSharePdf(pdf, `Routine_${sanitizedTitle}.pdf`, `${courseTitle} - কোর্স রুটিন`);
   } catch (err) {
     console.error('Failed to generate PDF:', err);
     alert('PDF তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
