@@ -1691,7 +1691,7 @@ export default function App() {
       } else {
         await signOut(auth);
         setIsAdmin(false);
-        alert('অ্যাক্সেস ডিনাইড! এই একাউন্টে এডমিন পারমিশন নেই (Admin Custom Claim Missing)।');
+        alert('অ্যাক্সেস ডিনাইড! এই একাউন্টে এডমিন পারমিশন নেই (Not Authorized as Admin)।');
       }
     } catch (err: any) {
       console.error("Admin verify error:", err);

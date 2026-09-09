@@ -24,7 +24,19 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && request.auth.token.admin == true;
+      return isSignedIn() && (
+        (
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.role == 'admin'
+        ) ||
+        request.auth.token.admin == true
+      );
+    }
+
+    // Admins collection - Authorized admin access and self-lookup
+    match /admins/{email} {
+      allow read: if isSignedIn() && (request.auth.token.email == email || isAdmin());
+      allow write: if isAdmin();
     }
 
     // Questions collection - Read-only for users, Admin-write only

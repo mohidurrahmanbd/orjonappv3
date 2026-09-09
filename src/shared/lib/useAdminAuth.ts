@@ -1,36 +1,32 @@
 import { useState, useEffect } from 'react';
 import { User as FirebaseUser, onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 
 /**
- * Force refresh token and verify if current user has the custom claim `admin: true`
+ * Verify if the authenticated Firebase user is an authorized admin in Firestore `admins` collection.
+ * Maintains public API signature for backward compatibility.
  */
 export async function verifyAdminClaim(user: FirebaseUser | null = auth.currentUser): Promise<boolean> {
-  if (!user) return false;
+  if (!user || !user.email) return false;
   try {
-    // 1. Force refresh token to ensure newest custom claims are evaluated
-    const tokenResult = await user.getIdTokenResult(true);
-    if (tokenResult.claims.admin === true) {
-      return true;
-    }
+    const normalizedEmail = user.email.trim().toLowerCase();
+    if (!normalizedEmail) return false;
 
-    // 2. If claim not yet set on token, call backend /api/admin/set-admin-claims
-    const idToken = await user.getIdToken();
-    const res = await fetch('/api/admin/set-admin-claims', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.admin === true) {
-        const refreshedToken = await user.getIdTokenResult(true);
-        return refreshedToken.claims.admin === true || data.admin === true;
+    // Direct Firestore authorization lookup in `admins/{normalized_email}`
+    const adminDocRef = doc(db, 'admins', normalizedEmail);
+    const adminDocSnap = await getDoc(adminDocRef);
+
+    if (adminDocSnap.exists()) {
+      const data = adminDocSnap.data();
+      if (data && data.role === 'admin') {
+        return true;
       }
     }
+
     return false;
   } catch (err) {
-    console.error('Error verifying admin custom claims:', err);
+    console.error('Error verifying admin authorization in Firestore:', err);
     return false;
   }
 }
