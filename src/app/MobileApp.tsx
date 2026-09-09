@@ -504,7 +504,7 @@ export default function MobileApp() {
     setCategories(standardRootCategories);
     localStorage.setItem('orjon_categories', JSON.stringify(standardRootCategories));
 
-    // Subcategories initial setup
+    // Subcategories initial setup (Cache-First)
     const storedSub = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
     if (storedSub) {
       try {
@@ -513,17 +513,38 @@ export default function MobileApp() {
           setSubcategories(parsedSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt));
         }
       } catch (e) {}
+    } else {
+      // First-install fallback: only fetch from Firestore if local SQLite, IndexedDB, and localStorage are empty
+      getSQLiteSubcategories().then(sqliteSubs => {
+        if (sqliteSubs && sqliteSubs.length > 0) {
+          const activeSubs = sqliteSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+          setSubcategories(activeSubs);
+          try {
+            localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+          } catch {}
+        } else {
+          getSubcategoriesFromIDB().then(idbSubs => {
+            if (idbSubs && idbSubs.length > 0) {
+              const activeSubs = idbSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+              setSubcategories(activeSubs);
+              try {
+                localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+              } catch {}
+            } else {
+              fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSub => {
+                if (Array.isArray(fsSub) && fsSub.length > 0) {
+                  const activeSubs = fsSub.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+                  setSubcategories(activeSubs);
+                  try {
+                    localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+                  } catch {}
+                }
+              }).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+      }).catch(() => {});
     }
-
-    fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSub => {
-      if (Array.isArray(fsSub)) {
-        const activeSubs = fsSub.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
-        setSubcategories(activeSubs);
-        try {
-          localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
-        } catch {}
-      }
-    }).catch(() => {});
 
     // Check active user login session
     const activeUserPhone = localStorage.getItem('orjon_session_user') || sessionStorage.getItem('orjon_session_user') || localStorage.getItem('medha_session_user');
