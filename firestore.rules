@@ -9,17 +9,13 @@ service cloud.firestore {
 
     function isOwner(userId) {
       return isSignedIn() && (
-        request.auth.uid == userId ||
-        (resource != null && resource.data.email == request.auth.token.email) ||
-        (resource != null && resource.data.userId == request.auth.uid)
+        request.auth.uid == userId
       );
     }
 
     function isWriteOwner(userId) {
       return isSignedIn() && (
-        request.auth.uid == userId ||
-        (request.resource.data.email == request.auth.token.email) ||
-        (request.resource.data.userId == request.auth.uid)
+        request.auth.uid == userId
       );
     }
 

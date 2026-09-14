@@ -40,25 +40,13 @@ export function useAdminAuth() {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const hasAdminClaim = await verifyAdminClaim(user);
-          if (hasAdminClaim) {
-            setIsAdmin(true);
-            setAdminUser(user);
-          } else {
-            setIsAdmin(false);
-            setAdminUser(null);
-          }
-        } catch {
-          setIsAdmin(false);
-          setAdminUser(null);
-        }
-      } else {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
         setIsAdmin(false);
         setAdminUser(null);
       }
+      // Note: Persisted Firebase user on startup does not automatically establish admin session.
+      // Must be explicitly verified via verifyAdminClaim or manual admin login.
       setLoading(false);
     });
 

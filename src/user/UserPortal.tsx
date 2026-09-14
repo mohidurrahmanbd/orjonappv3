@@ -30,6 +30,15 @@ import {
   getUserAllReadQuestionIds, 
   markUserQuestionsAsRead 
 } from '../shared/lib/readingProgress';
+import {
+  ActiveExamSession,
+  saveActiveExamSession,
+  getActiveExamSession,
+  updateActiveExamAnswers,
+  clearActiveExamSession,
+  calculateRemainingSeconds,
+  registerExamAutoSubmitHandler
+} from '../shared/lib/examSession';
 
 // Helper to detect variations/typos of "জব সলিউশন পরীক্ষা"
 const isJobSolutionVariation = (name: string): boolean => {
@@ -850,19 +859,40 @@ export default function UserPortal({
     setViewingHierarchyRoutine(null);
 
     // Initialize Quiz in Real Exam mode (answers not revealed instantly!)
+    const examId = `demo_exam_${routine.id}_${Date.now()}`;
+    const examTitle = `ডেমো এক্সাম: ${routine.title}`;
+    const durationSeconds = targetTimeLimit * 60;
+    const endTime = Date.now() + durationSeconds * 1000;
+
+    isSubmittingRef.current = false;
+    setExamEndTime(endTime);
+    examEndTimeRef.current = endTime;
     setQuizQuestions(finalQuestions);
-    setQuizTitle(`ডেমো এক্সাম: ${routine.title}`);
-    setQuizExamId(`demo_exam_${routine.id}_${Date.now()}`);
+    setQuizTitle(examTitle);
+    setQuizExamId(examId);
     setQuizTimeLimitMinutes(targetTimeLimit);
     setQuizAnswerMode('after_exam'); // CRITICAL: answers are NOT visible instantly during the test
     setCurrentQIndex(0);
     setQuizPage(1);
     setQuizFilterMode('all');
     setUserSelectedAnswers({});
-    setSecondsRemaining(targetTimeLimit * 60);
+    setSecondsRemaining(durationSeconds);
     setIsQuizTimerRunning(true);
     setReaderModeActive(false);
     setQuizActive(true);
+
+    saveActiveExamSession({
+      examEndTime: endTime,
+      quizExamId: examId,
+      quizTitle: examTitle,
+      quizQuestions: finalQuestions,
+      userSelectedAnswers: {},
+      quizTimeLimitMinutes: targetTimeLimit,
+      quizAnswerMode: 'after_exam',
+      userPhone: user.phone || '',
+      userEmail: user.email || '',
+      startedAt: Date.now()
+    });
   };
   
   // Job Solution Bank states
@@ -1284,6 +1314,24 @@ export default function UserPortal({
   const [userSelectedAnswers, setUserSelectedAnswers] = useState<Record<number, string>>({});
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [isQuizTimerRunning, setIsQuizTimerRunning] = useState(false);
+  const [examEndTime, setExamEndTime] = useState<number | null>(null);
+  const examEndTimeRef = useRef<number | null>(null);
+  const quizActiveRef = useRef<boolean>(false);
+  const isQuizTimerRunningRef = useRef<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
+  const handleForceEndExamRef = useRef<(overrideSession?: ActiveExamSession) => void>(() => {});
+
+  useEffect(() => {
+    quizActiveRef.current = quizActive;
+  }, [quizActive]);
+
+  useEffect(() => {
+    isQuizTimerRunningRef.current = isQuizTimerRunning;
+  }, [isQuizTimerRunning]);
+
+  useEffect(() => {
+    examEndTimeRef.current = examEndTime;
+  }, [examEndTime]);
 
   // Bookmark folder selection popup
   const [bookmarkModalOpen, setBookmarkModalOpen] = useState(false);
@@ -1410,6 +1458,10 @@ export default function UserPortal({
         () => {
           setQuizActive(false);
           setIsQuizTimerRunning(false);
+          setExamEndTime(null);
+          examEndTimeRef.current = null;
+          clearActiveExamSession();
+          isSubmittingRef.current = false;
         },
         undefined,
         'চলমান পরীক্ষা স্থগিত'
@@ -2736,19 +2788,118 @@ export default function UserPortal({
     });
   }, [subcategories, questions, userReadSet, user.phone, user.email, user.name]);
 
-  // Countdown clock effect
-  useEffect(() => {
-    let interval: any = null;
-    if (isQuizTimerRunning && secondsRemaining > 0 && quizActive) {
-      interval = setInterval(() => {
-        setSecondsRemaining(prev => prev - 1);
-      }, 1000);
-    } else if (isQuizTimerRunning && secondsRemaining === 0 && quizActive) {
-      setIsQuizTimerRunning(false);
-      handleForceEndExam();
+  // Resynchronize exam timer from authoritative examEndTime
+  const resyncExamTimer = useCallback(() => {
+    const session = getActiveExamSession();
+    const currentEndTime = examEndTimeRef.current || (session ? session.examEndTime : null);
+
+    if (!currentEndTime) return;
+
+    const remaining = calculateRemainingSeconds(currentEndTime);
+    setSecondsRemaining(remaining);
+
+    if (remaining <= 0) {
+      if (quizActiveRef.current || isQuizTimerRunningRef.current || session) {
+        handleForceEndExamRef.current(session || undefined);
+      }
+    } else {
+      if (quizActiveRef.current && !isQuizTimerRunningRef.current) {
+        setIsQuizTimerRunning(true);
+      }
     }
+  }, []);
+
+  // Listen for Capacitor App state changes (Android APK foreground/background) and web visibility
+  useEffect(() => {
+    let listenerHandle: any = null;
+
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          resyncExamTimer();
+        }
+      }).then(handle => {
+        listenerHandle = handle;
+      }).catch(() => {});
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resyncExamTimer();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      resyncExamTimer();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      if (listenerHandle && listenerHandle.remove) {
+        listenerHandle.remove();
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [resyncExamTimer]);
+
+  // Restore active exam session on mount or reload
+  useEffect(() => {
+    const savedSession = getActiveExamSession();
+    if (!savedSession) return;
+
+    // Verify ownership
+    const isUserMatch = !user?.phone || !savedSession.userPhone || savedSession.userPhone === user.phone || savedSession.userEmail === user.email;
+    if (!isUserMatch) {
+      return;
+    }
+
+    const remaining = calculateRemainingSeconds(savedSession.examEndTime);
+    if (remaining <= 0) {
+      // Expired while app was closed or reloading: automatically submit with saved answers
+      handleForceEndExamRef.current(savedSession);
+    } else {
+      // Restore active exam
+      isSubmittingRef.current = false;
+      setQuizQuestions(savedSession.quizQuestions);
+      setQuizTitle(savedSession.quizTitle);
+      setQuizExamId(savedSession.quizExamId);
+      setQuizTimeLimitMinutes(savedSession.quizTimeLimitMinutes);
+      setQuizAnswerMode(savedSession.quizAnswerMode);
+      setUserSelectedAnswers(savedSession.userSelectedAnswers || {});
+      setExamEndTime(savedSession.examEndTime);
+      examEndTimeRef.current = savedSession.examEndTime;
+      setSecondsRemaining(remaining);
+      setIsQuizTimerRunning(true);
+      setReaderModeActive(false);
+      setQuizActive(true);
+    }
+  }, [user.phone, user.email]);
+
+  // Countdown clock effect driven strictly by wall-clock time (examEndTime)
+  useEffect(() => {
+    if (!isQuizTimerRunning || !quizActive || !examEndTime) {
+      return;
+    }
+
+    const checkAndUpdateTimer = () => {
+      const remaining = calculateRemainingSeconds(examEndTime);
+      setSecondsRemaining(remaining);
+      if (remaining <= 0) {
+        setIsQuizTimerRunning(false);
+        handleForceEndExamRef.current();
+      }
+    };
+
+    // Immediate check
+    checkAndUpdateTimer();
+
+    // UI refresh tick (every 500ms for responsive UI)
+    const interval = setInterval(checkAndUpdateTimer, 500);
     return () => clearInterval(interval);
-  }, [isQuizTimerRunning, secondsRemaining, quizActive]);
+  }, [isQuizTimerRunning, quizActive, examEndTime]);
 
   // Quiz helper functions
   const startPrepExam = async (categoryName: string, overrideQuestions?: Question[]) => {
@@ -2974,10 +3125,12 @@ export default function UserPortal({
     }
 
     const titleToUse = customExamTitle || (revisionMode ? `ভুল সংশোধন পরীক্ষা${filterTag}` : `কাস্টম পরীক্ষা${filterTag}`);
+    const examId = `custom_${Date.now()}`;
 
+    isSubmittingRef.current = false;
     setQuizQuestions(shuffled);
     setQuizTitle(titleToUse);
-    setQuizExamId(`custom_${Date.now()}`);
+    setQuizExamId(examId);
     setQuizTimeLimitMinutes(setupTimeLimit === 999 ? 'unlimited' : setupTimeLimit);
     setQuizAnswerMode(setupAnswerView);
     setCurrentQIndex(0);
@@ -2986,11 +3139,31 @@ export default function UserPortal({
     setUserSelectedAnswers({});
     
     if (setupTimeLimit !== 999) {
-      setSecondsRemaining(setupTimeLimit * 60);
+      const durationSeconds = setupTimeLimit * 60;
+      const endTime = Date.now() + durationSeconds * 1000;
+      setExamEndTime(endTime);
+      examEndTimeRef.current = endTime;
+      setSecondsRemaining(durationSeconds);
       setIsQuizTimerRunning(true);
+
+      saveActiveExamSession({
+        examEndTime: endTime,
+        quizExamId: examId,
+        quizTitle: titleToUse,
+        quizQuestions: shuffled,
+        userSelectedAnswers: {},
+        quizTimeLimitMinutes: setupTimeLimit,
+        quizAnswerMode: setupAnswerView,
+        userPhone: user.phone || '',
+        userEmail: user.email || '',
+        startedAt: Date.now()
+      });
     } else {
+      setExamEndTime(null);
+      examEndTimeRef.current = null;
       setSecondsRemaining(0);
       setIsQuizTimerRunning(false);
+      clearActiveExamSession();
     }
     setReaderModeActive(false);
     setQuizActive(true);
@@ -3126,10 +3299,14 @@ export default function UserPortal({
           return;
         }
 
+        const examId = `custom_csv_${Date.now()}`;
+        const examTitle = `CSV ফাইল পরীক্ষা (${file.name})`;
+
+        isSubmittingRef.current = false;
         setSetupModalOpen(false);
         setQuizQuestions(parsedQuestions);
-        setQuizTitle(`CSV ফাইল পরীক্ষা (${file.name})`);
-        setQuizExamId(`custom_csv_${Date.now()}`);
+        setQuizTitle(examTitle);
+        setQuizExamId(examId);
         setQuizTimeLimitMinutes(setupTimeLimit === 999 ? 'unlimited' : setupTimeLimit);
         setQuizAnswerMode(setupAnswerView);
         setCurrentQIndex(0);
@@ -3137,11 +3314,31 @@ export default function UserPortal({
         setQuizFilterMode('all');
         setUserSelectedAnswers({});
         if (setupTimeLimit !== 999) {
-          setSecondsRemaining(setupTimeLimit * 60);
+          const durationSeconds = setupTimeLimit * 60;
+          const endTime = Date.now() + durationSeconds * 1000;
+          setExamEndTime(endTime);
+          examEndTimeRef.current = endTime;
+          setSecondsRemaining(durationSeconds);
           setIsQuizTimerRunning(true);
+
+          saveActiveExamSession({
+            examEndTime: endTime,
+            quizExamId: examId,
+            quizTitle: examTitle,
+            quizQuestions: parsedQuestions,
+            userSelectedAnswers: {},
+            quizTimeLimitMinutes: setupTimeLimit,
+            quizAnswerMode: setupAnswerView,
+            userPhone: user.phone || '',
+            userEmail: user.email || '',
+            startedAt: Date.now()
+          });
         } else {
+          setExamEndTime(null);
+          examEndTimeRef.current = null;
           setSecondsRemaining(0);
           setIsQuizTimerRunning(false);
+          clearActiveExamSession();
         }
         setQuizActive(true);
         showCustomAlert(`🎉 সফলভাবে ${parsedQuestions.length}টি প্রশ্ন লোড হয়েছে!`);
@@ -3237,21 +3434,41 @@ export default function UserPortal({
       return;
     }
 
+    const timeLimit = exam.timeLimit || 20;
+    const durationSeconds = timeLimit * 60;
+    const endTime = Date.now() + durationSeconds * 1000;
+
+    isSubmittingRef.current = false;
+    setExamEndTime(endTime);
+    examEndTimeRef.current = endTime;
     setViewingHierarchyRoutine(null);
     setSyllabusModalRoutine(null);
     setQuizQuestions(finalQuestions);
     setQuizTitle(exam.title);
     setQuizExamId(exam.id);
-    setQuizTimeLimitMinutes(exam.timeLimit || 20);
+    setQuizTimeLimitMinutes(timeLimit);
     setQuizAnswerMode('after_exam');
     setCurrentQIndex(0);
     setQuizPage(1);
     setQuizFilterMode('all');
     setUserSelectedAnswers({});
-    setSecondsRemaining((exam.timeLimit || 20) * 60);
+    setSecondsRemaining(durationSeconds);
     setIsQuizTimerRunning(true);
     setReaderModeActive(false);
     setQuizActive(true);
+
+    saveActiveExamSession({
+      examEndTime: endTime,
+      quizExamId: exam.id,
+      quizTitle: exam.title,
+      quizQuestions: finalQuestions,
+      userSelectedAnswers: {},
+      quizTimeLimitMinutes: timeLimit,
+      quizAnswerMode: 'after_exam',
+      userPhone: user.phone || '',
+      userEmail: user.email || '',
+      startedAt: Date.now()
+    });
   };
 
   const findRoutineAttempt = (routine: Routine): Attempt | undefined => {
@@ -3319,10 +3536,12 @@ export default function UserPortal({
     if (userSelectedAnswers.hasOwnProperty(qIdx)) {
       return;
     }
-    setUserSelectedAnswers(prev => ({
-      ...prev,
+    const updated = {
+      ...userSelectedAnswers,
       [qIdx]: key
-    }));
+    };
+    setUserSelectedAnswers(updated);
+    updateActiveExamAnswers(updated);
   };
 
   const handleClearAnswerForIndex = (qIdx: number) => {
@@ -3330,6 +3549,7 @@ export default function UserPortal({
     setUserSelectedAnswers(prev => {
       const updated = { ...prev };
       delete updated[qIdx];
+      updateActiveExamAnswers(updated);
       return updated;
     });
   };
@@ -3348,10 +3568,12 @@ export default function UserPortal({
   };
 
   const handleSelectOption = (key: string) => {
-    setUserSelectedAnswers({
+    const updated = {
       ...userSelectedAnswers,
       [currentQIndex]: key
-    });
+    };
+    setUserSelectedAnswers(updated);
+    updateActiveExamAnswers(updated);
     if (quizAnswerMode !== 'instant') {
       setTimeout(() => {
         handleNextQuestion();
@@ -3372,18 +3594,42 @@ export default function UserPortal({
   };
 
   const handleSkipQuestion = () => {
-    setUserSelectedAnswers({
+    const updated = {
       ...userSelectedAnswers,
       [currentQIndex]: 'Skipped'
-    });
+    };
+    setUserSelectedAnswers(updated);
+    updateActiveExamAnswers(updated);
     if (currentQIndex < quizQuestions.length - 1) {
       setCurrentQIndex(prev => prev + 1);
     }
   };
 
-  const handleForceEndExam = () => {
-    if (isQuizTimerRunning) {
-      setIsQuizTimerRunning(false);
+  const handleForceEndExam = (overrideSession?: ActiveExamSession) => {
+    // Prevent duplicate submissions caused by timer tick, app resume, re-render, etc.
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
+    setIsQuizTimerRunning(false);
+    setExamEndTime(null);
+    examEndTimeRef.current = null;
+    clearActiveExamSession();
+
+    const questionsToScore = (overrideSession && overrideSession.quizQuestions && overrideSession.quizQuestions.length > 0)
+      ? overrideSession.quizQuestions
+      : quizQuestions;
+    const answersToScore = overrideSession
+      ? overrideSession.userSelectedAnswers
+      : userSelectedAnswers;
+    const examId = overrideSession ? overrideSession.quizExamId : quizExamId;
+    const examTitle = overrideSession ? overrideSession.quizTitle : quizTitle;
+
+    if (!questionsToScore || questionsToScore.length === 0) {
+      setQuizActive(false);
+      isSubmittingRef.current = false;
+      return;
     }
 
     // Score calculation
@@ -3392,8 +3638,8 @@ export default function UserPortal({
     let catAnalysis: Record<string, { correct: number; total: number }> = {};
     const incorrectQIds: string[] = [];
 
-    quizQuestions.forEach((q, i) => {
-      const selected = userSelectedAnswers[i];
+    questionsToScore.forEach((q, i) => {
+      const selected = answersToScore[i];
       const isCorrect = selected === q.correct;
       const qCats = q.categories && q.categories.length > 0 ? q.categories : [q.category];
 
@@ -3425,16 +3671,16 @@ export default function UserPortal({
       id: `attempt_${Date.now()}`,
       userPhone: user.phone || user.email || '',
       username: user.name || 'শিক্ষার্থী',
-      examId: quizExamId,
-      examTitle: quizTitle,
+      examId: examId,
+      examTitle: examTitle,
       score: finalScore,
       correctCount,
       wrongCount,
-      totalQuestions: quizQuestions.length,
+      totalQuestions: questionsToScore.length,
       categoryAnalysis: catAnalysis,
       incorrectQuestionIds: incorrectQIds,
-      userSelectedAnswers,
-      activeQuizQuestions: quizQuestions,
+      userSelectedAnswers: answersToScore,
+      activeQuizQuestions: questionsToScore,
       submittedAt: new Date().toISOString(),
       userEmail: user.email || user.phone || ''
     };
@@ -3446,6 +3692,15 @@ export default function UserPortal({
     setActiveTab('results');
     showCustomAlert(`🎉 পরীক্ষা সমাপ্ত হয়েছে!\nপ্রাপ্ত স্কোর: ${finalScore}\nসঠিক উত্তর: ${correctCount}, ভুল উত্তর: ${wrongCount}`);
   };
+
+  handleForceEndExamRef.current = handleForceEndExam;
+
+  // Register with global exam auto-submit handler for background timeout synchronization
+  useEffect(() => {
+    return registerExamAutoSubmitHandler((sessionToSubmit) => {
+      handleForceEndExamRef.current(sessionToSubmit);
+    });
+  }, []);
 
   // Open Bookmark folder Modal
   const handleOpenBookmarkDialog = (qId: string) => {

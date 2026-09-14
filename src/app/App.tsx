@@ -80,9 +80,11 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { auth } from '../shared/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../shared/lib/firebase';
 import orjonLogo from '../assets/orjon-logo.png';
 import { verifyAdminClaim } from '../shared/lib/useAdminAuth';
+import { useBackgroundSessionTimeout } from '../shared/lib/useBackgroundSessionTimeout';
 import { LogIn, KeyRound, Sparkles, BookOpen, UserCheck, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 import { 
@@ -176,9 +178,15 @@ export default function App() {
   });
 
   // Input states for Login / Register
-  const [phoneInput, setPhoneInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
+  const [phoneInput, setPhoneInput] = useState(() => {
+    return localStorage.getItem('orjon_saved_login_id') || '';
+  });
+  const [passwordInput, setPasswordInput] = useState(() => {
+    return localStorage.getItem('orjon_saved_login_pass') || '';
+  });
+  const [rememberMe, setRememberMe] = useState<boolean>(() => {
+    return localStorage.getItem('orjon_remember_me') === 'true';
+  });
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null);
   
   const [regName, setRegName] = useState('');
@@ -854,130 +862,25 @@ export default function App() {
       }).catch(() => {});
     }
 
-    // Check active user login sessions (localStorage or sessionStorage) with Inactivity Session Timeout check
-    const activeUserPhone = localStorage.getItem('orjon_session_user') || sessionStorage.getItem('orjon_session_user') || localStorage.getItem('medha_session_user');
-
-    const lastActStr = localStorage.getItem('orjon_last_activity');
-    const storedTimeoutMins = parseInt(localStorage.getItem('orjon_session_timeout_minutes') || '15', 10);
-    const timeoutMs = storedTimeoutMins * 60 * 1000;
-    const lastAct = lastActStr ? parseInt(lastActStr, 10) : 0;
-    const nowMs = Date.now();
-
-    const isSessionTimedOut = lastAct > 0 && (nowMs - lastAct > timeoutMs);
-
-    if (isSessionTimedOut && activeUserPhone) {
-      localStorage.removeItem('orjon_session_user');
-      localStorage.removeItem('medha_session_user');
-      sessionStorage.removeItem('orjon_session_user');
-      setSessionTimeoutNotice(`দীর্ঘক্ষণ (${storedTimeoutMins} মিনিট) নিষ্ক্রিয় থাকার কারণে সিকিউরিটি পলিসি অনুযায়ী আপনার সেশনটি অটোমেটিক টাইমআউট হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।`);
-    } else if (activeUserPhone) {
-      const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || localStorage.getItem('medha_users') || '[]');
-      const found = allUsers.find(u => 
-        (u.phone && u.phone === activeUserPhone) || 
-        (u.userId && u.userId === activeUserPhone) || 
-        (u.email && u.email.toLowerCase() === activeUserPhone.toLowerCase())
-      );
-      if (found) {
-        setCurrentUser(found);
-        localStorage.setItem('orjon_last_activity', nowMs.toString());
-      }
-    }
+    // Automatic session restoration on startup is disabled per strict manual login policy.
+    // Opening/reopening/reloading the application must never automatically log in a user or admin.
   }, []);
 
-  // Synchronize Firebase Auth State & Strictly Enforce Server-Side Custom Claims for Admin
+  // Synchronize Firebase Auth State
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        try {
-          // Force token refresh to fetch verified custom claims directly from Firebase
-          const hasAdminClaim = await verifyAdminClaim(fbUser);
-
-          // STRICT ADMIN ACCESS RULE: User is ONLY admin if token claims.admin === true
-          setIsAdmin(hasAdminClaim);
-
-          // If regular user, update currentUser
-          if (!hasAdminClaim && fbUser.email) {
-            const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || '[]');
-            const matched = allUsers.find(u => u.email && u.email.toLowerCase() === fbUser.email?.toLowerCase());
-            if (matched) {
-              setCurrentUser(matched);
-            }
-          }
-        } catch (err) {
-          console.error("Error inspecting Firebase Auth Token claims:", err);
-          setIsAdmin(false);
-        }
-      } else {
+    const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
+      if (!fbUser) {
         setIsAdmin(false);
+        setCurrentUser(null);
       }
+      // Note: Persisted Firebase session on startup does NOT automatically authenticate into app.
+      // User or Admin must explicitly enter credentials and press the Login button.
     });
 
     return () => {
       unsubscribeAuth();
     };
   }, []);
-
-  // Real-time Session Inactivity Monitoring & Auto-Logout Effect
-  useEffect(() => {
-    if (!currentUser && !isAdmin) {
-      setShowInactivityWarning(false);
-      return;
-    }
-
-    let lastWriteTime = Date.now();
-    if (!localStorage.getItem('orjon_last_activity')) {
-      localStorage.setItem('orjon_last_activity', lastWriteTime.toString());
-    }
-
-    const handleUserActivity = () => {
-      const now = Date.now();
-      // Throttle localStorage updates to once every 5 seconds for optimal performance
-      if (now - lastWriteTime > 5000) {
-        lastWriteTime = now;
-        localStorage.setItem('orjon_last_activity', now.toString());
-        setShowInactivityWarning(false);
-      }
-    };
-
-    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click', 'focus'];
-    activityEvents.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
-
-    const intervalId = setInterval(() => {
-      const lastActStr = localStorage.getItem('orjon_last_activity');
-      const lastAct = lastActStr ? parseInt(lastActStr, 10) : lastWriteTime;
-      const now = Date.now();
-      const timeoutMinutes = parseInt(localStorage.getItem('orjon_session_timeout_minutes') || '15', 10);
-      const timeoutMs = timeoutMinutes * 60 * 1000;
-      const warningMs = Math.max(0, timeoutMs - 60000); // 1 minute warning window
-
-      const elapsed = now - lastAct;
-
-      if (elapsed >= timeoutMs) {
-        // Force Auto Logout due to session inactivity
-        const sessionType = isAdmin ? 'এডমিন' : 'ব্যবহারকারী';
-        setCurrentUser(null);
-        setIsAdmin(false);
-        localStorage.removeItem('orjon_session_user');
-        localStorage.removeItem('medha_session_user');
-        localStorage.removeItem('orjon_session_admin');
-        localStorage.removeItem('medha_session_admin');
-        sessionStorage.removeItem('orjon_session_user');
-        sessionStorage.removeItem('orjon_session_admin');
-        setShowInactivityWarning(false);
-        setSessionTimeoutNotice(`⚠️ সেশন টাইমআউট! ${timeoutMinutes} মিনিট কোনো কার্যক্রম না থাকায় নিরাপত্তার স্বার্থে আপনার ${sessionType} অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে।`);
-        setAuthScreen('login');
-      } else if (elapsed >= warningMs) {
-        setShowInactivityWarning(true);
-      } else {
-        setShowInactivityWarning(false);
-      }
-    }, 5000);
-
-    return () => {
-      activityEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity));
-      clearInterval(intervalId);
-    };
-  }, [currentUser, isAdmin]);
 
   // Helper functions to update state and persistence together
   const updateCategoriesDB = (newC: CategoryItem[]) => {
@@ -1223,7 +1126,7 @@ export default function App() {
     newU.forEach(u => {
       const { password, ...rest } = u as any;
       const sanitizedUser: User = { ...rest };
-      const k = (sanitizedUser.phone || sanitizedUser.userId || sanitizedUser.email || '').toLowerCase().trim();
+      const k = (sanitizedUser.email || sanitizedUser.userId || sanitizedUser.phone || '').toLowerCase().trim();
       if (k) userMap.set(k, sanitizedUser);
     });
     const dedupedUsers = Array.from(userMap.values());
@@ -1370,12 +1273,13 @@ export default function App() {
     }
 
     // Email is verified: log in user
+    const userUid = firebaseUser?.uid;
     const activeUser: User = found ? {
       ...found,
-      userId: found.userId || generateAutoUserId(),
+      userId: userUid || found.userId,
       emailVerified: true
     } : {
-      userId: generateAutoUserId(),
+      userId: userUid,
       email: userEmailToAuth,
       emailVerified: true,
       phone: '',
@@ -1388,6 +1292,27 @@ export default function App() {
       lifetimeWrong: 0,
       createdAt: new Date().toISOString()
     };
+
+    // If user document already exists in Firestore under their Auth UID, preserve remote stats & fields
+    if (userUid) {
+      try {
+        const userDocRef = doc(db, 'users', userUid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const remoteData = userDocSnap.data() as User;
+          activeUser.lifetimeAnswered = Math.max(activeUser.lifetimeAnswered || 0, remoteData.lifetimeAnswered || 0);
+          activeUser.lifetimeCorrect = Math.max(activeUser.lifetimeCorrect || 0, remoteData.lifetimeCorrect || 0);
+          activeUser.lifetimeWrong = Math.max(activeUser.lifetimeWrong || 0, remoteData.lifetimeWrong || 0);
+          if (remoteData.name && !found?.name) activeUser.name = remoteData.name;
+          if (remoteData.phone && !found?.phone) activeUser.phone = remoteData.phone;
+          if (remoteData.avatar && !found?.avatar) activeUser.avatar = remoteData.avatar;
+          if (remoteData.gender && !found?.gender) activeUser.gender = remoteData.gender;
+          if (remoteData.education && !found?.education) activeUser.education = remoteData.education;
+        }
+      } catch (e) {
+        console.warn("Could not fetch remote user doc during login:", e);
+      }
+    }
 
     // Save/update verified user in DB
     if (!users.some(u => u.email?.toLowerCase() === activeUser.email?.toLowerCase())) {
@@ -1405,15 +1330,19 @@ export default function App() {
     setShowInactivityWarning(false);
 
     if (rememberMe) {
-      localStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
+      localStorage.setItem('orjon_saved_login_id', query);
+      localStorage.setItem('orjon_saved_login_pass', pass);
       localStorage.setItem('orjon_remember_me', 'true');
     } else {
-      sessionStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
-      localStorage.removeItem('orjon_session_user');
+      localStorage.removeItem('orjon_saved_login_id');
+      localStorage.removeItem('orjon_saved_login_pass');
+      localStorage.removeItem('orjon_remember_me');
     }
 
-    setPhoneInput('');
-    setPasswordInput('');
+    if (!rememberMe) {
+      setPhoneInput('');
+      setPasswordInput('');
+    }
   };
 
   const handleUserRegister = async (e: React.FormEvent) => {
@@ -1479,6 +1408,7 @@ export default function App() {
       const firebaseUser = userCredential.user;
 
       if (firebaseUser) {
+        newTempUser.userId = firebaseUser.uid;
         await sendEmailVerification(firebaseUser);
         console.log("Firebase verification email sent successfully to:", email);
       }
@@ -1520,7 +1450,7 @@ export default function App() {
         await reload(currentUser);
         if (currentUser.emailVerified) {
           if (pendingUser) {
-            const newUserId = pendingUser.userId || generateAutoUserId();
+            const newUserId = currentUser.uid;
             const verifiedUser: User = {
               ...pendingUser,
               userId: newUserId,
@@ -1876,7 +1806,7 @@ export default function App() {
       if (fsUsers && fsUsers.length > 0) {
         const fsMap = new Map<string, User>();
         fsUsers.forEach(u => {
-          const k = (u.phone || u.userId || u.email || '').toLowerCase().trim();
+          const k = (u.email || u.userId || u.phone || '').toLowerCase().trim();
           if (k) fsMap.set(k, u);
         });
         const dedupedFsUsers = Array.from(fsMap.values());
@@ -2986,6 +2916,25 @@ export default function App() {
 
     updateUsersDB(updatedUsers, activeUpdatedUser || undefined);
   };
+
+  // Phase 4B: Shared background session timeout & exam-aware inactivity management
+  useBackgroundSessionTimeout({
+    isAuthenticated: !!currentUser || isAdmin,
+    isAdmin: isAdmin,
+    user: currentUser,
+    onLogout: async (reason) => {
+      await handleLogout();
+      if (reason === 'timeout') {
+        const sessionType = isAdmin ? 'এডমিন' : 'ব্যবহারকারী';
+        setSessionTimeoutNotice(`⚠️ সেশন টাইমআউট! ১৫ মিনিট কোনো কার্যক্রম না থাকায় নিরাপত্তার স্বার্থে আপনার ${sessionType} অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে।`);
+      }
+    },
+    onSaveAttempt: (attempt) => {
+      handleSaveAttempt(attempt);
+    },
+    onTimeoutNotice: (msg) => setSessionTimeoutNotice(msg),
+    onWarningStateChange: (warn) => setShowInactivityWarning(warn),
+  });
 
   const handleUpdateUserProfile = async (updatedUser: User) => {
     setCurrentUser(updatedUser);

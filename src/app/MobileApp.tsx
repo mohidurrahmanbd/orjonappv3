@@ -75,7 +75,9 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth';
-import { auth } from '../shared/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../shared/lib/firebase';
+import { useBackgroundSessionTimeout } from '../shared/lib/useBackgroundSessionTimeout';
 import orjonLogo from '../assets/orjon-logo.png';
 import { LogIn, Sparkles, BookOpen, Smartphone, Mail, ShieldCheck, CheckCircle2, RefreshCw, ArrowLeft, Lock, RotateCcw, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
@@ -174,9 +176,15 @@ export default function MobileApp() {
   const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'forgot-password'>('login');
 
   // Input states for Login / Register
-  const [phoneInput, setPhoneInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
+  const [phoneInput, setPhoneInput] = useState(() => {
+    return localStorage.getItem('orjon_saved_login_id') || '';
+  });
+  const [passwordInput, setPasswordInput] = useState(() => {
+    return localStorage.getItem('orjon_saved_login_pass') || '';
+  });
+  const [rememberMe, setRememberMe] = useState<boolean>(() => {
+    return localStorage.getItem('orjon_remember_me') === 'true';
+  });
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null);
   
   const [regName, setRegName] = useState('');
@@ -546,31 +554,19 @@ export default function MobileApp() {
       }).catch(() => {});
     }
 
-    // Check active user login session
-    const activeUserPhone = localStorage.getItem('orjon_session_user') || sessionStorage.getItem('orjon_session_user') || localStorage.getItem('medha_session_user');
-    if (activeUserPhone) {
-      const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || localStorage.getItem('medha_users') || '[]');
-      const found = allUsers.find(u => 
-        (u.phone && u.phone === activeUserPhone) || 
-        (u.userId && u.userId === activeUserPhone) || 
-        (u.email && u.email.toLowerCase() === activeUserPhone.toLowerCase())
-      );
-      if (found) {
-        setCurrentUser(found);
-      }
-    }
+    // Automatic session restoration on startup is disabled per strict manual login policy.
+    // Opening/reopening/reloading the APK must never automatically log the user into the application.
   }, []);
 
   // Firebase Auth State Listener (Student / User only)
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
-      if (fbUser && fbUser.email) {
-        const allUsers: User[] = JSON.parse(localStorage.getItem('orjon_users') || '[]');
-        const matched = allUsers.find(u => u.email && u.email.toLowerCase() === fbUser.email?.toLowerCase());
-        if (matched) {
-          setCurrentUser(matched);
-        }
+      if (!fbUser) {
+        // Clear application user state when Firebase is signed out
+        setCurrentUser(null);
       }
+      // Note: Persisted Firebase user on startup does NOT automatically authenticate into app.
+      // User must explicitly enter credentials and press the Login button.
     });
 
     return () => {
@@ -760,13 +756,13 @@ export default function MobileApp() {
       return;
     }
 
-    const autoAssignedId = found?.userId || generateAutoUserId();
+    const userUid = firebaseUser.uid;
     const activeUser: User = found ? {
       ...found,
-      userId: autoAssignedId,
+      userId: userUid,
       emailVerified: true
     } : {
-      userId: autoAssignedId,
+      userId: userUid,
       name: firebaseUser.displayName || userEmailToAuth.split('@')[0],
       phone: '',
       email: userEmailToAuth,
@@ -780,6 +776,26 @@ export default function MobileApp() {
       createdAt: new Date().toISOString()
     };
 
+    if (userUid) {
+      try {
+        const userDocRef = doc(db, 'users', userUid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const remoteData = userDocSnap.data() as User;
+          activeUser.lifetimeAnswered = Math.max(activeUser.lifetimeAnswered || 0, remoteData.lifetimeAnswered || 0);
+          activeUser.lifetimeCorrect = Math.max(activeUser.lifetimeCorrect || 0, remoteData.lifetimeCorrect || 0);
+          activeUser.lifetimeWrong = Math.max(activeUser.lifetimeWrong || 0, remoteData.lifetimeWrong || 0);
+          if (remoteData.name && !found?.name) activeUser.name = remoteData.name;
+          if (remoteData.phone && !found?.phone) activeUser.phone = remoteData.phone;
+          if (remoteData.avatar && !found?.avatar) activeUser.avatar = remoteData.avatar;
+          if (remoteData.gender && !found?.gender) activeUser.gender = remoteData.gender;
+          if (remoteData.education && !found?.education) activeUser.education = remoteData.education;
+        }
+      } catch (e) {
+        console.warn("Could not fetch remote user doc during mobile login:", e);
+      }
+    }
+
     if (!users.some(u => u.email?.toLowerCase() === activeUser.email?.toLowerCase())) {
       updateUsersDB([...users, activeUser], activeUser);
     } else {
@@ -792,15 +808,19 @@ export default function MobileApp() {
     setCurrentUser(activeUser);
 
     if (rememberMe) {
-      localStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
+      localStorage.setItem('orjon_saved_login_id', query);
+      localStorage.setItem('orjon_saved_login_pass', pass);
       localStorage.setItem('orjon_remember_me', 'true');
     } else {
-      sessionStorage.setItem('orjon_session_user', activeUser.phone || activeUser.userId || activeUser.email || '');
-      localStorage.removeItem('orjon_session_user');
+      localStorage.removeItem('orjon_saved_login_id');
+      localStorage.removeItem('orjon_saved_login_pass');
+      localStorage.removeItem('orjon_remember_me');
     }
 
-    setPhoneInput('');
-    setPasswordInput('');
+    if (!rememberMe) {
+      setPhoneInput('');
+      setPasswordInput('');
+    }
   };
 
   const handleUserRegister = async (e: React.FormEvent) => {
@@ -864,6 +884,7 @@ export default function MobileApp() {
       const firebaseUser = userCredential.user;
 
       if (firebaseUser) {
+        newTempUser.userId = firebaseUser.uid;
         await sendEmailVerification(firebaseUser);
       }
     } catch (fbError: any) {
@@ -902,7 +923,7 @@ export default function MobileApp() {
         await reload(currentUser);
         if (currentUser.emailVerified) {
           if (pendingUser) {
-            const newUserId = pendingUser.userId || generateAutoUserId();
+            const newUserId = currentUser.uid;
             const verifiedUser: User = {
               ...pendingUser,
               userId: newUserId,
@@ -1089,6 +1110,24 @@ export default function MobileApp() {
 
     updateUsersDB(updatedUsers, activeUpdatedUser || undefined);
   };
+
+  // Phase 4B: Shared background session timeout & exam-aware inactivity management
+  useBackgroundSessionTimeout({
+    isAuthenticated: !!currentUser,
+    isAdmin: false,
+    user: currentUser,
+    onLogout: async (reason) => {
+      await handleLogout();
+      if (reason === 'timeout') {
+        setSessionTimeoutNotice('⚠️ সেশন টাইমআউট! ১৫ মিনিট কোনো কার্যক্রম না থাকায় নিরাপত্তার স্বার্থে আপনার অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে লগআউট করা হয়েছে।');
+      }
+    },
+    onSaveAttempt: (attempt) => {
+      handleSaveAttempt(attempt);
+    },
+    onTimeoutNotice: (msg) => setSessionTimeoutNotice(msg),
+    onWarningStateChange: (warn) => setShowInactivityWarning(warn),
+  });
 
   const handleUpdateQuestion = (id: string, partial: Partial<Question>) => {
     const updated = questions.map(q => q.id === id ? { ...q, ...partial } : q);
@@ -1398,6 +1437,12 @@ export default function MobileApp() {
               )}
 
               {/* View Switchers: Login | Register */}
+              {sessionTimeoutNotice && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2 text-amber-900 text-xs animate-fade-in">
+                  <span className="text-sm">⚠️</span>
+                  <span>{sessionTimeoutNotice}</span>
+                </div>
+              )}
               <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs font-bold">
                 <button
                   type="button"
