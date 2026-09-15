@@ -9,7 +9,7 @@ import {
   Wallet, Search, Filter, Phone, Mail, UserCheck, CreditCard, Printer, FileSpreadsheet, ExternalLink, ArrowUpDown
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import * as ReactWindow from 'react-window';
+import { List as V2List } from 'react-window';
 import { firebaseConfig } from '../shared/lib/firebase';
 import { 
   CollectionCounts, 
@@ -26,7 +26,54 @@ import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchica
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../shared/lib/routineUtils';
 import CurrentAffairsAdmin from '../admin/CurrentAffairsAdmin';
 
-const List = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList || (ReactWindow as any).default || ReactWindow;
+interface VirtualListProps {
+  height: number | string;
+  width?: number | string;
+  itemCount: number;
+  itemSize: number;
+  className?: string;
+  children: (props: { index: number; style: React.CSSProperties }) => React.ReactNode;
+}
+
+interface VirtualRowData {
+  renderChild: (props: { index: number; style: React.CSSProperties }) => React.ReactNode;
+}
+
+const VirtualRowRenderer: React.FC<{
+  ariaAttributes?: {
+    "aria-posinset": number;
+    "aria-setsize": number;
+    role: "listitem";
+  };
+  index: number;
+  style: React.CSSProperties;
+  renderChild: (props: { index: number; style: React.CSSProperties }) => React.ReactNode;
+}> = ({ index, style, renderChild }) => {
+  return <>{renderChild({ index, style })}</>;
+};
+
+const List: React.FC<VirtualListProps> = ({
+  height,
+  width = '100%',
+  itemCount,
+  itemSize,
+  className,
+  children
+}) => {
+  const rowProps = React.useMemo<VirtualRowData>(() => ({ renderChild: children }), [children]);
+
+  return (
+    <V2List<VirtualRowData>
+      rowCount={itemCount}
+      rowHeight={itemSize}
+      defaultHeight={typeof height === 'number' ? height : undefined}
+      rowComponent={VirtualRowRenderer as any}
+      rowProps={rowProps}
+      style={{ height, width }}
+      className={className}
+    />
+  );
+};
 
 interface AdminPanelProps {
   questions: Question[];
