@@ -2,13 +2,85 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
+import { FileOpener } from '@capawesome-team/capacitor-file-opener';
 import { Routine, Question, CategoryItem, SubcategoryItem, formatBengaliDateTime } from '../types';
 import { formatRoutineSyllabusPaths } from './routineUtils';
 
 /**
- * Saves and opens/shares a generated PDF file.
- * In APK (native): Writes using Capacitor Filesystem and opens Android native share/save sheet.
+ * Shows an in-app confirmation modal after PDF is saved:
+ * "PDF সফলভাবে সেভ হয়েছে" with "Open PDF" and "ঠিক আছে" buttons.
+ * Tapping "Open PDF" triggers Android native ACTION_VIEW via FileOpener.
+ */
+const showPdfSavedModal = (fileUri: string, fileName: string) => {
+  // Remove existing modal if present
+  const existingModal = document.getElementById('pdf-saved-modal-container');
+  if (existingModal) {
+    existingModal.remove();
+  }
+
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'pdf-saved-modal-container';
+  modalContainer.className = 'fixed inset-0 z-[999999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in';
+
+  modalContainer.innerHTML = `
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col gap-4 text-xs border border-gray-100 animate-scale-up" role="dialog" aria-modal="true">
+      <div class="flex items-center gap-2 border-b border-gray-100 pb-2.5">
+        <span class="text-emerald-600 text-lg">📄</span>
+        <h3 class="font-extrabold text-sm sm:text-base text-gray-900">PDF সফলভাবে সেভ হয়েছে</h3>
+      </div>
+      <p class="text-gray-700 whitespace-pre-line leading-relaxed font-medium text-xs sm:text-sm">
+        ফাইলটি ডিভাইসের স্টোরেজে সফলভাবে সংরক্ষিত হয়েছে:
+        <span class="block mt-1 font-bold text-indigo-700 break-all bg-indigo-50 p-2 rounded-lg text-[11px]">${fileName}</span>
+      </p>
+      <div class="flex items-center justify-end gap-2.5 mt-2 pt-3 border-t border-gray-100">
+        <button
+          type="button"
+          id="pdf-modal-close-btn"
+          class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+        >
+          ঠিক আছে
+        </button>
+        <button
+          type="button"
+          id="pdf-modal-open-btn"
+          class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-200 transition cursor-pointer flex items-center gap-1.5"
+        >
+          <span>Open PDF</span>
+          <span>↗</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modalContainer);
+
+  const closeModal = () => {
+    if (modalContainer.parentNode) {
+      modalContainer.parentNode.removeChild(modalContainer);
+    }
+  };
+
+  const closeBtn = modalContainer.querySelector('#pdf-modal-close-btn');
+  closeBtn?.addEventListener('click', closeModal);
+
+  const openBtn = modalContainer.querySelector('#pdf-modal-open-btn');
+  openBtn?.addEventListener('click', async () => {
+    closeModal();
+    try {
+      await FileOpener.openFile({
+        path: fileUri,
+        mimeType: 'application/pdf'
+      });
+    } catch (openErr) {
+      console.error('[PDF] Failed to open PDF file:', openErr);
+      alert('PDF ওপেন করার মতো কোনো অ্যাপ ডিভাইসে পাওয়া যায়নি অথবা ফাইলটি ওপেন করা সম্ভব হয়নি।');
+    }
+  });
+};
+
+/**
+ * Saves a generated PDF file.
+ * In APK (native): Writes using Capacitor Filesystem to local storage, then shows a saved confirmation with "Open PDF".
  * In Browser: Triggers standard browser download via jsPDF.save().
  */
 export const saveAndSharePdf = async (
@@ -42,16 +114,8 @@ export const saveAndSharePdf = async (
       }
 
       if (fileUri) {
-        try {
-          await Share.share({
-            title: fileName,
-            text: shareTitle || fileName,
-            url: fileUri,
-            dialogTitle: 'PDF ওপেন বা সংরক্ষণ করুন'
-          });
-        } catch (shareErr) {
-          console.log('[PDF] Native share sheet dismissed or completed:', shareErr);
-        }
+        // Show confirmation dialog with "Open PDF" and "ঠিক আছে" buttons
+        showPdfSavedModal(fileUri, fileName);
       }
     } catch (nativeErr) {
       console.error('[PDF] Native PDF save failed, falling back to browser save:', nativeErr);
