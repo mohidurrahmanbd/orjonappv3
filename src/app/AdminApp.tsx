@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime } from '../shared/types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
@@ -3142,7 +3143,8 @@ export default function AdminPanel({
 
   // CSV safe parser helper function with detailed validation
   const parseCSV = (text: string, qualifierChar: string = textQualifier) => {
-    const lines = text.split('\n');
+    const sanitizedText = text.replace(/^\uFEFF/, '');
+    const lines = sanitizedText.split('\n');
     if (lines.length < 2) {
       throw new Error('ফাইলটিতে কোনো ডাটা নেই বা অত্যন্ত ছোট। প্রথম লাইন অবশ্যই হেডার হতে হবে।');
     }
@@ -3281,6 +3283,12 @@ export default function AdminPanel({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      alert('অনুগ্রহ করে শুধুমাত্র .csv ফরম্যাটের ফাইল নির্বাচন করুন।');
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -5759,7 +5767,14 @@ export default function AdminPanel({
                 <input 
                   type="file" 
                   id="csv-file-input"
-                  accept=".csv"
+                  accept={
+                    Capacitor.isNativePlatform()
+                      ? "*/*"
+                      : ".csv,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,text/plain"
+                  }
+                  onClick={(e) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
                   onChange={handleFileUpload}
                   className="hidden"
                 />
