@@ -1312,12 +1312,21 @@ export default function MobileApp() {
   }, []);
 
   const handlePortalLogoutRequested = () => {
+    // If Logout Confirmation modal is currently open, Back button dismisses it
+    if (showLogoutConfirmModalRef.current) {
+      setShowLogoutConfirmModal(false);
+      lastRootBackTimeRef.current = 0;
+      return;
+    }
+
     const now = Date.now();
-    if (showLogoutConfirmModalRef.current && (now - lastRootBackTimeRef.current < 3000)) {
-      CapacitorApp.exitApp();
-    } else {
-      lastRootBackTimeRef.current = now;
+    // Require 2nd back press within 2000ms to open the modal
+    if (now - lastRootBackTimeRef.current <= 2000) {
       setShowLogoutConfirmModal(true);
+      lastRootBackTimeRef.current = 0;
+    } else {
+      // 1st back press: stay on Dashboard, do not open popup or exit app
+      lastRootBackTimeRef.current = now;
     }
   };
 
