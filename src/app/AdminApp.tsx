@@ -485,13 +485,14 @@ export default function AdminPanel({
       if (enrollmentSearch.trim()) {
         const q = enrollmentSearch.toLowerCase().trim();
         const matchName = (enr.userName || '').toLowerCase().includes(q);
+        const matchPublicId = (enr.publicUserId || '').toLowerCase().includes(q);
         const matchId = (enr.userId || '').toLowerCase().includes(q);
         const matchEmail = (enr.userEmail || '').toLowerCase().includes(q);
         const matchPhone = (enr.userPhone || '').toLowerCase().includes(q);
         const matchCourse = (enr.courseTitle || '').toLowerCase().includes(q);
         const matchTrx = (enr.trxId || '').toLowerCase().includes(q);
         const matchCoupon = (enr.couponCode || '').toLowerCase().includes(q);
-        return matchName || matchId || matchEmail || matchPhone || matchCourse || matchTrx || matchCoupon;
+        return matchName || matchPublicId || matchId || matchEmail || matchPhone || matchCourse || matchTrx || matchCoupon;
       }
       return true;
     });
@@ -521,7 +522,7 @@ export default function AdminPanel({
     ];
     const rows = filteredEnrollments.map(e => [
       `"${(e.userName || '').replace(/"/g, '""')}"`,
-      `"${(e.userId || '').replace(/"/g, '""')}"`,
+      `"${(e.publicUserId || e.userId || '').replace(/"/g, '""')}"`,
       `"${(e.userEmail || '').replace(/"/g, '""')}"`,
       `"${(e.userPhone || '').replace(/"/g, '""')}"`,
       `"${(e.courseTitle || '').replace(/"/g, '""')}"`,
@@ -555,11 +556,26 @@ export default function AdminPanel({
   };
 
   const handleViewUserProfile = (enr: CourseEnrollment) => {
-    const matchedUser = (users || []).find(u => 
-      (enr.userId && u.userId && u.userId.toLowerCase() === enr.userId.toLowerCase()) ||
-      (enr.userPhone && u.phone && u.phone === enr.userPhone) ||
-      (enr.userEmail && u.email && u.email.toLowerCase() === enr.userEmail.toLowerCase())
-    );
+    const matchedUser = (users || []).find(u => {
+      const uAny = u as any;
+      // 1. Priority: enr.publicUserId === u.userId
+      if (enr.publicUserId && u.userId && enr.publicUserId.trim().toLowerCase() === u.userId.trim().toLowerCase()) {
+        return true;
+      }
+      // 2. Priority: enr.userId === u.authUid
+      if (enr.userId) {
+        const enrUid = enr.userId.trim().toLowerCase();
+        if (uAny.authUid && String(uAny.authUid).trim().toLowerCase() === enrUid) return true;
+        if (uAny.id && !String(uAny.id).startsWith('user_') && String(uAny.id).trim().toLowerCase() === enrUid) return true;
+        // Legacy fallback where enr.userId had public userId
+        if (u.userId && u.userId.trim().toLowerCase() === enrUid) return true;
+      }
+      // 3. existing phone match fallback
+      if (enr.userPhone && u.phone && u.phone.trim() === enr.userPhone.trim()) return true;
+      // 4. existing email match fallback
+      if (enr.userEmail && u.email && u.email.trim().toLowerCase() === enr.userEmail.trim().toLowerCase()) return true;
+      return false;
+    });
     setSelectedUserForProfileModal({ enrollment: enr, user: matchedUser });
   };
 
@@ -9307,9 +9323,9 @@ export default function AdminPanel({
                                 <div className="space-y-0.5">
                                   <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
                                     <span>{enr.userName || 'নাম প্রদান করা হয়নি'}</span>
-                                    {enr.userId && (
+                                    {(enr.publicUserId || enr.userId) && (
                                       <span className="bg-indigo-50 text-indigo-700 font-mono font-black text-[9.5px] px-1.5 py-0.2 rounded border border-indigo-200">
-                                        {enr.userId}
+                                        {enr.publicUserId || enr.userId}
                                       </span>
                                     )}
                                   </div>
@@ -12805,7 +12821,7 @@ export default function AdminPanel({
                   </div>
                   <div>
                     <span className="text-slate-500">ইউজার আইডি:</span>{' '}
-                    <span className="font-mono font-bold text-indigo-700">{selectedEnrollmentForModal.userId || 'N/A'}</span>
+                    <span className="font-mono font-bold text-indigo-700">{selectedEnrollmentForModal.publicUserId || selectedEnrollmentForModal.userId || 'N/A'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500">মোবাইল:</span>{' '}
@@ -12894,9 +12910,9 @@ export default function AdminPanel({
                 <div>
                   <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                     <span>{selectedUserForProfileModal.user?.name || selectedUserForProfileModal.enrollment.userName || 'নাম নেই'}</span>
-                    {(selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId) && (
+                    {(selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.publicUserId || selectedUserForProfileModal.enrollment.userId) && (
                       <span className="bg-indigo-50 text-indigo-700 font-mono font-black text-[10px] px-2 py-0.5 rounded border border-indigo-200">
-                        {selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId}
+                        {selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.publicUserId || selectedUserForProfileModal.enrollment.userId}
                       </span>
                     )}
                   </h3>
@@ -12988,15 +13004,28 @@ export default function AdminPanel({
             {/* Enrolled Courses for this User */}
             <div className="space-y-2.5">
               {(() => {
-                const userPhone = selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone;
-                const userId = selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.userId;
-                const userEmail = selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail;
+                const userPhone = (selectedUserForProfileModal.user?.phone || selectedUserForProfileModal.enrollment.userPhone || '').trim();
+                const userEmail = (selectedUserForProfileModal.user?.email || selectedUserForProfileModal.enrollment.userEmail || '').trim().toLowerCase();
+                const userId = (selectedUserForProfileModal.user?.userId || selectedUserForProfileModal.enrollment.publicUserId || '').trim().toLowerCase();
+                const userAuthUid = ((selectedUserForProfileModal.user as any)?.authUid || selectedUserForProfileModal.user?.id || '').trim().toLowerCase();
+                const enrollmentUserId = (selectedUserForProfileModal.enrollment.userId || '').trim().toLowerCase();
 
-                const userCourses = (courseEnrollments || []).filter(e => 
-                  (userId && e.userId && e.userId.toLowerCase() === userId.toLowerCase()) ||
-                  (userPhone && e.userPhone && e.userPhone === userPhone) ||
-                  (userEmail && e.userEmail && e.userEmail.toLowerCase() === userEmail.toLowerCase())
-                );
+                const userCourses = (courseEnrollments || []).filter(e => {
+                  // 1. Priority: e.publicUserId === selectedUser.userId
+                  if (userId && e.publicUserId && e.publicUserId.trim().toLowerCase() === userId) return true;
+                  // 2. Priority: e.userId === selectedUser.authUid
+                  if (e.userId) {
+                    const eUid = e.userId.trim().toLowerCase();
+                    if (userAuthUid && eUid === userAuthUid) return true;
+                    if (userId && eUid === userId) return true;
+                    if (enrollmentUserId && eUid === enrollmentUserId) return true;
+                  }
+                  // 3. Existing phone match fallback
+                  if (userPhone && e.userPhone && e.userPhone.trim() === userPhone) return true;
+                  // 4. Existing email match fallback
+                  if (userEmail && e.userEmail && e.userEmail.trim().toLowerCase() === userEmail) return true;
+                  return false;
+                });
 
                 return (
                   <div>

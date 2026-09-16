@@ -759,7 +759,7 @@ export default function MobileApp() {
     const userUid = firebaseUser.uid;
     const activeUser: User = found ? {
       ...found,
-      userId: userUid,
+      userId: found.userId || userUid,
       emailVerified: true
     } : {
       userId: userUid,
@@ -785,6 +785,7 @@ export default function MobileApp() {
           activeUser.lifetimeAnswered = Math.max(activeUser.lifetimeAnswered || 0, remoteData.lifetimeAnswered || 0);
           activeUser.lifetimeCorrect = Math.max(activeUser.lifetimeCorrect || 0, remoteData.lifetimeCorrect || 0);
           activeUser.lifetimeWrong = Math.max(activeUser.lifetimeWrong || 0, remoteData.lifetimeWrong || 0);
+          if (remoteData.userId) activeUser.userId = remoteData.userId;
           if (remoteData.name && !found?.name) activeUser.name = remoteData.name;
           if (remoteData.phone && !found?.phone) activeUser.phone = remoteData.phone;
           if (remoteData.avatar && !found?.avatar) activeUser.avatar = remoteData.avatar;
@@ -800,7 +801,7 @@ export default function MobileApp() {
       updateUsersDB([...users, activeUser], activeUser);
     } else {
       const updatedUsers = users.map(u => 
-        u.email?.toLowerCase() === activeUser.email?.toLowerCase() ? { ...u, emailVerified: true } : u
+        u.email?.toLowerCase() === activeUser.email?.toLowerCase() ? { ...u, ...activeUser, emailVerified: true } : u
       );
       updateUsersDB(updatedUsers, activeUser);
     }
@@ -865,7 +866,9 @@ export default function MobileApp() {
     setRegErrors({});
     setRegGeneralError(null);
 
+    const existingIds = users.map(u => u.userId).filter(Boolean) as string[];
     const newTempUser: User = {
+      userId: generateAutoUserId(existingIds),
       email,
       emailVerified: false,
       phone: '',
@@ -884,7 +887,7 @@ export default function MobileApp() {
       const firebaseUser = userCredential.user;
 
       if (firebaseUser) {
-        newTempUser.userId = firebaseUser.uid;
+        newTempUser.authUid = firebaseUser.uid;
         await sendEmailVerification(firebaseUser);
       }
     } catch (fbError: any) {
@@ -923,7 +926,7 @@ export default function MobileApp() {
         await reload(currentUser);
         if (currentUser.emailVerified) {
           if (pendingUser) {
-            const newUserId = currentUser.uid;
+            const newUserId = pendingUser.userId || currentUser.uid;
             const verifiedUser: User = {
               ...pendingUser,
               userId: newUserId,
@@ -1145,8 +1148,11 @@ export default function MobileApp() {
   };
 
   const handleEnrollCourse = async (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
+    const authUser = auth.currentUser;
     const newEnrollment: CourseEnrollment = {
       ...enrollmentData,
+      userId: enrollmentData.userId || authUser?.uid || (currentUser as any)?.authUid || currentUser?.userId || '',
+      publicUserId: enrollmentData.publicUserId || currentUser?.userId || undefined,
       id: `enroll_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       enrolledAt: new Date().toISOString()
     };

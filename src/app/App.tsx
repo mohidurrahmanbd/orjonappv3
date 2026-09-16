@@ -1276,7 +1276,7 @@ export default function App() {
     const userUid = firebaseUser?.uid;
     const activeUser: User = found ? {
       ...found,
-      userId: userUid || found.userId,
+      userId: found.userId || userUid,
       emailVerified: true
     } : {
       userId: userUid,
@@ -1303,6 +1303,7 @@ export default function App() {
           activeUser.lifetimeAnswered = Math.max(activeUser.lifetimeAnswered || 0, remoteData.lifetimeAnswered || 0);
           activeUser.lifetimeCorrect = Math.max(activeUser.lifetimeCorrect || 0, remoteData.lifetimeCorrect || 0);
           activeUser.lifetimeWrong = Math.max(activeUser.lifetimeWrong || 0, remoteData.lifetimeWrong || 0);
+          if (remoteData.userId) activeUser.userId = remoteData.userId;
           if (remoteData.name && !found?.name) activeUser.name = remoteData.name;
           if (remoteData.phone && !found?.phone) activeUser.phone = remoteData.phone;
           if (remoteData.avatar && !found?.avatar) activeUser.avatar = remoteData.avatar;
@@ -1319,7 +1320,7 @@ export default function App() {
       updateUsersDB([...users, activeUser], activeUser);
     } else {
       const updatedUsers = users.map(u => 
-        u.email?.toLowerCase() === activeUser.email?.toLowerCase() ? { ...u, emailVerified: true } : u
+        u.email?.toLowerCase() === activeUser.email?.toLowerCase() ? { ...u, ...activeUser, emailVerified: true } : u
       );
       updateUsersDB(updatedUsers, activeUser);
     }
@@ -1387,8 +1388,10 @@ export default function App() {
     setRegErrors({});
     setRegGeneralError(null);
 
-    // User ID is created ONLY after email verification; phone is not set at registration
+    // Generate a 6-character public User ID for registration
+    const existingIds = users.map(u => u.userId).filter(Boolean) as string[];
     const newTempUser: User = {
+      userId: generateAutoUserId(existingIds),
       email,
       emailVerified: false,
       phone: '',
@@ -1408,7 +1411,7 @@ export default function App() {
       const firebaseUser = userCredential.user;
 
       if (firebaseUser) {
-        newTempUser.userId = firebaseUser.uid;
+        newTempUser.authUid = firebaseUser.uid;
         await sendEmailVerification(firebaseUser);
         console.log("Firebase verification email sent successfully to:", email);
       }
@@ -1450,7 +1453,7 @@ export default function App() {
         await reload(currentUser);
         if (currentUser.emailVerified) {
           if (pendingUser) {
-            const newUserId = currentUser.uid;
+            const newUserId = pendingUser.userId || currentUser.uid;
             const verifiedUser: User = {
               ...pendingUser,
               userId: newUserId,
@@ -2323,8 +2326,11 @@ export default function App() {
   };
 
   const handleEnrollCourse = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
+    const authUser = auth.currentUser;
     const newEnrollment: CourseEnrollment = {
       ...enrollmentData,
+      userId: enrollmentData.userId || authUser?.uid || (currentUser as any)?.authUid || currentUser?.userId || '',
+      publicUserId: enrollmentData.publicUserId || currentUser?.userId || undefined,
       id: `enr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       enrolledAt: new Date().toISOString()
     };

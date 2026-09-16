@@ -61,7 +61,9 @@ export interface Question {
 }
 
 export interface User {
-  userId?: string;         // Auto generated unique User ID e.g. MDH-7A39B
+  id?: string;             // Firestore Document ID / UID
+  userId?: string;         // 6-character unique Public User ID e.g. A7K9P2
+  authUid?: string;        // Firebase Auth UID (internal identity)
   email?: string;          // User Email address
   emailVerified?: boolean; // Email verification status
   phone: string;
@@ -75,12 +77,17 @@ export interface User {
   createdAt: string;
 }
 
-export const generateAutoUserId = (): string => {
-  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+export const generateAutoUserId = (existingIds?: string[]): string => {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let rand = '';
-  for (let i = 0; i < 6; i++) {
-    rand += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  let attempts = 0;
+  do {
+    rand = '';
+    for (let i = 0; i < 6; i++) {
+      rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    attempts++;
+  } while (existingIds && existingIds.includes(rand) && attempts < 100);
   return rand;
 };
 
@@ -133,6 +140,7 @@ export interface CourseEnrollment {
   userName?: string;
   userEmail?: string;
   userId?: string;
+  publicUserId?: string;
   enrolledAt: string;
   originalPrice: number;
   discountPercent: number;

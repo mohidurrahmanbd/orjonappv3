@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../shared/types';
-import { syncUserEnrollmentsOnDemand } from '../shared/lib/sync/versionSyncService';
+import { syncUserEnrollmentsOnDemand, getStoredEnrolledCourseIds, setStoredEnrolledCourseIds } from '../shared/lib/sync/versionSyncService';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
   FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
@@ -617,12 +617,7 @@ export default function UserPortal({
   // Course & Enrollment States
   const [selectedCourseForEnrollment, setSelectedCourseForEnrollment] = useState<Course | null>(null);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(() => {
-    const userKey = user?.userId || user?.phone || 'user';
-    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { return []; }
-    }
-    return [];
+    return getStoredEnrolledCourseIds(user);
   });
 
   const handleRestoreUserEnrollments = useCallback(async () => {
@@ -641,7 +636,6 @@ export default function UserPortal({
   const [expandedSyllabusMap, setExpandedSyllabusMap] = useState<Record<string, boolean>>({});
 
   const handleToggleEnrollCourse = (courseId: string, courseTitle: string) => {
-    const userKey = user?.userId || user?.phone || 'user';
     let updated: string[];
     if (enrolledCourseIds.includes(courseId)) {
       showCustomConfirm(
@@ -649,7 +643,7 @@ export default function UserPortal({
         () => {
           updated = enrolledCourseIds.filter(id => id !== courseId);
           setEnrolledCourseIds(updated);
-          localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+          setStoredEnrolledCourseIds(updated, user);
           showCustomAlert('আন-এনরোলড!', `"${courseTitle}" কোর্সটি থেকে আন-এনরোল করা হয়েছে।`, 'info');
         },
         undefined,
@@ -664,7 +658,7 @@ export default function UserPortal({
       } else {
         updated = [...enrolledCourseIds, courseId];
         setEnrolledCourseIds(updated);
-        localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+        setStoredEnrolledCourseIds(updated, user);
         showCustomAlert('অভিনন্দন! 🎉', `"${courseTitle}" কোর্সে আপনি সফলভাবে এনরোল করেছেন! এটি "আমার কোর্স" সেকশনে যুক্ত হয়েছে।`, 'success');
         setSelectedCourseFilter('enrolled');
       }
@@ -672,12 +666,11 @@ export default function UserPortal({
   };
 
   const handleEnrollSuccess = (enrollmentData: Omit<CourseEnrollment, 'id' | 'enrolledAt'>) => {
-    const userKey = user?.userId || user?.phone || 'user';
     const courseId = enrollmentData.courseId;
     const updated = enrolledCourseIds.includes(courseId) ? enrolledCourseIds : [...enrolledCourseIds, courseId];
     
     setEnrolledCourseIds(updated);
-    localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(updated));
+    setStoredEnrolledCourseIds(updated, user);
     
     if (onEnrollCourse) {
       onEnrollCourse(enrollmentData);
@@ -1151,19 +1144,8 @@ export default function UserPortal({
   }, [courses, routines, enrolledCourseIds]);
 
   useEffect(() => {
-    const userKey = user?.userId || user?.phone || 'user';
-    const saved = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setEnrolledCourseIds(parsed);
-      } catch {
-        setEnrolledCourseIds([]);
-      }
-    } else {
-      setEnrolledCourseIds([]);
-    }
-  }, [user?.userId, user?.phone]);
+    setEnrolledCourseIds(getStoredEnrolledCourseIds(user));
+  }, [user?.email, user?.phone, (user as any)?.id, user?.userId]);
 
   // Custom Exam Setup & Cascading Filter States
   const [setupModalOpen, setSetupModalOpen] = useState(false);

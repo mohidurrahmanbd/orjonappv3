@@ -876,20 +876,97 @@ export async function syncPaymentSettingsMetadataFirst(
 }
 
 /**
+ * Resolves a stable identifier for local user caching (e.g. enrolled courses).
+ * Prioritizes permanently immutable identifiers (verified email, phone, Auth UID)
+ * so that user.userId changes during future migrations do not orphan local caches.
+ */
+export function getUserStableStorageKey(user?: { id?: string; userId?: string; phone?: string; email?: string } | null): string {
+  const email = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
+  if (email) return `email_${email}`;
+  const phone = (user?.phone || '').trim();
+  if (phone) return `phone_${phone}`;
+  const authUid = auth.currentUser?.uid || (user as any)?.authUid || (user?.id && !user.id.startsWith('user_') ? user.id : '');
+  if (authUid) return `uid_${authUid}`;
+  const rawId = (user?.userId || user?.id || '').trim();
+  if (rawId && !rawId.startsWith('user_')) return `id_${rawId}`;
+  return 'default_user';
+}
+
+/**
+ * Retrieves cached enrolled course IDs using the stable identifier strategy,
+ * with automatic transparent migration from legacy keys.
+ */
+export function getStoredEnrolledCourseIds(user?: { id?: string; userId?: string; phone?: string; email?: string; authUid?: string } | null): string[] {
+  try {
+    const stableKey = getUserStableStorageKey(user);
+    const primary = localStorage.getItem(`orjon_enrolled_courses_${stableKey}`);
+    if (primary) {
+      return JSON.parse(primary);
+    }
+    // Backward compatibility fallback: check legacy keys
+    const legacyKeys = [
+      user?.userId ? `orjon_enrolled_courses_${user.userId}` : '',
+      (user as any)?.authUid ? `orjon_enrolled_courses_${(user as any).authUid}` : '',
+      auth.currentUser?.uid ? `orjon_enrolled_courses_${auth.currentUser.uid}` : '',
+      user?.phone ? `orjon_enrolled_courses_${user.phone}` : '',
+      user?.email ? `orjon_enrolled_courses_${user.email}` : '',
+      'orjon_enrolled_courses_user'
+    ].filter(Boolean);
+
+    for (const key of legacyKeys) {
+      const legacyVal = localStorage.getItem(key);
+      if (legacyVal) {
+        const parsed = JSON.parse(legacyVal);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Transparently populate stable key for future instant lookups
+          localStorage.setItem(`orjon_enrolled_courses_${stableKey}`, legacyVal);
+          return parsed;
+        }
+      }
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Persists enrolled course IDs to localStorage using the stable identifier strategy,
+ * while maintaining backward-compatible mirror entries on legacy keys.
+ */
+export function setStoredEnrolledCourseIds(
+  courseIds: string[],
+  user?: { id?: string; userId?: string; phone?: string; email?: string; authUid?: string } | null
+): void {
+  try {
+    const stableKey = getUserStableStorageKey(user);
+    const jsonStr = JSON.stringify(courseIds);
+    localStorage.setItem(`orjon_enrolled_courses_${stableKey}`, jsonStr);
+
+    // Maintain legacy keys for seamless backward compatibility
+    if (user?.userId) {
+      localStorage.setItem(`orjon_enrolled_courses_${user.userId}`, jsonStr);
+    }
+    if ((user as any)?.authUid) {
+      localStorage.setItem(`orjon_enrolled_courses_${(user as any).authUid}`, jsonStr);
+    }
+    if (auth.currentUser?.uid) {
+      localStorage.setItem(`orjon_enrolled_courses_${auth.currentUser.uid}`, jsonStr);
+    }
+    if (user?.phone) {
+      localStorage.setItem(`orjon_enrolled_courses_${user.phone}`, jsonStr);
+    }
+  } catch {}
+}
+
+/**
  * On-Demand User Course Enrollment Sync
  * Restores user enrollments only when opening Courses, Purchased Courses, or Course-linked Exams.
  * Queries ONLY the authenticated user's records to minimize reads and prevent full collection downloads.
  */
 export async function syncUserEnrollmentsOnDemand(
-  user?: { userId?: string; phone?: string; email?: string } | null,
+  user?: { id?: string; userId?: string; phone?: string; email?: string } | null,
   onUpdate?: (enrolledCourseIds: string[], enrollments: CourseEnrollment[]) => void
 ): Promise<{ enrolledCourseIds: string[]; enrollments: CourseEnrollment[] }> {
-  const userKey = user?.userId || user?.phone || user?.email || 'user';
-  let cachedCourseIds: string[] = [];
-  try {
-    const raw = localStorage.getItem(`orjon_enrolled_courses_${userKey}`);
-    if (raw) cachedCourseIds = JSON.parse(raw);
-  } catch {}
+  const cachedCourseIds: string[] = getStoredEnrolledCourseIds(user);
 
   let cachedEnrollments: CourseEnrollment[] = [];
   try {
@@ -899,7 +976,7 @@ export async function syncUserEnrollmentsOnDemand(
 
   const authUser = auth.currentUser;
   const userEmail = (authUser?.email || user?.email || '').trim().toLowerCase();
-  const userId = authUser?.uid || user?.userId;
+  const userId = authUser?.uid || (user as any)?.authUid || (user?.id && !user.id.startsWith('user_') ? user.id : user?.userId);
 
   if (!userEmail && !userId && !user?.phone) {
     return { enrolledCourseIds: cachedCourseIds, enrollments: cachedEnrollments };
@@ -946,7 +1023,7 @@ export async function syncUserEnrollmentsOnDemand(
       const mergedEnrollments = Array.from(enrollmentMap.values());
 
       try {
-        localStorage.setItem(`orjon_enrolled_courses_${userKey}`, JSON.stringify(mergedCourseIds));
+        setStoredEnrolledCourseIds(mergedCourseIds, user);
         localStorage.setItem('orjon_course_enrollments', JSON.stringify(mergedEnrollments));
       } catch {}
 

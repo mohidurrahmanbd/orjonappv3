@@ -1,6 +1,6 @@
 import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { Course, LiveExam, Routine, Attempt, User } from '../types';
+import { Course, LiveExam, Routine, Attempt, User, generateAutoUserId } from '../types';
 import { incrementGlobalVersion } from './sync/versionSyncService';
 
 export interface CollectionCounts {
@@ -725,7 +725,8 @@ export async function syncSingleUserToFirestore(user: User): Promise<boolean> {
     return false;
   }
   try {
-    const docId = String(auth.currentUser?.uid || user.userId);
+    const userAny = user as any;
+    const docId = String(auth.currentUser?.uid || userAny.authUid || (userAny.id && !userAny.id.startsWith('user_') ? userAny.id : user.userId));
     if (!docId || docId === 'undefined' || docId.startsWith('user_')) {
       console.warn('Cannot sync user to Firestore: invalid or missing Firebase Auth UID');
       return false;
@@ -733,10 +734,12 @@ export async function syncSingleUserToFirestore(user: User): Promise<boolean> {
     const docRef = doc(db, 'users', docId);
     const nowIso = new Date().toISOString();
     const { password, ...rest } = user as any;
+    const authUid = userAny.authUid || auth.currentUser?.uid || docId;
     const cleanUser = JSON.parse(JSON.stringify({
       ...rest,
       id: docId,
-      userId: docId,
+      authUid: authUid,
+      userId: user.userId || generateAutoUserId(),
       updatedAt: (user as any).updatedAt || nowIso
     }));
     await setDoc(docRef, cleanUser, { merge: true });
