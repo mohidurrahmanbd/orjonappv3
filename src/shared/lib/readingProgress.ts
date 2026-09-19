@@ -153,6 +153,96 @@ export const markRoutineQuestionsAsRead = (
   };
 };
 
+/**
+ * Records a meaningful student interaction (MCQ submit, Explain click, or Bookmark)
+ * on a question. Computes continuous range filling between the interacted question
+ * and the nearest existing read question strictly within the active question sequence.
+ */
+export const recordQuestionInteractionRead = (
+  userKey: string | undefined,
+  questionId: string,
+  activeSequence?: Question[],
+  routineId?: string,
+  totalQuestionsCount?: number
+): { readQuestionIds: string[]; newlyMarkedIds: string[] } => {
+  if (!questionId) {
+    return { readQuestionIds: [], newlyMarkedIds: [] };
+  }
+
+  const cleanQId = String(questionId);
+  const isRoutine = typeof routineId === 'string' && routineId.trim().length > 0;
+  
+  const existingReadSet = isRoutine
+    ? new Set(getStoredReadQuestionIds(userKey, routineId!))
+    : new Set(getUserAllReadQuestionIds(userKey));
+
+  let idsToMark: string[] = [cleanQId];
+
+  if (activeSequence && activeSequence.length > 0) {
+    const currentIndex = activeSequence.findIndex(q => String(q.id) === cleanQId);
+    if (currentIndex !== -1) {
+      let nearestPrev = -1;
+      for (let i = currentIndex - 1; i >= 0; i--) {
+        if (existingReadSet.has(String(activeSequence[i].id))) {
+          nearestPrev = i;
+          break;
+        }
+      }
+
+      let nearestNext = -1;
+      for (let i = currentIndex + 1; i < activeSequence.length; i++) {
+        if (existingReadSet.has(String(activeSequence[i].id))) {
+          nearestNext = i;
+          break;
+        }
+      }
+
+      let start = currentIndex;
+      let end = currentIndex;
+
+      if (nearestPrev !== -1 && nearestNext !== -1) {
+        const distPrev = currentIndex - nearestPrev;
+        const distNext = nearestNext - currentIndex;
+        if (distPrev < distNext) {
+          start = nearestPrev;
+        } else if (distNext < distPrev) {
+          end = nearestNext;
+        } else {
+          // Equidistant to both nearest read questions: span both
+          start = nearestPrev;
+          end = nearestNext;
+        }
+      } else if (nearestPrev !== -1) {
+        start = nearestPrev;
+      } else if (nearestNext !== -1) {
+        end = nearestNext;
+      }
+
+      const rangeStart = Math.min(start, end);
+      const rangeEnd = Math.max(start, end);
+      for (let i = rangeStart; i <= rangeEnd; i++) {
+        idsToMark.push(String(activeSequence[i].id));
+      }
+    }
+  }
+
+  const uniqueIdsToMark = Array.from(new Set(idsToMark));
+
+  if (isRoutine) {
+    const routineRes = markRoutineQuestionsAsRead(userKey, routineId!, uniqueIdsToMark, totalQuestionsCount);
+    return {
+      readQuestionIds: routineRes.readQuestionIds,
+      newlyMarkedIds: uniqueIdsToMark
+    };
+  } else {
+    const userRes = markUserQuestionsAsRead(userKey, uniqueIdsToMark);
+    return {
+      readQuestionIds: userRes,
+      newlyMarkedIds: uniqueIdsToMark
+    };
+  }
+};
+
 export const toggleRoutineQuestionReadStatus = (
   userKey: string | undefined,
   routineId: string,

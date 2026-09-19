@@ -12,7 +12,8 @@ import {
   getStoredReadQuestionIds, 
   saveStoredReadQuestionIds, 
   markRoutineQuestionsAsRead, 
-  toggleRoutineQuestionReadStatus 
+  toggleRoutineQuestionReadStatus,
+  recordQuestionInteractionRead 
 } from '../lib/readingProgress';
 
 interface RoutineHierarchicalMCQModalProps {
@@ -205,14 +206,16 @@ export default function RoutineHierarchicalMCQModal({
     setReadQuestionIds([]);
   };
 
-  // Automatically mark visible questions as read when student views/interacts with them
-  const markQuestionsAsReadAuto = (targetQuestions: Question[]) => {
-    if (!targetQuestions || targetQuestions.length === 0) return;
-    const newUnreadIds = targetQuestions.map(q => q.id).filter(id => !readQuestionIds.includes(id));
-    if (newUnreadIds.length > 0) {
-      const res = markRoutineQuestionsAsRead(userPhone, routineId, newUnreadIds, totalMatchedCount);
-      setReadQuestionIds(res.readQuestionIds);
-    }
+  // Records a student interaction (MCQ choice, answer reveal, or bookmark) with question sequence range filling
+  const handleInteractionRead = (qId: string, currentSeq?: Question[]) => {
+    const res = recordQuestionInteractionRead(
+      userPhone,
+      qId,
+      currentSeq || selectedLeafTopic?.questions || matchedRoutineQuestions,
+      routineId,
+      totalMatchedCount
+    );
+    setReadQuestionIds(res.readQuestionIds);
   };
 
   // 2. Apply search filter if active
@@ -698,7 +701,12 @@ export default function RoutineHierarchicalMCQModal({
                     {onToggleBookmark && (
                       <button
                         type="button"
-                        onClick={() => onToggleBookmark(q.id)}
+                        onClick={() => {
+                          onToggleBookmark(q.id);
+                          if (!bookmarked) {
+                            handleInteractionRead(q.id, questionList);
+                          }
+                        }}
                         className={`p-1.5 rounded-lg border transition cursor-pointer ${
                           bookmarked 
                             ? 'bg-amber-50 text-amber-600 border-amber-300 hover:bg-amber-100 shadow-2xs' 
@@ -718,9 +726,7 @@ export default function RoutineHierarchicalMCQModal({
                             ...prev,
                             [q.id]: !prev[q.id]
                           }));
-                          if (!isRead) {
-                            handleToggleQuestionRead(q.id);
-                          }
+                          handleInteractionRead(q.id, questionList);
                         }}
                         className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
                       >
@@ -763,9 +769,7 @@ export default function RoutineHierarchicalMCQModal({
                               [q.id]: true
                             }));
                           }
-                          if (!isRead) {
-                            handleToggleQuestionRead(q.id);
-                          }
+                          handleInteractionRead(q.id, questionList);
                         }}
                         className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition select-none cursor-pointer ${optionStyle}`}
                       >

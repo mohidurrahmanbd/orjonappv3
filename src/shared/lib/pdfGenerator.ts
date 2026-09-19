@@ -2,85 +2,60 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { FileOpener } from '@capawesome-team/capacitor-file-opener';
+import { FileSharer } from '@capgo/capacitor-file-sharer';
+import { Toast } from '@capacitor/toast';
 import { Routine, Question, CategoryItem, SubcategoryItem, formatBengaliDateTime } from '../types';
 import { formatRoutineSyllabusPaths } from './routineUtils';
 
 /**
- * Shows an in-app confirmation modal after PDF is saved:
- * "PDF সফলভাবে সেভ হয়েছে" with "Open PDF" and "ঠিক আছে" buttons.
- * Tapping "Open PDF" triggers Android native ACTION_VIEW via FileOpener.
+ * Displays a Toast notification across both Android native and web environments.
+ * Runs in the background without any modal dialog or popup.
  */
-const showPdfSavedModal = (fileUri: string, fileName: string) => {
-  // Remove existing modal if present
-  const existingModal = document.getElementById('pdf-saved-modal-container');
-  if (existingModal) {
-    existingModal.remove();
+const showNotificationToast = async (message: string, isError = false) => {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Toast.show({
+        text: message,
+        duration: isError ? 'long' : 'short',
+        position: 'bottom'
+      });
+      return;
+    }
+  } catch (toastErr) {
+    console.warn('[PDF] Native Toast failed, displaying DOM toast fallback:', toastErr);
   }
 
-  const modalContainer = document.createElement('div');
-  modalContainer.id = 'pdf-saved-modal-container';
-  modalContainer.className = 'fixed inset-0 z-[999999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in';
+  // Web fallback or fallback if native toast fails
+  const existingToast = document.getElementById('pdf-notification-toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
 
-  modalContainer.innerHTML = `
-    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl flex flex-col gap-4 text-xs border border-gray-100 animate-scale-up" role="dialog" aria-modal="true">
-      <div class="flex items-center gap-2 border-b border-gray-100 pb-2.5">
-        <span class="text-emerald-600 text-lg">📄</span>
-        <h3 class="font-extrabold text-sm sm:text-base text-gray-900">PDF সফলভাবে সেভ হয়েছে</h3>
-      </div>
-      <p class="text-gray-700 whitespace-pre-line leading-relaxed font-medium text-xs sm:text-sm">
-        ফাইলটি ডিভাইসের স্টোরেজে সফলভাবে সংরক্ষিত হয়েছে:
-        <span class="block mt-1 font-bold text-indigo-700 break-all bg-indigo-50 p-2 rounded-lg text-[11px]">${fileName}</span>
-      </p>
-      <div class="flex items-center justify-end gap-2.5 mt-2 pt-3 border-t border-gray-100">
-        <button
-          type="button"
-          id="pdf-modal-close-btn"
-          class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
-        >
-          ঠিক আছে
-        </button>
-        <button
-          type="button"
-          id="pdf-modal-open-btn"
-          class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-200 transition cursor-pointer flex items-center gap-1.5"
-        >
-          <span>Open PDF</span>
-          <span>↗</span>
-        </button>
-      </div>
-    </div>
-  `;
+  const toastEl = document.createElement('div');
+  toastEl.id = 'pdf-notification-toast';
+  toastEl.className = `fixed bottom-6 left-1/2 -translate-x-1/2 z-[999999] px-5 py-3 rounded-full text-xs sm:text-sm font-semibold shadow-xl transition-all duration-300 pointer-events-none flex items-center gap-2 ${
+    isError
+      ? 'bg-rose-600 text-white'
+      : 'bg-gray-900 text-white border border-gray-700/50'
+  }`;
+  toastEl.textContent = message;
+  document.body.appendChild(toastEl);
 
-  document.body.appendChild(modalContainer);
-
-  const closeModal = () => {
-    if (modalContainer.parentNode) {
-      modalContainer.parentNode.removeChild(modalContainer);
-    }
-  };
-
-  const closeBtn = modalContainer.querySelector('#pdf-modal-close-btn');
-  closeBtn?.addEventListener('click', closeModal);
-
-  const openBtn = modalContainer.querySelector('#pdf-modal-open-btn');
-  openBtn?.addEventListener('click', async () => {
-    closeModal();
-    try {
-      await FileOpener.openFile({
-        path: fileUri,
-        mimeType: 'application/pdf'
-      });
-    } catch (openErr) {
-      console.error('[PDF] Failed to open PDF file:', openErr);
-      alert('PDF ওপেন করার মতো কোনো অ্যাপ ডিভাইসে পাওয়া যায়নি অথবা ফাইলটি ওপেন করা সম্ভব হয়নি।');
-    }
-  });
+  setTimeout(() => {
+    toastEl.style.opacity = '0';
+    toastEl.style.transform = 'translate(-50%, 10px)';
+    setTimeout(() => {
+      if (toastEl.parentNode) {
+        toastEl.parentNode.removeChild(toastEl);
+      }
+    }, 300);
+  }, isError ? 4000 : 2500);
 };
 
 /**
  * Saves a generated PDF file.
- * In APK (native): Writes using Capacitor Filesystem to local storage, then shows a saved confirmation with "Open PDF".
+ * In APK (native): Writes directly to user-accessible local storage (Android Downloads folder / MediaStore Downloads)
+ * in the background. Shows a simple Toast notification upon success/failure. No popup dialogs or "Open" buttons.
  * In Browser: Triggers standard browser download via jsPDF.save().
  */
 export const saveAndSharePdf = async (
@@ -93,37 +68,63 @@ export const saveAndSharePdf = async (
       const dataUri = pdf.output('datauristring');
       const base64Data = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
 
-      let fileUri = '';
+      let savedSuccessfully = false;
+
+      // Primary: Save directly to Android MediaStore Downloads folder (visible in Files / Downloads)
       try {
-        const res = await Filesystem.writeFile({
-          path: fileName,
-          data: base64Data,
-          directory: Directory.Documents,
-          recursive: true
+        await FileSharer.save({
+          filename: fileName,
+          base64Data: base64Data,
+          contentType: 'application/pdf',
+          android: {
+            saveDirectory: 'downloads'
+          }
         });
-        fileUri = res.uri;
-      } catch (fsErr) {
-        console.warn('[PDF] Documents directory write notice, falling back to Cache:', fsErr);
-        const fallbackRes = await Filesystem.writeFile({
-          path: fileName,
-          data: base64Data,
-          directory: Directory.Cache,
-          recursive: true
-        });
-        fileUri = fallbackRes.uri;
+        savedSuccessfully = true;
+      } catch (sharerErr) {
+        console.warn('[PDF] FileSharer save to Downloads failed, falling back to Filesystem:', sharerErr);
       }
 
-      if (fileUri) {
-        // Show confirmation dialog with "Open PDF" and "ঠিক আছে" buttons
-        showPdfSavedModal(fileUri, fileName);
+      // Fallback: Use Capacitor Filesystem with Documents directory if FileSharer fails
+      if (!savedSuccessfully) {
+        try {
+          await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          savedSuccessfully = true;
+        } catch (fsDocErr) {
+          console.warn('[PDF] Documents directory write failed, falling back to Cache:', fsDocErr);
+          await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache,
+            recursive: true
+          });
+          savedSuccessfully = true;
+        }
+      }
+
+      if (savedSuccessfully) {
+        await showNotificationToast('PDF downloaded successfully');
+      } else {
+        throw new Error('Failed to save PDF to storage');
       }
     } catch (nativeErr) {
-      console.error('[PDF] Native PDF save failed, falling back to browser save:', nativeErr);
-      pdf.save(fileName);
+      console.error('[PDF] Native PDF save failed:', nativeErr);
+      await showNotificationToast('Failed to download PDF', true);
     }
   } else {
     // Existing browser download behavior
-    pdf.save(fileName);
+    try {
+      pdf.save(fileName);
+      await showNotificationToast('PDF downloaded successfully');
+    } catch (webErr) {
+      console.error('[PDF] Browser PDF save failed:', webErr);
+      await showNotificationToast('Failed to download PDF', true);
+    }
   }
 };
 
@@ -187,6 +188,7 @@ export const renderHtmlToPdfAndSave = async (
     await saveAndSharePdf(pdf, fileName, shareTitle);
   } catch (err) {
     console.error('[PDF] Failed to generate PDF from HTML:', err);
+    await showNotificationToast('Failed to download PDF', true);
     throw err;
   } finally {
     if (container.parentNode) {
@@ -349,7 +351,7 @@ export const downloadCourseRoutinePDF = async (
     await saveAndSharePdf(pdf, `Routine_${sanitizedTitle}.pdf`, `${courseTitle} - কোর্স রুটিন`);
   } catch (err) {
     console.error('Failed to generate PDF:', err);
-    alert('PDF তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
+    await showNotificationToast('Failed to download PDF', true);
   } finally {
     document.body.removeChild(container);
   }

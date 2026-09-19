@@ -28,7 +28,8 @@ import {
   calculateRoutineReadingProgress, 
   calculateQuestionsReadingProgress, 
   getUserAllReadQuestionIds, 
-  markUserQuestionsAsRead 
+  markUserQuestionsAsRead,
+  recordQuestionInteractionRead 
 } from '../shared/lib/readingProgress';
 import {
   ActiveExamSession,
@@ -912,6 +913,7 @@ export default function UserPortal({
   const [readerPage, setReaderPage] = useState(1);
   const [readerSource, setReaderSource] = useState<'prep' | 'job' | 'yearJob'>('prep');
   const [readerCategoryFilter, setReaderCategoryFilter] = useState('সব প্রশ্ন');
+  const activeReaderQuestionsRef = useRef<Question[]>([]);
 
   // Bookmark specific states
   const [selectedBookmarkFolder, setSelectedBookmarkFolder] = useState<string | null>(null);
@@ -945,30 +947,6 @@ export default function UserPortal({
     const userKey = user.phone || user.email || user.name || user.userId || 'user';
     return new Set(getUserAllReadQuestionIds(userKey));
   }, [user.phone, user.email, user.name, user.userId, readQuestionsTick]);
-
-  // Auto-record reading progress when questions are viewed in Reader mode
-  useEffect(() => {
-    if (!readerModeActive || !readerQuestions || readerQuestions.length === 0) return;
-    const userKey = user.phone || user.email || user.name || user.userId || 'user';
-    const filteredReaderQuestions = readerQuestions.filter(q => {
-      if (readerSource === 'job' && readerCategoryFilter !== 'সব প্রশ্ন') {
-        const normFilter = readerCategoryFilter.trim().toLowerCase();
-        const matchCsv = q.csvCategory && q.csvCategory.trim().toLowerCase() === normFilter;
-        const matchCat = q.category && q.category.trim().toLowerCase() === normFilter;
-        const matchCats = q.categories && q.categories.some(c => c.trim().toLowerCase() === normFilter);
-        return matchCsv || matchCat || matchCats;
-      }
-      return true;
-    });
-    const pageSize = 20;
-    const totalPages = Math.ceil(filteredReaderQuestions.length / pageSize) || 1;
-    const currentPage = Math.min(Math.max(1, readerPage), totalPages);
-    const startIndex = (currentPage - 1) * pageSize;
-    const pageQuestions = filteredReaderQuestions.slice(startIndex, startIndex + pageSize);
-    if (pageQuestions.length > 0) {
-      markUserQuestionsAsRead(userKey, pageQuestions.map(q => String(q.id)));
-    }
-  }, [readerModeActive, readerPage, readerQuestions, readerSource, readerCategoryFilter, user.phone, user.email, user.name]);
 
   // Challenge Modal State
   const [challengeModalData, setChallengeModalData] = useState<{ exam: LiveExam; score: number } | null>(null);
@@ -1904,7 +1882,6 @@ export default function UserPortal({
         await renderHtmlToPdfAndSave(htmlContent, fileName, `${attempt.examTitle} - পরীক্ষার ফলাফল`);
       } catch (err) {
         console.error('[UserPortal] Failed to generate result PDF in APK:', err);
-        showCustomAlert('বিজ্ঞপ্তি', 'PDF তৈরিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
       }
       return;
     }
@@ -3524,6 +3501,12 @@ export default function UserPortal({
     };
     setUserSelectedAnswers(updated);
     updateActiveExamAnswers(updated);
+
+    const targetQ = quizQuestions[qIdx];
+    if (targetQ && targetQ.id) {
+      const userKey = user.phone || user.email || user.name || user.userId || 'user';
+      recordQuestionInteractionRead(userKey, targetQ.id, quizQuestions);
+    }
   };
 
   const handleClearAnswerForIndex = (qIdx: number) => {
@@ -3702,6 +3685,12 @@ export default function UserPortal({
     }
 
     onAddBookmark(selectedBookmarkQId, folderName);
+    const userKey = user.phone || user.email || user.name || user.userId || 'user';
+    const activeSeq = readerModeActive && activeReaderQuestionsRef.current.length > 0 
+      ? activeReaderQuestionsRef.current 
+      : (quizActive && quizQuestions.length > 0 ? quizQuestions : undefined);
+    recordQuestionInteractionRead(userKey, selectedBookmarkQId, activeSeq);
+
     setBookmarkModalOpen(false);
     setSelectedBookmarkQId(null);
     showCustomAlert('🔖 প্রশ্নটি বুকমার্ক কালেকশনে যোগ করা হয়েছে!');
@@ -4885,7 +4874,11 @@ export default function UserPortal({
                           <div className="flex flex-row flex-wrap gap-2 items-center pt-2.5 border-t border-slate-100">
                             <button
                               type="button"
-                              onClick={() => setPopupExplanationQ(masterQ)}
+                              onClick={() => {
+                                setPopupExplanationQ(masterQ);
+                                const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                                recordQuestionInteractionRead(userKey, masterQ.id || q.id, quizQuestions);
+                              }}
                               className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
                             >
                               💡 ব্যাখ্যা
@@ -5030,6 +5023,8 @@ export default function UserPortal({
           }
           return true;
         });
+
+        activeReaderQuestionsRef.current = filteredReaderQuestions;
 
         const pageSize = 20;
         const totalPages = Math.ceil(filteredReaderQuestions.length / pageSize) || 1;
@@ -5253,6 +5248,8 @@ export default function UserPortal({
                               disabled={hasSelected}
                               onClick={() => {
                                 setReaderSelectedAnswers(prev => ({ ...prev, [q.id]: optKey }));
+                                const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                                recordQuestionInteractionRead(userKey, q.id, filteredReaderQuestions);
                               }}
                               className={`w-full text-left p-2.5 rounded-xl border transition ${btnStyle}`}
                             >
@@ -5272,7 +5269,11 @@ export default function UserPortal({
                         <div className="flex flex-row flex-wrap gap-2 items-center mt-3 pt-2.5 border-t border-gray-100/50">
                           <button
                             type="button"
-                            onClick={() => setPopupExplanationQ(masterQ)}
+                            onClick={() => {
+                              setPopupExplanationQ(masterQ);
+                              const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                              recordQuestionInteractionRead(userKey, masterQ.id || q.id, filteredReaderQuestions);
+                            }}
                             className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
                           >
                             💡 ব্যাখা
@@ -7076,6 +7077,8 @@ export default function UserPortal({
                                           disabled={hasSelected}
                                           onClick={() => {
                                             setBookmarkSelectedAnswers(prev => ({ ...prev, [q.id]: optKey }));
+                                            const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                                            recordQuestionInteractionRead(userKey, q.id);
                                           }}
                                           className={`w-full text-left p-2.5 rounded-xl border transition ${btnStyle}`}
                                         >
@@ -7097,6 +7100,8 @@ export default function UserPortal({
                                           <button
                                             onClick={() => {
                                               setBookmarkSelectedAnswers(prev => ({ ...prev, [q.id]: q.correct }));
+                                              const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                                              recordQuestionInteractionRead(userKey, q.id);
                                             }}
                                             className="px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-150 text-indigo-700 transition font-bold text-[9px] cursor-pointer"
                                           >
@@ -7105,7 +7110,11 @@ export default function UserPortal({
                                         )}
 
                                         <button
-                                          onClick={() => setPopupExplanationQ(masterQ)}
+                                          onClick={() => {
+                                            setPopupExplanationQ(masterQ);
+                                            const userKey = user.phone || user.email || user.name || user.userId || 'user';
+                                            recordQuestionInteractionRead(userKey, masterQ.id || q.id);
+                                          }}
                                           className="px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-150 text-indigo-700 transition font-bold text-[9px] cursor-pointer"
                                         >
                                           💡 ব্যাখা
