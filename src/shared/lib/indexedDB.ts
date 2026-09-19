@@ -14,7 +14,7 @@ import {
   deleteSubcategory as deleteSubcategoryFromSQLite
 } from './sqlite/sqliteService';
 import { BUNDLED_SUBCATEGORIES } from './sqlite/bundledData';
-import { getSQLiteDatabase } from './sqlite/sqliteConnection';
+import { getSQLiteDatabase, initSQLite } from './sqlite/sqliteConnection';
 
 const DB_NAME = 'OrjonQuestionsDB';
 const DB_VERSION = 3;
@@ -1472,6 +1472,7 @@ export async function performIncrementalSubcategorySyncFromFirestore(
     // Recovery step 1: If IDB is empty, try loading from SQLite
     if (localCached.length === 0) {
       try {
+        await initSQLite();
         const sqliteSubs = await getAllSubcategoriesFromSQLite();
         if (sqliteSubs && sqliteSubs.length > 0) {
           localCached = sqliteSubs;

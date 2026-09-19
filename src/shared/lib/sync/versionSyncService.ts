@@ -24,7 +24,8 @@ import {
   PaymentSettings
 } from '../../types';
 import {
-  getSQLiteDatabase
+  getSQLiteDatabase,
+  initSQLite
 } from '../sqlite/sqliteConnection';
 import {
   insertCategory,
@@ -1264,6 +1265,7 @@ export async function performDifferentialSync(
       let localSubs = await getSubcategoriesFromIDB();
       if (localSubs.length === 0) {
         try {
+          await initSQLite();
           const sqliteSubs = await getAllSubcategoriesFromSQLite();
           if (sqliteSubs && sqliteSubs.length > 0) {
             localSubs = sqliteSubs;

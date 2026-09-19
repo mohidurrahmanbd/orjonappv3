@@ -650,6 +650,8 @@ export default function AdminOnlyApp() {
       } catch (e) {
         loadedSubcats = [];
       }
+    } else if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+      loadedSubcats = [...BUNDLED_SUBCATEGORIES];
     } else {
       const qPool = normalizedQ;
       const addedNames = new Set<string>();
@@ -850,7 +852,7 @@ export default function AdminOnlyApp() {
     });
 
     localStorage.setItem('medha_subcategories', JSON.stringify(loadedSubcats));
-    setSubcategories(loadedSubcats);
+    setSubcategories(prev => (prev && prev.length >= loadedSubcats.length ? prev : loadedSubcats));
 
     // Version-gated subcategory sync (0 reads if versions match)
     performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {

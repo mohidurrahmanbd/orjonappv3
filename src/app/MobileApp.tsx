@@ -514,7 +514,7 @@ export default function MobileApp() {
     setCategories(standardRootCategories);
     localStorage.setItem('orjon_categories', JSON.stringify(standardRootCategories));
 
-    // Subcategories initial setup (Cache-First: Local -> SQLite -> IDB -> Bundled)
+    // Subcategories initial setup (Cache-First: Local -> Await SQLite -> IDB -> Bundled)
     const storedSub = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
     let hasLocalSubs = false;
     if (storedSub) {
@@ -528,34 +528,67 @@ export default function MobileApp() {
     }
 
     if (!hasLocalSubs) {
-      getSQLiteSubcategories().then(sqliteSubs => {
-        if (sqliteSubs && sqliteSubs.length > 0) {
-          const activeSubs = sqliteSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
-          setSubcategories(activeSubs);
-          try {
-            localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
-          } catch {}
-          saveSubcategoriesToIDB(activeSubs).catch(() => {});
-        } else {
-          getSubcategoriesFromIDB().then(idbSubs => {
-            if (idbSubs && idbSubs.length > 0) {
-              const activeSubs = idbSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
-              setSubcategories(activeSubs);
-              try {
-                localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
-              } catch {}
-              insertSQLiteSubcategories(activeSubs).catch(() => {});
-            } else if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
-              setSubcategories(BUNDLED_SUBCATEGORIES);
-              try {
-                localStorage.setItem('orjon_subcategories', JSON.stringify(BUNDLED_SUBCATEGORIES));
-              } catch {}
-              insertSQLiteSubcategories(BUNDLED_SUBCATEGORIES).catch(() => {});
-              saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES).catch(() => {});
-            }
-          }).catch(() => {});
+      initSQLite().then(async () => {
+        try {
+          const sqliteSubs = await getSQLiteSubcategories();
+          if (sqliteSubs && sqliteSubs.length > 0) {
+            const activeSubs = sqliteSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+            setSubcategories(activeSubs);
+            try {
+              localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+            } catch {}
+            saveSubcategoriesToIDB(activeSubs).catch(() => {});
+            return;
+          }
+        } catch (e) {
+          console.warn('[MobileApp] SQLite subcategories read notice:', e);
         }
-      }).catch(() => {});
+
+        try {
+          const idbSubs = await getSubcategoriesFromIDB();
+          if (idbSubs && idbSubs.length > 0) {
+            const activeSubs = idbSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+            setSubcategories(activeSubs);
+            try {
+              localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+            } catch {}
+            insertSQLiteSubcategories(activeSubs).catch(() => {});
+            return;
+          }
+        } catch (e) {
+          console.warn('[MobileApp] IDB subcategories read notice:', e);
+        }
+
+        if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+          setSubcategories(BUNDLED_SUBCATEGORIES);
+          try {
+            localStorage.setItem('orjon_subcategories', JSON.stringify(BUNDLED_SUBCATEGORIES));
+          } catch {}
+          insertSQLiteSubcategories(BUNDLED_SUBCATEGORIES).catch(() => {});
+          saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES).catch(() => {});
+        }
+      }).catch(async (initErr) => {
+        console.warn('[MobileApp] initSQLite fallback notice:', initErr);
+        try {
+          const idbSubs = await getSubcategoriesFromIDB();
+          if (idbSubs && idbSubs.length > 0) {
+            const activeSubs = idbSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
+            setSubcategories(activeSubs);
+            try {
+              localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+            } catch {}
+            return;
+          }
+        } catch {}
+
+        if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+          setSubcategories(BUNDLED_SUBCATEGORIES);
+          try {
+            localStorage.setItem('orjon_subcategories', JSON.stringify(BUNDLED_SUBCATEGORIES));
+          } catch {}
+          saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES).catch(() => {});
+        }
+      });
     }
 
     // Version-gated incremental sync (0 reads if subcategoryVersion matches)
@@ -588,6 +621,7 @@ export default function MobileApp() {
   const syncSubcategoriesWithFirestoreQuestions = async (questionsList: Question[]) => {
     let localSubcats: SubcategoryItem[] = [];
     try {
+      await initSQLite();
       const sqliteSubs = await getSQLiteSubcategories();
       if (sqliteSubs && sqliteSubs.length > 0) {
         localSubcats = sqliteSubs;
@@ -620,9 +654,15 @@ export default function MobileApp() {
       localSubcats = subcategories;
     }
 
+    if (localSubcats.length === 0 && Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+      localSubcats = BUNDLED_SUBCATEGORIES;
+    }
+
     const activeSubcats = (localSubcats || []).filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
-    setSubcategories(activeSubcats);
-    localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubcats));
+    if (activeSubcats.length > 0) {
+      setSubcategories(activeSubcats);
+      localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubcats));
+    }
   };
 
   const dedupeQuestions = (rawList: Question[]): Question[] => {
