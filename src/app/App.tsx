@@ -50,8 +50,10 @@ import {
   upsertCategoriesToIDB,
   getSubcategoriesFromIDB,
   saveSubcategoriesToIDB,
-  upsertSubcategoriesToIDB
+  upsertSubcategoriesToIDB,
+  performIncrementalSubcategorySyncFromFirestore
 } from '../shared/lib/indexedDB';
+import { BUNDLED_SUBCATEGORIES } from '../shared/lib/sqlite/bundledData';
 import { 
   initSQLite, 
   getAllCategories as getSQLiteCategories, 
@@ -388,7 +390,28 @@ export default function App() {
           setSubcategories(sqliteSubs);
           localStorage.setItem('orjon_subcategories', JSON.stringify(sqliteSubs));
           saveSubcategoriesToIDB(sqliteSubs).catch(() => {});
+        } else {
+          // Scenario: SQLite empty, check IndexedDB
+          const idbSubs = await getSubcategoriesFromIDB();
+          if (idbSubs && idbSubs.length > 0) {
+            setSubcategories(idbSubs);
+            localStorage.setItem('orjon_subcategories', JSON.stringify(idbSubs));
+            insertSQLiteSubcategories(idbSubs).catch(() => {});
+          } else if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+            // Scenario: Bundled recovery
+            setSubcategories(BUNDLED_SUBCATEGORIES);
+            localStorage.setItem('orjon_subcategories', JSON.stringify(BUNDLED_SUBCATEGORIES));
+            insertSQLiteSubcategories(BUNDLED_SUBCATEGORIES).catch(() => {});
+            saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES).catch(() => {});
+          }
         }
+
+        // Version-gated differential sync (0 collection reads if versions match)
+        performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+          if (updatedSubs && updatedSubs.length > 0) {
+            setSubcategories(updatedSubs);
+          }
+        }).catch(() => {});
 
         if (sqliteQs && sqliteQs.length > 0) {
           const normalizedSQLiteQ = sqliteQs.map(q => {
@@ -840,27 +863,12 @@ export default function App() {
     localStorage.setItem('medha_subcategories', JSON.stringify(loadedSubcats));
     setSubcategories(loadedSubcats);
 
-    // Cache-First: Fetch from Firestore only if stored subcategories were empty
-    if (!storedSubcat) {
-      fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSubcats => {
-        if (fsSubcats && fsSubcats.length > 0) {
-          const sanitized = sanitizeSubcategoriesList([...loadedSubcats, ...fsSubcats]);
-          const seenKeys = new Set<string>();
-          const seenIds = new Set<string>();
-          const deduped: SubcategoryItem[] = [];
-          for (const s of sanitized) {
-            const key = `${s.name.trim().toLowerCase()}|${(s.parentCategory || '').trim().toLowerCase()}`;
-            if (!seenKeys.has(key) && !seenIds.has(s.id)) {
-              seenKeys.add(key);
-              seenIds.add(s.id);
-              deduped.push(s);
-            }
-          }
-          setSubcategories(deduped);
-          localStorage.setItem('orjon_subcategories', JSON.stringify(deduped));
-        }
-      }).catch(() => {});
-    }
+    // Version-gated subcategory sync (0 reads if versions match)
+    performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+      if (updatedSubs && updatedSubs.length > 0) {
+        setSubcategories(updatedSubs);
+      }
+    }).catch(() => {});
 
     // Automatic session restoration on startup is disabled per strict manual login policy.
     // Opening/reopening/reloading the application must never automatically log in a user or admin.
@@ -940,7 +948,11 @@ export default function App() {
     }
 
     setSubcategories(finalSubcats);
-    localStorage.setItem('orjon_subcategories', JSON.stringify(finalSubcats));
+    try {
+      localStorage.setItem('orjon_subcategories', JSON.stringify(finalSubcats));
+    } catch {}
+    saveSubcategoriesToIDB(finalSubcats).catch(() => {});
+    insertSQLiteSubcategories(finalSubcats).catch(() => {});
   };
 
   const sanitizeSubcategoriesList = (subs: SubcategoryItem[]): SubcategoryItem[] => {
@@ -1029,7 +1041,11 @@ export default function App() {
   const updateSubcategoriesDB = (newS: SubcategoryItem[]) => {
     const sanitized = sanitizeSubcategoriesList(newS);
     setSubcategories(sanitized);
-    localStorage.setItem('orjon_subcategories', JSON.stringify(sanitized));
+    try {
+      localStorage.setItem('orjon_subcategories', JSON.stringify(sanitized));
+    } catch {}
+    saveSubcategoriesToIDB(sanitized).catch(() => {});
+    insertSQLiteSubcategories(sanitized).catch(() => {});
   };
 
   const updateQuestionsDB = (newQ: Question[]) => {

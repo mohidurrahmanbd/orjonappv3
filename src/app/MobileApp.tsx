@@ -53,8 +53,10 @@ import {
   performIncrementalExamSyncFromFirestore,
   saveCategoriesToIDB,
   saveSubcategoriesToIDB,
-  getSubcategoriesFromIDB
+  getSubcategoriesFromIDB,
+  performIncrementalSubcategorySyncFromFirestore
 } from '../shared/lib/indexedDB';
+import { BUNDLED_SUBCATEGORIES } from '../shared/lib/sqlite/bundledData';
 import { 
   initSQLite, 
   getAllCategories as getSQLiteCategories, 
@@ -512,17 +514,20 @@ export default function MobileApp() {
     setCategories(standardRootCategories);
     localStorage.setItem('orjon_categories', JSON.stringify(standardRootCategories));
 
-    // Subcategories initial setup (Cache-First)
+    // Subcategories initial setup (Cache-First: Local -> SQLite -> IDB -> Bundled)
     const storedSub = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
+    let hasLocalSubs = false;
     if (storedSub) {
       try {
         const parsedSubs = JSON.parse(storedSub);
-        if (Array.isArray(parsedSubs)) {
+        if (Array.isArray(parsedSubs) && parsedSubs.length > 0) {
           setSubcategories(parsedSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt));
+          hasLocalSubs = true;
         }
       } catch (e) {}
-    } else {
-      // First-install fallback: only fetch from Firestore if local SQLite, IndexedDB, and localStorage are empty
+    }
+
+    if (!hasLocalSubs) {
       getSQLiteSubcategories().then(sqliteSubs => {
         if (sqliteSubs && sqliteSubs.length > 0) {
           const activeSubs = sqliteSubs.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
@@ -530,6 +535,7 @@ export default function MobileApp() {
           try {
             localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
           } catch {}
+          saveSubcategoriesToIDB(activeSubs).catch(() => {});
         } else {
           getSubcategoriesFromIDB().then(idbSubs => {
             if (idbSubs && idbSubs.length > 0) {
@@ -538,21 +544,26 @@ export default function MobileApp() {
               try {
                 localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
               } catch {}
-            } else {
-              fetchCollectionFromFirestore<SubcategoryItem>('subcategories').then(fsSub => {
-                if (Array.isArray(fsSub) && fsSub.length > 0) {
-                  const activeSubs = fsSub.filter(s => s && !(s as any).isDeleted && !(s as any).deletedAt);
-                  setSubcategories(activeSubs);
-                  try {
-                    localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
-                  } catch {}
-                }
-              }).catch(() => {});
+              insertSQLiteSubcategories(activeSubs).catch(() => {});
+            } else if (Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+              setSubcategories(BUNDLED_SUBCATEGORIES);
+              try {
+                localStorage.setItem('orjon_subcategories', JSON.stringify(BUNDLED_SUBCATEGORIES));
+              } catch {}
+              insertSQLiteSubcategories(BUNDLED_SUBCATEGORIES).catch(() => {});
+              saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES).catch(() => {});
             }
           }).catch(() => {});
         }
       }).catch(() => {});
     }
+
+    // Version-gated incremental sync (0 reads if subcategoryVersion matches)
+    performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+      if (updatedSubs && updatedSubs.length > 0) {
+        setSubcategories(updatedSubs);
+      }
+    }).catch(() => {});
 
     // Automatic session restoration on startup is disabled per strict manual login policy.
     // Opening/reopening/reloading the APK must never automatically log the user into the application.

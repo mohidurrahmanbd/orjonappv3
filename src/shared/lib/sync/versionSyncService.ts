@@ -53,6 +53,7 @@ import {
   getAllLiveExams as getAllLiveExamsFromSQLite,
   getAllRoutines as getAllRoutinesFromSQLite
 } from '../sqlite/sqliteService';
+import { BUNDLED_SUBCATEGORIES } from '../sqlite/bundledData';
 import {
   getDB,
   saveQuestionsToIDB,
@@ -1260,10 +1261,31 @@ export async function performDifferentialSync(
     // --- 3. SUBCATEGORIES SYNC ---
     try {
       options.onProgress?.('সাব-ক্যাটাগরি সিঙ্ক করা হচ্ছে...', 55);
-      const localSubs = await getSubcategoriesFromIDB();
-      const needsFullSubSync = localVersions.subcategoryVersion === 0;
+      let localSubs = await getSubcategoriesFromIDB();
+      if (localSubs.length === 0) {
+        try {
+          const sqliteSubs = await getAllSubcategoriesFromSQLite();
+          if (sqliteSubs && sqliteSubs.length > 0) {
+            localSubs = sqliteSubs;
+            await saveSubcategoriesToIDB(sqliteSubs);
+          }
+        } catch {}
+      }
+
+      if (localSubs.length === 0 && Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+        localSubs = [...BUNDLED_SUBCATEGORIES];
+        await saveSubcategoriesToIDB(localSubs);
+        await insertSubcategories(localSubs);
+      }
+
+      const effectiveLocalVersion = (localVersions.subcategoryVersion && localVersions.subcategoryVersion > 0)
+        ? localVersions.subcategoryVersion
+        : (localSubs.length > 0 ? 1 : 0);
+
+      const needsFullSubSync = effectiveLocalVersion === 0 && localSubs.length === 0;
 
       if (needsFullSubSync) {
+        console.log('[VersionSync] Empty local cache. Performing recovery subcategories sync from Firestore...');
         const snap = await getDocs(collection(db, 'subcategories'));
         const activeSubs: SubcategoryItem[] = [];
         snap.forEach((d) => {
@@ -1289,15 +1311,18 @@ export async function performDifferentialSync(
         if (activeSubs.length > 0) {
           await saveSubcategoriesToIDB(activeSubs);
           await insertSubcategories(activeSubs);
+          try {
+            localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+          } catch {}
           result.subcategoriesUpdated = activeSubs.length;
           result.hasChanges = true;
           options.onSubcategoriesUpdate?.(activeSubs);
         }
         updatedLocalVersions.subcategoryVersion = serverVersions.subcategoryVersion;
-      } else if (serverVersions.subcategoryVersion > localVersions.subcategoryVersion) {
+      } else if (serverVersions.subcategoryVersion > effectiveLocalVersion) {
         const qDiff = query(
           collection(db, 'subcategories'),
-          where('version', '>', localVersions.subcategoryVersion)
+          where('version', '>', effectiveLocalVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1338,9 +1363,21 @@ export async function performDifferentialSync(
             result.hasChanges = true;
 
             const allUpdated = await getSubcategoriesFromIDB();
+            try {
+              localStorage.setItem('orjon_subcategories', JSON.stringify(allUpdated));
+            } catch {}
             options.onSubcategoriesUpdate?.(allUpdated);
           }
         }
+        updatedLocalVersions.subcategoryVersion = serverVersions.subcategoryVersion;
+      } else {
+        // Zero reads: local version is up-to-date and local cache exists
+        console.log(`[VersionSync] Subcategories up-to-date (v${effectiveLocalVersion}). 0 collection reads.`);
+        try {
+          if (!localStorage.getItem('orjon_subcategories') && localSubs.length > 0) {
+            localStorage.setItem('orjon_subcategories', JSON.stringify(localSubs));
+          }
+        } catch {}
         updatedLocalVersions.subcategoryVersion = serverVersions.subcategoryVersion;
       }
     } catch (sErr) {

@@ -8,8 +8,13 @@ import {
   insertLiveExams as insertLiveExamsToSQLite, 
   deleteLiveExam as deleteLiveExamFromSQLite, 
   insertRoutines as insertRoutinesToSQLite, 
-  deleteRoutine as deleteRoutineFromSQLite 
+  deleteRoutine as deleteRoutineFromSQLite,
+  getAllSubcategories as getAllSubcategoriesFromSQLite,
+  insertSubcategories as insertSubcategoriesToSQLite,
+  deleteSubcategory as deleteSubcategoryFromSQLite
 } from './sqlite/sqliteService';
+import { BUNDLED_SUBCATEGORIES } from './sqlite/bundledData';
+import { getSQLiteDatabase } from './sqlite/sqliteConnection';
 
 const DB_NAME = 'OrjonQuestionsDB';
 const DB_VERSION = 3;
@@ -1427,6 +1432,304 @@ export async function upsertSubcategoriesToIDB(toUpsert: SubcategoryItem[], toRe
       tx.onerror = () => resolve();
     });
   } catch {}
+}
+
+/**
+ * Get stored metadata for IndexedDB subcategories (e.g. lastSubcategorySyncedAt timestamp).
+ */
+export async function getSubcategoriesMetaFromIDB(): Promise<{ lastSubcategorySyncedAt: string; count: number; version?: number } | null> {
+  try {
+    const idb = await getDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_META, 'readonly');
+      const store = tx.objectStore(STORE_META);
+      const request = store.get('subcategories_meta');
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Incremental synchronization for subcategories from Firestore.
+ * 1. Checks meta/versions in Firestore for server subcategoryVersion.
+ * 2. Compares with local subcategoryVersion (from SQLite sync_meta, IDB metadata, or localStorage).
+ * 3. ZERO-READS OPTIMIZATION: If localVersion >= serverSubcategoryVersion and local usable data is present: 0 collection reads!
+ * 4. RECOVERY: If both SQLite and IndexedDB have 0 subcategories and no bundled data can be seeded: downloads full collection.
+ * 5. DIFFERENTIAL SYNC: If serverSubcategoryVersion > localVersion: queries ONLY documents where `version > localVersion`.
+ * 6. Keeps all local layers consistent: SQLite, IndexedDB, localStorage, and React state via onUpdate.
+ */
+export async function performIncrementalSubcategorySyncFromFirestore(
+  onUpdate?: (updatedSubcategories: SubcategoryItem[]) => void
+): Promise<{ hasChanges: boolean; totalCount: number }> {
+  try {
+    const syncStartTimeIso = new Date().toISOString();
+    const meta = await getSubcategoriesMetaFromIDB();
+    let localCached = await getSubcategoriesFromIDB();
+
+    // Recovery step 1: If IDB is empty, try loading from SQLite
+    if (localCached.length === 0) {
+      try {
+        const sqliteSubs = await getAllSubcategoriesFromSQLite();
+        if (sqliteSubs && sqliteSubs.length > 0) {
+          localCached = sqliteSubs;
+          await saveSubcategoriesToIDB(sqliteSubs);
+        }
+      } catch {}
+    }
+
+    // Recovery step 2: If both IDB and SQLite are empty, seed bundled subcategories
+    if (localCached.length === 0 && Array.isArray(BUNDLED_SUBCATEGORIES) && BUNDLED_SUBCATEGORIES.length > 0) {
+      localCached = [...BUNDLED_SUBCATEGORIES];
+      await saveSubcategoriesToIDB(localCached);
+      await insertSubcategoriesToSQLite(localCached);
+    }
+
+    // Determine local subcategory version
+    let localVersion = 0;
+    if (meta && typeof meta.version === 'number' && meta.version > 0) {
+      localVersion = meta.version;
+    } else {
+      // Check SQLite sync_meta
+      try {
+        const dbInstance = await getSQLiteDatabase();
+        const res = await dbInstance.query(
+          "SELECT key, value FROM sync_meta WHERE key = 'subcategoryVersion';"
+        );
+        const metaRows = res?.values || [];
+        if (metaRows && metaRows.length > 0 && metaRows[0].value) {
+          const v = Number(metaRows[0].value);
+          if (!isNaN(v) && v > 0) localVersion = v;
+        }
+      } catch {}
+
+      // Fallback check localStorage
+      if (localVersion === 0) {
+        try {
+          const storedVer = localStorage.getItem('orjon_sync_versions');
+          if (storedVer) {
+            const parsed = JSON.parse(storedVer);
+            if (parsed.subcategoryVersion && typeof parsed.subcategoryVersion === 'number') {
+              localVersion = parsed.subcategoryVersion;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // If we have valid local data but version was 0, default to baseline version 1
+    if (localVersion === 0 && localCached.length > 0) {
+      localVersion = 1;
+    }
+
+    // 1. Fetch server meta/versions
+    let serverSubcategoryVersion = 1;
+    try {
+      const versionDocRef = doc(db, 'meta', 'versions');
+      const versionSnap = await getDoc(versionDocRef);
+      if (versionSnap.exists()) {
+        const vData = versionSnap.data();
+        if (vData.subcategoryVersion !== undefined) {
+          serverSubcategoryVersion = Number(vData.subcategoryVersion);
+        }
+      }
+    } catch (e) {
+      console.warn('[IndexedDB] Could not check meta/versions for subcategories:', e);
+      if (onUpdate && localCached.length > 0) onUpdate(localCached);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    // 2. Zero-reads optimization: If versions match & local data exists -> 0 collection reads!
+    if (localVersion >= serverSubcategoryVersion && localCached.length > 0) {
+      console.log(`[IndexedDB] Subcategories up to date (v${localVersion}). 0 collection reads.`);
+      try {
+        localStorage.setItem('orjon_subcategories', JSON.stringify(localCached));
+      } catch {}
+      if (onUpdate) onUpdate(localCached);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    // 3. Initial sync ONLY IF local cache is genuinely empty (no SQLite, no IDB, no bundled data)
+    if (localCached.length === 0 && localVersion === 0) {
+      console.log(`[IndexedDB] Initial subcategories recovery sync from Firestore (server v${serverSubcategoryVersion})...`);
+      const snap = await getDocs(collection(db, 'subcategories'));
+      const activeSubs: SubcategoryItem[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (!data.isDeleted && !data.deletedAt) {
+          activeSubs.push({
+            id: String(data.id || docSnap.id),
+            name: data.name || '',
+            parentCategory: data.parentCategory || '',
+            parentCategoryId: data.parentCategoryId || undefined,
+            date: data.date || undefined,
+            subHeading: data.subHeading || undefined,
+            text: data.text || undefined,
+            details: data.details || undefined,
+            createdAt: data.createdAt || syncStartTimeIso,
+            updatedAt: data.updatedAt || syncStartTimeIso,
+            version: data.version || serverSubcategoryVersion,
+            deletedAt: null
+          });
+        }
+      });
+
+      await saveSubcategoriesToIDB(activeSubs);
+      if (activeSubs.length > 0) {
+        await insertSubcategoriesToSQLite(activeSubs);
+      }
+      try {
+        localStorage.setItem('orjon_subcategories', JSON.stringify(activeSubs));
+      } catch {}
+      if (onUpdate) onUpdate(activeSubs);
+
+      // Save version to metadata and SQLite sync_meta
+      const idb = await getDB();
+      const tx = idb.transaction(STORE_META, 'readwrite');
+      tx.objectStore(STORE_META).put({
+        key: 'subcategories_meta',
+        lastSubcategorySyncedAt: syncStartTimeIso,
+        count: activeSubs.length,
+        version: serverSubcategoryVersion
+      });
+
+      try {
+        const dbInstance = await getSQLiteDatabase();
+        await dbInstance.run(
+          "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('subcategoryVersion', ?);",
+          [String(serverSubcategoryVersion)]
+        );
+      } catch {}
+
+      try {
+        const storedVer = localStorage.getItem('orjon_sync_versions');
+        const parsedVer = storedVer ? JSON.parse(storedVer) : {};
+        localStorage.setItem('orjon_sync_versions', JSON.stringify({
+          ...parsedVer,
+          subcategoryVersion: serverSubcategoryVersion
+        }));
+      } catch {}
+
+      return {
+        hasChanges: true,
+        totalCount: activeSubs.length
+      };
+    }
+
+    // 4. Differential sync: Query ONLY subcategories where version > localVersion
+    const q = query(collection(db, 'subcategories'), where('version', '>', localVersion));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      try {
+        const idb = await getDB();
+        const tx = idb.transaction(STORE_META, 'readwrite');
+        tx.objectStore(STORE_META).put({
+          key: 'subcategories_meta',
+          lastSubcategorySyncedAt: syncStartTimeIso,
+          count: localCached.length,
+          version: serverSubcategoryVersion
+        });
+      } catch {}
+      try {
+        const dbInstance = await getSQLiteDatabase();
+        await dbInstance.run(
+          "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('subcategoryVersion', ?);",
+          [String(serverSubcategoryVersion)]
+        );
+      } catch {}
+      try {
+        const storedVer = localStorage.getItem('orjon_sync_versions');
+        const parsedVer = storedVer ? JSON.parse(storedVer) : {};
+        localStorage.setItem('orjon_sync_versions', JSON.stringify({
+          ...parsedVer,
+          subcategoryVersion: serverSubcategoryVersion
+        }));
+      } catch {}
+      try {
+        localStorage.setItem('orjon_subcategories', JSON.stringify(localCached));
+      } catch {}
+      if (onUpdate && localCached.length > 0) onUpdate(localCached);
+      return { hasChanges: false, totalCount: localCached.length };
+    }
+
+    const modifiedOrAdded: SubcategoryItem[] = [];
+    const removedIds: string[] = [];
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const subId = String(data.id || docSnap.id);
+      if (data.isDeleted || data.deletedAt) {
+        removedIds.push(subId);
+      } else {
+        modifiedOrAdded.push({
+          id: subId,
+          name: data.name || '',
+          parentCategory: data.parentCategory || '',
+          parentCategoryId: data.parentCategoryId || undefined,
+          date: data.date || undefined,
+          subHeading: data.subHeading || undefined,
+          text: data.text || undefined,
+          details: data.details || undefined,
+          createdAt: data.createdAt || syncStartTimeIso,
+          updatedAt: data.updatedAt || syncStartTimeIso,
+          version: data.version || serverSubcategoryVersion,
+          deletedAt: null
+        });
+      }
+    });
+
+    if (modifiedOrAdded.length > 0 || removedIds.length > 0) {
+      await upsertSubcategoriesToIDB(modifiedOrAdded, removedIds);
+      if (modifiedOrAdded.length > 0) await insertSubcategoriesToSQLite(modifiedOrAdded);
+      for (const id of removedIds) await deleteSubcategoryFromSQLite(id);
+    }
+
+    const allUpdated = await getSubcategoriesFromIDB();
+    try {
+      localStorage.setItem('orjon_subcategories', JSON.stringify(allUpdated));
+    } catch {}
+    if (onUpdate) onUpdate(allUpdated);
+
+    // Update metadata and SQLite sync_meta
+    try {
+      const idb = await getDB();
+      const tx = idb.transaction(STORE_META, 'readwrite');
+      tx.objectStore(STORE_META).put({
+        key: 'subcategories_meta',
+        lastSubcategorySyncedAt: syncStartTimeIso,
+        count: allUpdated.length,
+        version: serverSubcategoryVersion
+      });
+    } catch {}
+
+    try {
+      const dbInstance = await getSQLiteDatabase();
+      await dbInstance.run(
+        "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('subcategoryVersion', ?);",
+        [String(serverSubcategoryVersion)]
+      );
+    } catch {}
+
+    try {
+      const storedVer = localStorage.getItem('orjon_sync_versions');
+      const parsedVer = storedVer ? JSON.parse(storedVer) : {};
+      localStorage.setItem('orjon_sync_versions', JSON.stringify({
+        ...parsedVer,
+        subcategoryVersion: serverSubcategoryVersion
+      }));
+    } catch {}
+
+    return {
+      hasChanges: true,
+      totalCount: allUpdated.length
+    };
+  } catch (err) {
+    console.error('[IndexedDB] Subcategories incremental sync error:', err);
+    return { hasChanges: false, totalCount: 0 };
+  }
 }
 
 
