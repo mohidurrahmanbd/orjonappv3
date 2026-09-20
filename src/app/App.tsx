@@ -3123,44 +3123,6 @@ export default function App() {
                 <h1 className="text-base font-bold text-gray-900 tracking-tight">Quiz & Exam Portal</h1>
               </div>
 
-              {/* Live Exam Announcement for Unauthenticated Users */}
-              {liveExams.length > 0 && (
-                <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 rounded-2xl p-3.5 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-indigo-950 flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                      ⏱️ লাইভ পরীক্ষা চলছে
-                    </span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-md">
-                      লাইভ এক্সাম
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-700 font-medium leading-tight">
-                    লাইভ পরীক্ষায় অংশ নিতে লগইন করুন অথবা বিনামূল্যে নতুন অ্যাকাউন্ট তৈরি করুন!
-                  </p>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthScreen('login');
-                      }}
-                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      লগইন করুন ➔
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthScreen('register');
-                      }}
-                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      রেজিস্ট্রেশন ➔
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* View Switchers: Login | Register */}
               <div className="flex bg-gray-100 p-1 rounded-xl gap-1 text-xs font-bold">
                 <button
