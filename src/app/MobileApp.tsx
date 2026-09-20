@@ -368,12 +368,6 @@ export default function MobileApp() {
       }
     } else {
       setNotices([]);
-      fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
-        if (fsN && fsN.length > 0) {
-          setNotices(fsN);
-          localStorage.setItem('orjon_notices', JSON.stringify(fsN));
-        }
-      }).catch(() => {});
     }
 
     // Courses (Cache-First)
@@ -440,38 +434,6 @@ export default function MobileApp() {
     }).catch(err => {
       console.warn("IndexedDB exams initialization notice:", err);
     });
-
-    // Background incremental sync for Courses and Exams
-    // Questions use version-gated page-level lazy synchronization
-    performIncrementalCourseSyncFromFirestore((updatedCourses) => {
-      if (Array.isArray(updatedCourses)) {
-        const activeCourses = updatedCourses.filter(c => c && !c.isDeleted && !c.deletedAt);
-        const dedupedC = dedupeCourses(activeCourses);
-        setCourses(dedupedC);
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
-        } catch (e) {}
-      }
-    }).catch(err => {});
-
-    performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
-      if (Array.isArray(updatedLE)) {
-        const activeLE = updatedLE.filter(e => e && !e.isDeleted && !e.deletedAt);
-        const dedupedLE = dedupeLiveExams(activeLE);
-        setLiveExams(dedupedLE);
-        try {
-          localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
-        } catch (e) {}
-      }
-      if (Array.isArray(updatedR)) {
-        const activeR = updatedR.filter(r => r && !r.isDeleted && !r.deletedAt);
-        const dedupedR = dedupeRoutines(activeR);
-        setRoutines(dedupedR);
-        try {
-          localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
-        } catch (e) {}
-      }
-    }).catch(err => {});
 
     // Users database (Cache-First)
     const storedU = localStorage.getItem('orjon_users') || localStorage.getItem('medha_users');
@@ -591,13 +553,6 @@ export default function MobileApp() {
       });
     }
 
-    // Version-gated incremental sync (0 reads if subcategoryVersion matches)
-    performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
-      if (updatedSubs && updatedSubs.length > 0) {
-        setSubcategories(updatedSubs);
-      }
-    }).catch(() => {});
-
     // Automatic session restoration on startup is disabled per strict manual login policy.
     // Opening/reopening/reloading the APK must never automatically log the user into the application.
   }, []);
@@ -617,6 +572,70 @@ export default function MobileApp() {
       unsubscribeAuth();
     };
   }, []);
+
+  // Authenticated Background Sync (Runs ONLY after user login)
+  const hasSyncedAfterAuthRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser) {
+      hasSyncedAfterAuthRef.current = false;
+      return;
+    }
+
+    // Ensure sync only runs once per authenticated login session
+    if (hasSyncedAfterAuthRef.current) return;
+    hasSyncedAfterAuthRef.current = true;
+
+    // 1. Notices (Cache-First on auth)
+    const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
+    if (!storedN) {
+      fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
+        if (fsN && fsN.length > 0) {
+          setNotices(fsN);
+          localStorage.setItem('orjon_notices', JSON.stringify(fsN));
+        }
+      }).catch(() => {});
+    }
+
+    // 2. Background incremental sync for Courses and Exams
+    // Questions use version-gated page-level lazy synchronization
+    performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+      if (Array.isArray(updatedCourses)) {
+        const activeCourses = updatedCourses.filter(c => c && !c.isDeleted && !c.deletedAt);
+        const dedupedC = dedupeCourses(activeCourses);
+        setCourses(dedupedC);
+        try {
+          localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
+        } catch (e) {}
+      }
+    }).catch(() => {});
+
+    performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
+      if (Array.isArray(updatedLE)) {
+        const activeLE = updatedLE.filter(e => e && !e.isDeleted && !e.deletedAt);
+        const dedupedLE = dedupeLiveExams(activeLE);
+        setLiveExams(dedupedLE);
+        try {
+          localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
+        } catch (e) {}
+      }
+      if (Array.isArray(updatedR)) {
+        const activeR = updatedR.filter(r => r && !r.isDeleted && !r.deletedAt);
+        const dedupedR = dedupeRoutines(activeR);
+        setRoutines(dedupedR);
+        try {
+          localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
+        } catch (e) {}
+      }
+    }).catch(() => {});
+
+    // 3. Version-gated incremental sync for subcategories
+    performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+      if (updatedSubs && updatedSubs.length > 0) {
+        setSubcategories(updatedSubs);
+      }
+    }).catch(() => {});
+  }, [currentUser]);
 
   const syncSubcategoriesWithFirestoreQuestions = async (questionsList: Question[]) => {
     let localSubcats: SubcategoryItem[] = [];
