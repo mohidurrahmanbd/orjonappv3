@@ -87,6 +87,20 @@ class WebSQLiteFallback {
         });
       });
     }
+
+    // 4. sync_meta
+    if (this.tables.sync_meta.size === 0) {
+      this.tables.sync_meta.set('categoryVersion', { key: 'categoryVersion', value: '1' });
+      this.tables.sync_meta.set('subcategoryVersion', { key: 'subcategoryVersion', value: '9' });
+      this.tables.sync_meta.set('questionVersion', { key: 'questionVersion', value: '10' });
+      this.tables.sync_meta.set('courseVersion', { key: 'courseVersion', value: '1' });
+      this.tables.sync_meta.set('examVersion', { key: 'examVersion', value: '1' });
+      this.tables.sync_meta.set('routineVersion', { key: 'routineVersion', value: '1' });
+      this.tables.sync_meta.set('couponVersion', { key: 'couponVersion', value: '1' });
+      this.tables.sync_meta.set('paymentSettingsVersion', { key: 'paymentSettingsVersion', value: '1' });
+      this.tables.sync_meta.set('globalVersion', { key: 'globalVersion', value: '10' });
+      this.tables.sync_meta.set('updatedAt', { key: 'updatedAt', value: '2026-09-20T09:32:35.592144+00:00' });
+    }
   }
 
   async execute(sql: string): Promise<any> {
@@ -342,6 +356,18 @@ export async function initSQLite(): Promise<SQLiteDBConnection | WebSQLiteFallba
     try { await dbConnection.execute('ALTER TABLE exams ADD COLUMN version INTEGER DEFAULT 1;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE exams ADD COLUMN deletedAt TEXT;'); } catch {}
     try { await dbConnection.execute('CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);'); } catch {}
+
+    // Phase 3 Step 3H: Enforce active records = physically present records
+    // Purge legacy tombstoned rows so runtime queries never require tombstone filtering fields
+    try {
+      await dbConnection.execute(`
+        DELETE FROM categories WHERE deletedAt IS NOT NULL AND deletedAt != '';
+        DELETE FROM subcategories WHERE deletedAt IS NOT NULL AND deletedAt != '';
+        DELETE FROM questions WHERE deletedAt IS NOT NULL AND deletedAt != '';
+        DELETE FROM courses WHERE deletedAt IS NOT NULL AND deletedAt != '';
+        DELETE FROM exams WHERE deletedAt IS NOT NULL AND deletedAt != '';
+      `);
+    } catch {}
 
     isInitialized = true;
     console.log(`[SQLite] Database ${DB_NAME} initialized and ready.`);

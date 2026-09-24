@@ -160,6 +160,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Change Log collection - Read-only for users/clients, Admin-write only
+    match /change_log/{logId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Delete Log collection - Read-only for users/clients, Admin-write only
+    match /delete_log/{logId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Default deny for unhandled paths
     match /{document=**} {
       allow read, write: if false;

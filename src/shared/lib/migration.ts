@@ -2,6 +2,8 @@ import { doc, writeBatch, collection, getDocs, setDoc, updateDoc, deleteDoc, que
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { Course, LiveExam, Routine, Attempt, User, generateAutoUserId } from '../types';
 import { incrementGlobalVersion } from './sync/versionSyncService';
+import { commitAtomicMutationWithEventLog, commitAtomicBulkDeleteWithEventLog } from './sync/eventLogService';
+import { resolveDeletedEntityIds } from './sync/deleteAuthorityResolver';
 
 export interface CollectionCounts {
   questions: number;
@@ -67,27 +69,29 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
   }
 
   // 2. For protected collections (questions, courses, routines, live_exams),
-  // query Firestore for active tombstones in a single batched query (reads = count of deleted docs only).
-  // If Firestore has an active tombstone for that ID -> SKIP upload to prevent resurrection of deleted records.
+  // Anti-resurrection protection: Query delete_log authority (reads = count of delete_log records, 0 primary collection document reads).
   const isProtectedCollection = collectionName === 'questions' || collectionName === 'courses' || collectionName === 'routines' || collectionName === 'live_exams';
   if (isProtectedCollection) {
     try {
-      const tombstoneQuery = query(
-        collection(db, collectionName),
-        where('isDeleted', '==', true)
-      );
-      const tombstoneSnap = await getDocs(tombstoneQuery);
-      if (!tombstoneSnap.empty) {
-        const tombstonedIds = new Set<string>();
-        tombstoneSnap.forEach(docSnap => {
-          tombstonedIds.add(docSnap.id);
-        });
+      const tombstonedIds = new Set<string>();
 
+      // Phase 3 Step 3H: delete_log is the sole runtime deletion authority
+      // Guarantees records deleted under DELETE_LOG_ONLY mode cannot be resurrected
+      try {
+        const resolved = await resolveDeletedEntityIds(collectionName);
+        for (const id of resolved.authoritativeIds) {
+          tombstonedIds.add(id);
+        }
+      } catch (authErr) {
+        console.warn(`[Migration] Authority resolution notice for ${collectionName}:`, authErr);
+      }
+
+      if (tombstonedIds.size > 0) {
         const prevCount = activeItems.length;
         activeItems = activeItems.filter(item => {
           const docId = String((item as any)?.id || '');
           if (docId && tombstonedIds.has(docId)) {
-            console.log(`[Migration] Skipping tombstoned ${collectionName} item: ${docId}`);
+            console.log(`[Migration] Skipping tombstoned/deleted ${collectionName} item: ${docId}`);
             return false;
           }
           return true;
@@ -95,7 +99,7 @@ async function uploadCollectionInBatches<T extends { id?: string }>(
 
         const skipped = prevCount - activeItems.length;
         if (skipped > 0 && onProgress) {
-          onProgress(`[Tombstone Guard] ${skipped} টি মুছে ফেলা ${collectionName} রিস্টোর থেকে স্কিপ করা হয়েছে...`);
+          onProgress(`[Anti-Resurrection Guard] ${skipped} টি মুছে ফেলা ${collectionName} রিস্টোর থেকে স্কিপ করা হয়েছে...`);
         }
       }
     } catch (tombstoneErr) {
@@ -417,19 +421,18 @@ export async function fetchQuestionsFromFirestore(): Promise<any[]> {
 export async function addQuestionToFirestore(question: any): Promise<boolean> {
   try {
     const docId = String(question.id || `q_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
-    const docRef = doc(db, 'questions', docId);
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('questionVersion');
-    } catch {}
-    const now = Date.now();
-    const cleanItem = JSON.parse(JSON.stringify({
+    const cleanItem = {
       ...question,
-      id: docId,
-      version: question?.version || newVersion,
-      updatedAt: question?.updatedAt || now
-    }));
-    await setDoc(docRef, cleanItem, { merge: true });
+      id: docId
+    };
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'questions',
+      entityType: 'question',
+      entityId: docId,
+      action: 'create',
+      versionKey: 'questionVersion',
+      data: cleanItem
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -442,18 +445,15 @@ export async function addQuestionToFirestore(question: any): Promise<boolean> {
 
 export async function updateQuestionInFirestore(id: string, questionData: any): Promise<boolean> {
   try {
-    const docRef = doc(db, 'questions', String(id));
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('questionVersion');
-    } catch {}
-    const now = Date.now();
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...questionData,
-      version: questionData?.version || newVersion,
-      updatedAt: questionData?.updatedAt || now
-    }));
-    await updateDoc(docRef, cleanItem);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'questions',
+      entityType: 'question',
+      entityId: docId,
+      action: 'update',
+      versionKey: 'questionVersion',
+      data: questionData
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -466,19 +466,14 @@ export async function updateQuestionInFirestore(id: string, questionData: any): 
 
 export async function deleteQuestionFromFirestore(id: string): Promise<boolean> {
   try {
-    const docRef = doc(db, 'questions', String(id));
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('questionVersion');
-    } catch {}
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
-    await setDoc(docRef, {
-      isDeleted: true,
-      deletedAt: nowIso,
-      version: newVersion,
-      updatedAt: nowMs
-    }, { merge: true });
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'questions',
+      entityType: 'question',
+      entityId: docId,
+      action: 'delete',
+      versionKey: 'questionVersion'
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -496,26 +491,7 @@ export async function bulkUploadQuestionsToFirestore(items: any[]): Promise<numb
 export async function bulkDeleteQuestionsFromFirestore(ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
   try {
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('questionVersion');
-    } catch {}
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
-    const chunkSize = 400;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      chunk.forEach(id => {
-        batch.set(doc(db, 'questions', String(id)), {
-          isDeleted: true,
-          deletedAt: nowIso,
-          version: newVersion,
-          updatedAt: nowMs
-        }, { merge: true });
-      });
-      await batch.commit();
-    }
+    await commitAtomicBulkDeleteWithEventLog('questions', 'question', 'questionVersion', ids);
     return true;
   } catch (err) {
     console.error('Error bulk deleting questions from Firestore:', err);
@@ -549,19 +525,24 @@ export async function fetchCollectionFromFirestore<T = any>(colName: string): Pr
 export async function saveItemToFirestore(colName: string, item: any, idPrefix: string = 'doc'): Promise<boolean> {
   try {
     const docId = String(item.id || item.phone || `${idPrefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
+    const versionKey = getVersionKeyForCollection(colName);
+    if (versionKey) {
+      const entityType = colName.endsWith('s') ? colName.slice(0, -1) : colName;
+      await commitAtomicMutationWithEventLog({
+        collectionName: colName as any,
+        entityType,
+        entityId: docId,
+        action: item.id ? 'update' : 'create',
+        versionKey,
+        data: item
+      });
+      return true;
+    }
     const docRef = doc(db, colName, docId);
     const nowIso = new Date().toISOString();
-    const versionKey = getVersionKeyForCollection(colName);
-    let newVersion = item.version;
-    if (versionKey) {
-      try {
-        newVersion = await incrementGlobalVersion(versionKey);
-      } catch {}
-    }
     const cleanItem = JSON.parse(JSON.stringify({
       ...item,
       id: docId,
-      ...(versionKey ? { version: newVersion || 1 } : {}),
       updatedAt: item.updatedAt || nowIso
     }));
     await setDoc(docRef, cleanItem, { merge: true });
@@ -574,25 +555,22 @@ export async function saveItemToFirestore(colName: string, item: any, idPrefix: 
 
 export async function deleteItemFromFirestore(colName: string, id: string): Promise<boolean> {
   try {
-    const docRef = doc(db, colName, String(id));
+    const docId = String(id);
     const versionKey = getVersionKeyForCollection(colName);
-    const nowIso = new Date().toISOString();
-    let newVersion = 1;
     if (versionKey) {
-      try {
-        newVersion = await incrementGlobalVersion(versionKey);
-      } catch {}
-      // Update with tombstone so incremental differential sync detects deletion across devices
-      await setDoc(docRef, {
-        isDeleted: true,
-        deletedAt: nowIso,
-        version: newVersion,
-        updatedAt: nowIso
-      }, { merge: true });
-    } else {
-      // Unversioned collection: safe to delete directly in Firestore
-      await deleteDoc(docRef);
+      const entityType = colName.endsWith('s') ? colName.slice(0, -1) : colName;
+      await commitAtomicMutationWithEventLog({
+        collectionName: colName as any,
+        entityType,
+        entityId: docId,
+        action: 'delete',
+        versionKey
+      });
+      return true;
     }
+    // Unversioned collection: safe to delete directly in Firestore
+    const docRef = doc(db, colName, docId);
+    await deleteDoc(docRef);
     return true;
   } catch (err) {
     console.error(`Error deleting item from ${colName} in Firestore:`, err);
@@ -604,29 +582,18 @@ export async function bulkDeleteItemsFromFirestore(colName: string, ids: string[
   if (!ids || ids.length === 0) return true;
   try {
     const versionKey = getVersionKeyForCollection(colName);
-    let newVersion = 1;
     if (versionKey) {
-      try {
-        newVersion = await incrementGlobalVersion(versionKey);
-      } catch {}
+      const entityType = colName.endsWith('s') ? colName.slice(0, -1) : colName;
+      await commitAtomicBulkDeleteWithEventLog(colName, entityType, versionKey, ids);
+      return true;
     }
-    const nowIso = new Date().toISOString();
     const chunkSize = 400;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach(id => {
         const docRef = doc(db, colName, String(id));
-        if (versionKey) {
-          batch.set(docRef, {
-            isDeleted: true,
-            deletedAt: nowIso,
-            version: newVersion,
-            updatedAt: nowIso
-          }, { merge: true });
-        } else {
-          batch.delete(docRef);
-        }
+        batch.delete(docRef);
       });
       await batch.commit();
     }
@@ -652,20 +619,23 @@ export async function bulkSaveItemsToFirestore<T extends { id?: string }>(colNam
 
     if (activeItems.length === 0) return true;
 
-    // 2. Query Firestore for active tombstones in a single batched query
+    // 2. Anti-resurrection protection using delete_log authority (0 primary document reads)
     const isProtectedCollection = colName === 'questions' || colName === 'courses' || colName === 'routines' || colName === 'live_exams';
     if (isProtectedCollection) {
       try {
-        const tombstoneQuery = query(
-          collection(db, colName),
-          where('isDeleted', '==', true)
-        );
-        const tombstoneSnap = await getDocs(tombstoneQuery);
-        if (!tombstoneSnap.empty) {
-          const tombstonedIds = new Set<string>();
-          tombstoneSnap.forEach(docSnap => {
-            tombstonedIds.add(docSnap.id);
-          });
+        const tombstonedIds = new Set<string>();
+
+        // Phase 3 Step 3H: delete_log is the sole runtime deletion authority
+        try {
+          const resolved = await resolveDeletedEntityIds(colName);
+          for (const id of resolved.authoritativeIds) {
+            tombstonedIds.add(id);
+          }
+        } catch (authErr) {
+          console.warn(`[Migration] Authority resolution notice for ${colName}:`, authErr);
+        }
+
+        if (tombstonedIds.size > 0) {
           activeItems = activeItems.filter(item => {
             const docId = String((item as any)?.id || '');
             return !docId || !tombstonedIds.has(docId);
@@ -862,21 +832,14 @@ export async function fetchCoursesFromFirestore(): Promise<Course[]> {
 export async function addCourseToFirestore(course: Course): Promise<boolean> {
   try {
     const docId = String(course.id || `course_${Date.now()}`);
-    const docRef = doc(db, 'courses', docId);
-    const nowIso = new Date().toISOString();
-    let newVersion = (course as any).version || 1;
-    try {
-      newVersion = await incrementGlobalVersion('courseVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...course,
-      id: docId,
-      version: newVersion,
-      createdAt: course.createdAt || nowIso,
-      updatedAt: course.updatedAt || nowIso
-    }));
-    await setDoc(docRef, cleanItem, { merge: true });
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'courses',
+      entityType: 'course',
+      entityId: docId,
+      action: 'create',
+      versionKey: 'courseVersion',
+      data: course
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -889,19 +852,15 @@ export async function addCourseToFirestore(course: Course): Promise<boolean> {
 
 export async function updateCourseInFirestore(id: string, courseData: Partial<Course>): Promise<boolean> {
   try {
-    const docRef = doc(db, 'courses', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = (courseData as any).version;
-    try {
-      newVersion = await incrementGlobalVersion('courseVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...courseData,
-      version: newVersion || 1,
-      updatedAt: courseData.updatedAt || nowIso
-    }));
-    await updateDoc(docRef, cleanItem);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'courses',
+      entityType: 'course',
+      entityId: docId,
+      action: 'update',
+      versionKey: 'courseVersion',
+      data: courseData
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -914,24 +873,14 @@ export async function updateCourseInFirestore(id: string, courseData: Partial<Co
 
 export async function deleteCourseFromFirestore(id: string): Promise<boolean> {
   try {
-    const docRef = doc(db, 'courses', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('courseVersion');
-    } catch {}
-
-    // Mark as soft deleted first with bumped version so differential sync picks up deletion
-    try {
-      await updateDoc(docRef, {
-        isDeleted: true,
-        deletedAt: nowIso,
-        version: newVersion,
-        updatedAt: nowIso
-      });
-    } catch {}
-
-    await deleteDoc(docRef);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'courses',
+      entityType: 'course',
+      entityId: docId,
+      action: 'delete',
+      versionKey: 'courseVersion'
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1017,21 +966,14 @@ export async function fetchLiveExamsFromFirestore(): Promise<LiveExam[]> {
 export async function addLiveExamToFirestore(exam: LiveExam): Promise<boolean> {
   try {
     const docId = String(exam.id || `exam_${Date.now()}`);
-    const docRef = doc(db, 'live_exams', docId);
-    const nowIso = new Date().toISOString();
-    let newVersion = (exam as any).version || 1;
-    try {
-      newVersion = await incrementGlobalVersion('examVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...exam,
-      id: docId,
-      version: newVersion,
-      createdAt: exam.createdAt || nowIso,
-      updatedAt: exam.updatedAt || nowIso
-    }));
-    await setDoc(docRef, cleanItem, { merge: true });
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'live_exams',
+      entityType: 'live_exam',
+      entityId: docId,
+      action: 'create',
+      versionKey: 'examVersion',
+      data: exam
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1044,19 +986,15 @@ export async function addLiveExamToFirestore(exam: LiveExam): Promise<boolean> {
 
 export async function updateLiveExamInFirestore(id: string, examData: Partial<LiveExam>): Promise<boolean> {
   try {
-    const docRef = doc(db, 'live_exams', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = (examData as any).version;
-    try {
-      newVersion = await incrementGlobalVersion('examVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...examData,
-      version: newVersion || 1,
-      updatedAt: examData.updatedAt || nowIso
-    }));
-    await updateDoc(docRef, cleanItem);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'live_exams',
+      entityType: 'live_exam',
+      entityId: docId,
+      action: 'update',
+      versionKey: 'examVersion',
+      data: examData
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1069,23 +1007,14 @@ export async function updateLiveExamInFirestore(id: string, examData: Partial<Li
 
 export async function deleteLiveExamFromFirestore(id: string): Promise<boolean> {
   try {
-    const docRef = doc(db, 'live_exams', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('examVersion');
-    } catch {}
-
-    try {
-      await updateDoc(docRef, {
-        isDeleted: true,
-        deletedAt: nowIso,
-        version: newVersion,
-        updatedAt: nowIso
-      });
-    } catch {}
-
-    await deleteDoc(docRef);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'live_exams',
+      entityType: 'live_exam',
+      entityId: docId,
+      action: 'delete',
+      versionKey: 'examVersion'
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1127,21 +1056,14 @@ export async function fetchRoutinesFromFirestore(): Promise<Routine[]> {
 export async function addRoutineToFirestore(routine: Routine): Promise<boolean> {
   try {
     const docId = String(routine.id || `routine_${Date.now()}`);
-    const docRef = doc(db, 'routines', docId);
-    const nowIso = new Date().toISOString();
-    let newVersion = (routine as any).version || 1;
-    try {
-      newVersion = await incrementGlobalVersion('routineVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...routine,
-      id: docId,
-      version: newVersion,
-      createdAt: routine.createdAt || nowIso,
-      updatedAt: routine.updatedAt || nowIso
-    }));
-    await setDoc(docRef, cleanItem, { merge: true });
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'routines',
+      entityType: 'routine',
+      entityId: docId,
+      action: 'create',
+      versionKey: 'routineVersion',
+      data: routine
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1154,19 +1076,15 @@ export async function addRoutineToFirestore(routine: Routine): Promise<boolean> 
 
 export async function updateRoutineInFirestore(id: string, routineData: Partial<Routine>): Promise<boolean> {
   try {
-    const docRef = doc(db, 'routines', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = (routineData as any).version;
-    try {
-      newVersion = await incrementGlobalVersion('routineVersion');
-    } catch {}
-
-    const cleanItem = JSON.parse(JSON.stringify({
-      ...routineData,
-      version: newVersion || 1,
-      updatedAt: routineData.updatedAt || nowIso
-    }));
-    await updateDoc(docRef, cleanItem);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'routines',
+      entityType: 'routine',
+      entityId: docId,
+      action: 'update',
+      versionKey: 'routineVersion',
+      data: routineData
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {
@@ -1179,23 +1097,14 @@ export async function updateRoutineInFirestore(id: string, routineData: Partial<
 
 export async function deleteRoutineFromFirestore(id: string): Promise<boolean> {
   try {
-    const docRef = doc(db, 'routines', String(id));
-    const nowIso = new Date().toISOString();
-    let newVersion = 1;
-    try {
-      newVersion = await incrementGlobalVersion('routineVersion');
-    } catch {}
-
-    try {
-      await updateDoc(docRef, {
-        isDeleted: true,
-        deletedAt: nowIso,
-        version: newVersion,
-        updatedAt: nowIso
-      });
-    } catch {}
-
-    await deleteDoc(docRef);
+    const docId = String(id);
+    await commitAtomicMutationWithEventLog({
+      collectionName: 'routines',
+      entityType: 'routine',
+      entityId: docId,
+      action: 'delete',
+      versionKey: 'routineVersion'
+    });
     return true;
   } catch (err: any) {
     if (err?.code === 'permission-denied') {

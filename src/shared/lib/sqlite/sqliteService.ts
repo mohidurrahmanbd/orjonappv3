@@ -368,6 +368,21 @@ export async function getQuestionsBySubcategory(subcategory: string, limit: numb
   }
 }
 
+export async function getAllQuestionsFromSQLite(limit: number = 10000): Promise<Question[]> {
+  try {
+    const db = await getSQLiteDatabase();
+    const res = await db.query(
+      `SELECT * FROM questions WHERE (deletedAt IS NULL OR deletedAt = "") LIMIT ?;`,
+      [limit]
+    );
+    const rows = res?.values || [];
+    return rows.map(mapRowToQuestion);
+  } catch (err) {
+    console.error('[SQLite] getAllQuestionsFromSQLite error:', err);
+    return [];
+  }
+}
+
 export async function getQuestionsByIds(ids: string[]): Promise<Question[]> {
   if (!ids || ids.length === 0) return [];
   try {

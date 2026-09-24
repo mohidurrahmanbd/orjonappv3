@@ -8,9 +8,18 @@ import {
   where,
   getDocs,
   writeBatch,
-  increment
+  increment,
+  runTransaction
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import {
+  commitAtomicMutationWithEventLog,
+  commitAtomicBulkDeleteWithEventLog
+} from './eventLogService';
+import {
+  fetchDeleteLogPage,
+  applySingleEventToLocalStorage
+} from './globalEventSyncService';
 import {
   GlobalSyncVersions,
   Question,
@@ -54,7 +63,7 @@ import {
   getAllLiveExams as getAllLiveExamsFromSQLite,
   getAllRoutines as getAllRoutinesFromSQLite
 } from '../sqlite/sqliteService';
-import { BUNDLED_SUBCATEGORIES } from '../sqlite/bundledData';
+import { BUNDLED_CATEGORIES, BUNDLED_SUBCATEGORIES, BUNDLED_QUESTIONS } from '../sqlite/bundledData';
 import {
   getDB,
   saveQuestionsToIDB,
@@ -85,16 +94,44 @@ import {
 export const GLOBAL_VERSION_DOC_PATH = 'meta/versions';
 const LOCAL_STORAGE_VERSIONS_KEY = 'orjon_sync_versions';
 
-export const DEFAULT_GLOBAL_VERSIONS: GlobalSyncVersions = {
-  questionVersion: 1,
+/**
+ * Bundled APK Baseline Versions (Phase 4 Step 4E)
+ * Actual checkpoint established by the bundled database in the APK.
+ * - questionVersion: 10 (115 bundled questions up to version 10)
+ * - categoryVersion: 1 (4 bundled categories at version 1)
+ * - subcategoryVersion: 9 (362 bundled subcategories up to version 9)
+ * - courseVersion: 1 (bundled baseline schema initialized at v1)
+ * - examVersion: 1 (bundled baseline schema initialized at v1)
+ * - routineVersion: 1 (bundled baseline schema initialized at v1)
+ * - couponVersion: 1
+ * - paymentSettingsVersion: 1
+ * - globalVersion: 10 (chronological event checkpoint corresponding to the bundled baseline snapshot)
+ * - updatedAt: '2026-09-20T09:32:35.592144+00:00'
+ */
+export const BUNDLED_BASELINE_VERSIONS: Readonly<GlobalSyncVersions> = Object.freeze({
+  questionVersion: 10,
   categoryVersion: 1,
-  subcategoryVersion: 1,
+  subcategoryVersion: 9,
   courseVersion: 1,
   examVersion: 1,
   routineVersion: 1,
   couponVersion: 1,
   paymentSettingsVersion: 1,
-  updatedAt: new Date().toISOString()
+  globalVersion: 10,
+  updatedAt: '2026-09-20T09:32:35.592144+00:00'
+});
+
+export const DEFAULT_GLOBAL_VERSIONS: GlobalSyncVersions = {
+  questionVersion: 10,
+  categoryVersion: 1,
+  subcategoryVersion: 9,
+  courseVersion: 1,
+  examVersion: 1,
+  routineVersion: 1,
+  couponVersion: 1,
+  paymentSettingsVersion: 1,
+  globalVersion: 10,
+  updatedAt: '2026-09-20T09:32:35.592144+00:00'
 };
 
 export interface DifferentialSyncResult {
@@ -150,6 +187,9 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
         routineVersion: Number(data.routineVersion || 1),
         couponVersion: Number(data.couponVersion || 1),
         paymentSettingsVersion: Number(data.paymentSettingsVersion || 1),
+        globalVersion: Number(data.globalVersion || 0),
+        latestAppVersion: data.latestAppVersion,
+        minimumSupportedAppVersion: data.minimumSupportedAppVersion,
         updatedAt: data.updatedAt || new Date().toISOString()
       };
     }
@@ -170,7 +210,8 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
 }
 
 /**
- * Atomically increment a specific collection version in `meta/versions`.
+ * Atomically increment a specific collection version and globalVersion in `meta/versions`.
+ * Uses Firestore transaction to guarantee strict monotonicity and prevent race conditions.
  */
 export async function incrementGlobalVersion(
   entity: 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion'
@@ -179,23 +220,27 @@ export async function incrementGlobalVersion(
     const versionDocRef = doc(db, 'meta', 'versions');
     const nowIso = new Date().toISOString();
 
-    const snap = await getDoc(versionDocRef);
-    if (!snap.exists()) {
-      const initial: GlobalSyncVersions = {
-        ...DEFAULT_GLOBAL_VERSIONS,
-        [entity]: 2,
-        updatedAt: nowIso
-      };
-      await setDoc(versionDocRef, initial);
-      return 2;
-    }
+    const newVal = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(versionDocRef);
+      const data = snap.exists() ? snap.data() : {};
+      const currentVal = Number(data?.[entity] || 1);
+      const nextVal = currentVal + 1;
+      const currentGlobal = Number(data?.globalVersion || 0);
+      const nextGlobal = currentGlobal + 1;
 
-    const currentVal = Number(snap.data()?.[entity] || 1);
-    const newVal = currentVal + 1;
-    await updateDoc(versionDocRef, {
-      [entity]: increment(1),
-      updatedAt: nowIso
+      transaction.set(
+        versionDocRef,
+        {
+          [entity]: nextVal,
+          globalVersion: nextGlobal,
+          updatedAt: nowIso
+        },
+        { merge: true }
+      );
+
+      return nextVal;
     });
+
     return newVal;
   } catch (err) {
     console.warn(`[VersionSync] Error incrementing global ${entity}:`, err);
@@ -220,6 +265,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
     routineVersion: 0,
     couponVersion: 0,
     paymentSettingsVersion: 0,
+    globalVersion: 0,
     updatedAt: ''
   };
 
@@ -237,6 +283,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
         routineVersion: Number(parsed.routineVersion || 0),
         couponVersion: Number(parsed.couponVersion || 0),
         paymentSettingsVersion: Number(parsed.paymentSettingsVersion || 0),
+        globalVersion: Number(parsed.globalVersion || 0),
         updatedAt: parsed.updatedAt || ''
       };
     }
@@ -258,9 +305,92 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
       if (k === 'routineVersion' && v > versions.routineVersion) versions.routineVersion = v;
       if (k === 'couponVersion' && v > (versions.couponVersion || 0)) versions.couponVersion = v;
       if (k === 'paymentSettingsVersion' && v > (versions.paymentSettingsVersion || 0)) versions.paymentSettingsVersion = v;
+      if (k === 'globalVersion' && v > (versions.globalVersion || 0)) versions.globalVersion = v;
+      if (k === 'updatedAt' && !versions.updatedAt && r.value) versions.updatedAt = String(r.value);
     });
   } catch {}
 
+  // Fresh Install Bundled Baseline Checkpoint Initialization:
+  // For bundled collections (questions, categories, subcategories, courses, live_exams, routines),
+  // initialize the local checkpoint to the actual version represented by the bundled APK baseline.
+  // DO NOT invent or blindly hardcode version "1".
+  if (versions.globalVersion === 0) {
+    versions.globalVersion = BUNDLED_BASELINE_VERSIONS.globalVersion;
+    if (versions.questionVersion === 0) versions.questionVersion = BUNDLED_BASELINE_VERSIONS.questionVersion;
+    if (versions.categoryVersion === 0) versions.categoryVersion = BUNDLED_BASELINE_VERSIONS.categoryVersion;
+    if (versions.subcategoryVersion === 0) versions.subcategoryVersion = BUNDLED_BASELINE_VERSIONS.subcategoryVersion;
+    if (versions.courseVersion === 0) versions.courseVersion = BUNDLED_BASELINE_VERSIONS.courseVersion;
+    if (versions.examVersion === 0) versions.examVersion = BUNDLED_BASELINE_VERSIONS.examVersion;
+    if (versions.routineVersion === 0) versions.routineVersion = BUNDLED_BASELINE_VERSIONS.routineVersion;
+    if (versions.couponVersion === 0) versions.couponVersion = BUNDLED_BASELINE_VERSIONS.couponVersion;
+    if (versions.paymentSettingsVersion === 0) versions.paymentSettingsVersion = BUNDLED_BASELINE_VERSIONS.paymentSettingsVersion;
+    if (!versions.updatedAt) versions.updatedAt = BUNDLED_BASELINE_VERSIONS.updatedAt;
+
+    // Persist immediately across storage layers so subsequent reads retain checkpoint
+    saveLocalSyncVersions(versions).catch(() => {});
+  } else {
+    // For bundled collections, ensure local version never remains 0 solely due to missing key
+    if (versions.questionVersion === 0) versions.questionVersion = BUNDLED_BASELINE_VERSIONS.questionVersion;
+    if (versions.categoryVersion === 0) versions.categoryVersion = BUNDLED_BASELINE_VERSIONS.categoryVersion;
+    if (versions.subcategoryVersion === 0) versions.subcategoryVersion = BUNDLED_BASELINE_VERSIONS.subcategoryVersion;
+    if (versions.courseVersion === 0) versions.courseVersion = BUNDLED_BASELINE_VERSIONS.courseVersion;
+    if (versions.examVersion === 0) versions.examVersion = BUNDLED_BASELINE_VERSIONS.examVersion;
+    if (versions.routineVersion === 0) versions.routineVersion = BUNDLED_BASELINE_VERSIONS.routineVersion;
+  }
+
+  return versions;
+}
+
+/**
+ * Explicitly initializes local stores and checkpoints from the bundled APK baseline on fresh install.
+ * Required flow:
+ * Bundled APK baseline → Local Store → Local global checkpoint → differential event sync
+ */
+export async function initializeFreshInstallBundledBaseline(): Promise<GlobalSyncVersions> {
+  // 1. Initialize SQLite
+  try {
+    await initSQLite();
+  } catch {}
+
+  // 2. Populate IDB from SQLite or bundled constants if empty
+  try {
+    const localQs = await getQuestionsFromIDB();
+    if (localQs.length === 0) {
+      const sqliteQs = await getAllQuestionsFromSQLite();
+      if (sqliteQs && sqliteQs.length > 0) {
+        await saveQuestionsToIDB(sqliteQs);
+      } else if (BUNDLED_QUESTIONS.length > 0) {
+        await saveQuestionsToIDB(BUNDLED_QUESTIONS);
+      }
+    }
+  } catch {}
+
+  try {
+    const localCats = await getCategoriesFromIDB();
+    if (localCats.length === 0) {
+      const sqliteCats = await getAllCategoriesFromSQLite();
+      if (sqliteCats && sqliteCats.length > 0) {
+        await saveCategoriesToIDB(sqliteCats);
+      } else if (BUNDLED_CATEGORIES.length > 0) {
+        await saveCategoriesToIDB(BUNDLED_CATEGORIES);
+      }
+    }
+  } catch {}
+
+  try {
+    const localSubs = await getSubcategoriesFromIDB();
+    if (localSubs.length === 0) {
+      const sqliteSubs = await getAllSubcategoriesFromSQLite();
+      if (sqliteSubs && sqliteSubs.length > 0) {
+        await saveSubcategoriesToIDB(sqliteSubs);
+      } else if (BUNDLED_SUBCATEGORIES.length > 0) {
+        await saveSubcategoriesToIDB(BUNDLED_SUBCATEGORIES);
+      }
+    }
+  } catch {}
+
+  // 3. Establish and return local global checkpoint
+  const versions = await getLocalSyncVersions();
   return versions;
 }
 
@@ -277,6 +407,7 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     routineVersion: Number(versions.routineVersion || 0),
     couponVersion: Number(versions.couponVersion || 0),
     paymentSettingsVersion: Number(versions.paymentSettingsVersion || 0),
+    globalVersion: Number(versions.globalVersion || 0),
     updatedAt: versions.updatedAt || new Date().toISOString()
   };
 
@@ -296,6 +427,7 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['routineVersion', String(cleanVersions.routineVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['couponVersion', String(cleanVersions.couponVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['paymentSettingsVersion', String(cleanVersions.paymentSettingsVersion)]);
+    await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['globalVersion', String(cleanVersions.globalVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['updatedAt', cleanVersions.updatedAt || '']);
   } catch (err) {
     console.warn('[VersionSync] SQLite sync_meta write notice:', err);
@@ -343,47 +475,15 @@ export async function syncCoursesMetadataFirst(
     const localVersions = await getLocalSyncVersions();
     const localCourses = await getCoursesFromIDB();
 
-    const localCourseVersion = localVersions.courseVersion || 0;
+    const localCourseVersion = (localVersions.courseVersion && localVersions.courseVersion > 0)
+      ? localVersions.courseVersion
+      : BUNDLED_BASELINE_VERSIONS.courseVersion;
     const serverCourseVersion = serverVersions.courseVersion || 1;
 
-    // Zero reads optimization: version matches and local data present
-    if (localCourseVersion >= serverCourseVersion && localCourses.length > 0) {
+    // Zero reads optimization: version matches baseline/server
+    if (localCourseVersion >= serverCourseVersion) {
       console.log(`[VersionSync] Courses up to date (v${localCourseVersion}). 0 collection reads.`);
       return { hasChanges: false, updatedCount: 0, removedCount: 0 };
-    }
-
-    // If initial fresh sync (local version is 0)
-    if (localCourseVersion === 0) {
-      console.log(`[VersionSync] Initial courses sync (v${serverCourseVersion})...`);
-      const snap = await getDocs(collection(db, 'courses'));
-      const activeCourses: Course[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        if (!data.deletedAt && !data.isDeleted) {
-          activeCourses.push(normalizeCourse({
-            ...data,
-            id: String(data.id || d.id),
-            version: data.version || serverCourseVersion,
-            updatedAt: data.updatedAt || new Date().toISOString(),
-            deletedAt: null
-          }));
-        }
-      });
-
-      if (activeCourses.length > 0) {
-        await saveCoursesToIDB(activeCourses);
-        await insertCourses(activeCourses);
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(activeCourses));
-        } catch {}
-        if (onUpdate) onUpdate(activeCourses);
-      }
-
-      localVersions.courseVersion = serverCourseVersion;
-      localVersions.updatedAt = new Date().toISOString();
-      await saveLocalSyncVersions(localVersions);
-
-      return { hasChanges: activeCourses.length > 0, updatedCount: activeCourses.length, removedCount: 0 };
     }
 
     // Differential sync: fetch only courses with version > localCourseVersion
@@ -1043,17 +1143,18 @@ export async function syncUserEnrollmentsOnDemand(
 }
 
 export async function softDeleteCoupon(id: string): Promise<boolean> {
-  const versionKey = 'couponVersion';
-  const nowIso = new Date().toISOString();
   try {
-    const docRef = doc(db, 'coupons', String(id));
-    const newVersion = await incrementGlobalVersion(versionKey);
-    await setDoc(docRef, {
-      isDeleted: true,
-      deletedAt: nowIso,
-      version: newVersion,
-      updatedAt: nowIso
-    }, { merge: true });
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'coupons',
+      entityType: 'coupon',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'couponVersion'
+    });
+    const local = await getLocalSyncVersions();
+    local.couponVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
+    await saveLocalSyncVersions(local);
     return true;
   } catch (err) {
     console.error('Error soft-deleting coupon:', err);
@@ -1101,8 +1202,26 @@ export async function performDifferentialSync(
     // --- 1. QUESTIONS SYNC ---
     try {
       options.onProgress?.('প্রশ্নমালা সিঙ্ক করা হচ্ছে...', 25);
-      const localQuestions = await getQuestionsFromIDB();
-      const needsFullQuestionSync = localVersions.questionVersion === 0;
+      let localQuestions = await getQuestionsFromIDB();
+      if (localQuestions.length === 0) {
+        try {
+          const sqliteQs = await getAllQuestionsFromSQLite();
+          if (sqliteQs && sqliteQs.length > 0) {
+            localQuestions = sqliteQs;
+            await saveQuestionsToIDB(sqliteQs);
+          } else if (BUNDLED_QUESTIONS.length > 0) {
+            localQuestions = [...BUNDLED_QUESTIONS];
+            await saveQuestionsToIDB(localQuestions);
+            await insertQuestions(localQuestions);
+          }
+        } catch {}
+      }
+
+      const effectiveLocalQuestionVersion = (localVersions.questionVersion && localVersions.questionVersion > 0)
+        ? localVersions.questionVersion
+        : BUNDLED_BASELINE_VERSIONS.questionVersion;
+
+      const needsFullQuestionSync = effectiveLocalQuestionVersion === 0 && localQuestions.length === 0;
 
       if (needsFullQuestionSync) {
         // Initial Full Fetch of Active Questions
@@ -1130,11 +1249,11 @@ export async function performDifferentialSync(
           options.onQuestionsUpdate?.(activeQuestions);
         }
         updatedLocalVersions.questionVersion = serverVersions.questionVersion;
-      } else if (serverVersions.questionVersion > localVersions.questionVersion) {
+      } else if (serverVersions.questionVersion > effectiveLocalQuestionVersion) {
         // Differential Sync for Questions
         const qDiff = query(
           collection(db, 'questions'),
-          where('version', '>', localVersions.questionVersion)
+          where('version', '>', effectiveLocalQuestionVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1176,6 +1295,8 @@ export async function performDifferentialSync(
           }
         }
         updatedLocalVersions.questionVersion = serverVersions.questionVersion;
+      } else {
+        updatedLocalVersions.questionVersion = Math.max(effectiveLocalQuestionVersion, serverVersions.questionVersion);
       }
     } catch (qErr) {
       console.warn('[VersionSync] Questions sync notice:', qErr);
@@ -1184,8 +1305,26 @@ export async function performDifferentialSync(
     // --- 2. CATEGORIES SYNC ---
     try {
       options.onProgress?.('ক্যাটাগরি সিঙ্ক করা হচ্ছে...', 40);
-      const localCats = await getCategoriesFromIDB();
-      const needsFullCatSync = localVersions.categoryVersion === 0;
+      let localCats = await getCategoriesFromIDB();
+      if (localCats.length === 0) {
+        try {
+          const sqliteCats = await getAllCategoriesFromSQLite();
+          if (sqliteCats && sqliteCats.length > 0) {
+            localCats = sqliteCats;
+            await saveCategoriesToIDB(sqliteCats);
+          } else if (BUNDLED_CATEGORIES.length > 0) {
+            localCats = [...BUNDLED_CATEGORIES];
+            await saveCategoriesToIDB(localCats);
+            await insertCategories(localCats);
+          }
+        } catch {}
+      }
+
+      const effectiveLocalCatVersion = (localVersions.categoryVersion && localVersions.categoryVersion > 0)
+        ? localVersions.categoryVersion
+        : BUNDLED_BASELINE_VERSIONS.categoryVersion;
+
+      const needsFullCatSync = effectiveLocalCatVersion === 0 && localCats.length === 0;
 
       if (needsFullCatSync) {
         const snap = await getDocs(collection(db, 'categories'));
@@ -1212,10 +1351,10 @@ export async function performDifferentialSync(
           options.onCategoriesUpdate?.(activeCats);
         }
         updatedLocalVersions.categoryVersion = serverVersions.categoryVersion;
-      } else if (serverVersions.categoryVersion > localVersions.categoryVersion) {
+      } else if (serverVersions.categoryVersion > effectiveLocalCatVersion) {
         const qDiff = query(
           collection(db, 'categories'),
-          where('version', '>', localVersions.categoryVersion)
+          where('version', '>', effectiveLocalCatVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1254,6 +1393,8 @@ export async function performDifferentialSync(
           }
         }
         updatedLocalVersions.categoryVersion = serverVersions.categoryVersion;
+      } else {
+        updatedLocalVersions.categoryVersion = Math.max(effectiveLocalCatVersion, serverVersions.categoryVersion);
       }
     } catch (cErr) {
       console.warn('[VersionSync] Categories sync notice:', cErr);
@@ -1282,7 +1423,7 @@ export async function performDifferentialSync(
 
       const effectiveLocalVersion = (localVersions.subcategoryVersion && localVersions.subcategoryVersion > 0)
         ? localVersions.subcategoryVersion
-        : (localSubs.length > 0 ? 1 : 0);
+        : BUNDLED_BASELINE_VERSIONS.subcategoryVersion;
 
       const needsFullSubSync = effectiveLocalVersion === 0 && localSubs.length === 0;
 
@@ -1380,7 +1521,7 @@ export async function performDifferentialSync(
             localStorage.setItem('orjon_subcategories', JSON.stringify(localSubs));
           }
         } catch {}
-        updatedLocalVersions.subcategoryVersion = serverVersions.subcategoryVersion;
+        updatedLocalVersions.subcategoryVersion = Math.max(effectiveLocalVersion, serverVersions.subcategoryVersion);
       }
     } catch (sErr) {
       console.warn('[VersionSync] Subcategories sync notice:', sErr);
@@ -1390,7 +1531,10 @@ export async function performDifferentialSync(
     try {
       options.onProgress?.('কোর্স সিঙ্ক করা হচ্ছে...', 70);
       const localCourses = await getCoursesFromIDB();
-      const needsFullCourseSync = localVersions.courseVersion === 0;
+      const effectiveLocalCourseVersion = (localVersions.courseVersion && localVersions.courseVersion > 0)
+        ? localVersions.courseVersion
+        : BUNDLED_BASELINE_VERSIONS.courseVersion;
+      const needsFullCourseSync = effectiveLocalCourseVersion === 0 && localCourses.length === 0;
 
       if (needsFullCourseSync) {
         const snap = await getDocs(collection(db, 'courses'));
@@ -1419,10 +1563,10 @@ export async function performDifferentialSync(
           options.onCoursesUpdate?.(activeCourses);
         }
         updatedLocalVersions.courseVersion = serverVersions.courseVersion;
-      } else if (serverVersions.courseVersion > localVersions.courseVersion) {
+      } else if (serverVersions.courseVersion > effectiveLocalCourseVersion) {
         const qDiff = query(
           collection(db, 'courses'),
-          where('version', '>', localVersions.courseVersion)
+          where('version', '>', effectiveLocalCourseVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1463,6 +1607,8 @@ export async function performDifferentialSync(
           }
         }
         updatedLocalVersions.courseVersion = serverVersions.courseVersion;
+      } else {
+        updatedLocalVersions.courseVersion = Math.max(effectiveLocalCourseVersion, serverVersions.courseVersion);
       }
     } catch (cErr) {
       console.warn('[VersionSync] Courses sync notice:', cErr);
@@ -1474,7 +1620,10 @@ export async function performDifferentialSync(
 
       // 5a. Live Exams
       const localExams = await getLiveExamsFromIDB();
-      const needsFullExamSync = localVersions.examVersion === 0;
+      const effectiveLocalExamVersion = (localVersions.examVersion && localVersions.examVersion > 0)
+        ? localVersions.examVersion
+        : BUNDLED_BASELINE_VERSIONS.examVersion;
+      const needsFullExamSync = effectiveLocalExamVersion === 0 && localExams.length === 0;
 
       if (needsFullExamSync) {
         const snap = await getDocs(collection(db, 'live_exams'));
@@ -1503,10 +1652,10 @@ export async function performDifferentialSync(
           options.onLiveExamsUpdate?.(activeExams);
         }
         updatedLocalVersions.examVersion = serverVersions.examVersion;
-      } else if (serverVersions.examVersion > localVersions.examVersion) {
+      } else if (serverVersions.examVersion > effectiveLocalExamVersion) {
         const qDiff = query(
           collection(db, 'live_exams'),
-          where('version', '>', localVersions.examVersion)
+          where('version', '>', effectiveLocalExamVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1547,11 +1696,16 @@ export async function performDifferentialSync(
           }
         }
         updatedLocalVersions.examVersion = serverVersions.examVersion;
+      } else {
+        updatedLocalVersions.examVersion = Math.max(effectiveLocalExamVersion, serverVersions.examVersion);
       }
 
       // 5b. Routines
       const localRoutines = await getRoutinesFromIDB();
-      const needsFullRoutineSync = localVersions.routineVersion === 0;
+      const effectiveLocalRoutineVersion = (localVersions.routineVersion && localVersions.routineVersion > 0)
+        ? localVersions.routineVersion
+        : BUNDLED_BASELINE_VERSIONS.routineVersion;
+      const needsFullRoutineSync = effectiveLocalRoutineVersion === 0 && localRoutines.length === 0;
 
       if (needsFullRoutineSync) {
         const snap = await getDocs(collection(db, 'routines'));
@@ -1580,10 +1734,10 @@ export async function performDifferentialSync(
           options.onRoutinesUpdate?.(activeRoutines);
         }
         updatedLocalVersions.routineVersion = serverVersions.routineVersion;
-      } else if (serverVersions.routineVersion > localVersions.routineVersion) {
+      } else if (serverVersions.routineVersion > effectiveLocalRoutineVersion) {
         const qDiff = query(
           collection(db, 'routines'),
-          where('version', '>', localVersions.routineVersion)
+          where('version', '>', effectiveLocalRoutineVersion)
         );
         const snap = await getDocs(qDiff);
 
@@ -1624,12 +1778,37 @@ export async function performDifferentialSync(
           }
         }
         updatedLocalVersions.routineVersion = serverVersions.routineVersion;
+      } else {
+        updatedLocalVersions.routineVersion = Math.max(effectiveLocalRoutineVersion, serverVersions.routineVersion);
       }
     } catch (eErr) {
       console.warn('[VersionSync] Exams and routines sync notice:', eErr);
     }
 
+    // Phase 3 Step 3H: Reconcile all delete_log events if server globalVersion advanced
+    const sinceGlobal = localVersions.globalVersion || 0;
+    const serverGlobal = serverVersions.globalVersion || 0;
+    if (serverGlobal > sinceGlobal) {
+      try {
+        let currentDelGlobal = sinceGlobal;
+        while (currentDelGlobal < serverGlobal) {
+          const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+          if (deleteLogEvents.length === 0) break;
+          for (const delEvt of deleteLogEvents) {
+            await applySingleEventToLocalStorage({ logType: 'delete', ...delEvt });
+            if (delEvt.globalVersion > currentDelGlobal) {
+              currentDelGlobal = delEvt.globalVersion;
+            }
+          }
+          if (deleteLogEvents.length < 200) break;
+        }
+      } catch (delReconcileErr) {
+        console.warn('[VersionSync] Reconcile delete_log notice in differential sync:', delReconcileErr);
+      }
+    }
+
     // Save final updated local versions
+    updatedLocalVersions.globalVersion = serverVersions.globalVersion || 0;
     updatedLocalVersions.updatedAt = new Date().toISOString();
     await saveLocalSyncVersions(updatedLocalVersions);
     result.localVersions = updatedLocalVersions;
@@ -1647,21 +1826,17 @@ export async function performDifferentialSync(
  */
 
 /**
- * Soft delete a question: marks deletedAt timestamp, isDeleted: true, increments questionVersion.
+ * Soft delete a question: marks deletedAt timestamp, isDeleted: true, records delete_log event, increments globalVersion & questionVersion.
  * Removes question from local SQLite and IndexedDB.
  */
 export async function softDeleteQuestion(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('questionVersion');
-
-    // 1. Update Firestore
-    const qDocRef = doc(db, 'questions', id);
-    await updateDoc(qDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'questions',
+      entityType: 'question',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'questionVersion'
     });
 
     // 2. Remove locally from SQLite & IDB
@@ -1670,7 +1845,8 @@ export async function softDeleteQuestion(id: string): Promise<boolean> {
 
     // 3. Update local version checkpoint
     const local = await getLocalSyncVersions();
-    local.questionVersion = newVersion;
+    local.questionVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1681,31 +1857,18 @@ export async function softDeleteQuestion(id: string): Promise<boolean> {
 }
 
 /**
- * Bulk soft delete questions: marks deletedAt timestamp, isDeleted: true, updatedAt, version in chunks of 400.
- * Increments questionVersion once. Cleans local SQLite and IndexedDB.
+ * Bulk soft delete questions: atomically records delete_log events and increments globalVersion & questionVersion.
+ * Cleans local SQLite and IndexedDB.
  */
 export async function bulkSoftDeleteQuestions(ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('questionVersion');
-
-    // 1. Update Firestore in batches of 400
-    const chunkSize = 400;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      for (const id of chunk) {
-        const qDocRef = doc(db, 'questions', String(id));
-        batch.set(qDocRef, {
-          deletedAt: nowIso,
-          isDeleted: true,
-          updatedAt: nowIso,
-          version: newVersion
-        }, { merge: true });
-      }
-      await batch.commit();
-    }
+    const res = await commitAtomicBulkDeleteWithEventLog(
+      'questions',
+      'question',
+      'questionVersion',
+      ids
+    );
 
     // 2. Remove locally from SQLite & IDB
     await deleteQuestionsFromSQLite(ids);
@@ -1713,7 +1876,8 @@ export async function bulkSoftDeleteQuestions(ids: string[]): Promise<boolean> {
 
     // 3. Update local version checkpoint
     const local = await getLocalSyncVersions();
-    local.questionVersion = newVersion;
+    local.questionVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1728,22 +1892,20 @@ export async function bulkSoftDeleteQuestions(ids: string[]): Promise<boolean> {
  */
 export async function softDeleteCategory(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('categoryVersion');
-
-    const catDocRef = doc(db, 'categories', id);
-    await updateDoc(catDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'categories',
+      entityType: 'category',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'categoryVersion'
     });
 
     await deleteCategoryFromSQLite(id);
     await upsertCategoriesToIDB([], [id]);
 
     const local = await getLocalSyncVersions();
-    local.categoryVersion = newVersion;
+    local.categoryVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1758,22 +1920,20 @@ export async function softDeleteCategory(id: string): Promise<boolean> {
  */
 export async function softDeleteSubcategory(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('subcategoryVersion');
-
-    const subDocRef = doc(db, 'subcategories', id);
-    await updateDoc(subDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'subcategories',
+      entityType: 'subcategory',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'subcategoryVersion'
     });
 
     await deleteSubcategoryFromSQLite(id);
     await upsertSubcategoriesToIDB([], [id]);
 
     const local = await getLocalSyncVersions();
-    local.subcategoryVersion = newVersion;
+    local.subcategoryVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1784,31 +1944,18 @@ export async function softDeleteSubcategory(id: string): Promise<boolean> {
 }
 
 /**
- * Bulk soft delete subcategories: marks deletedAt timestamp, isDeleted: true, updatedAt, version in chunks of 400.
- * Increments subcategoryVersion once. Cleans local SQLite and IndexedDB.
+ * Bulk soft delete subcategories: atomically records delete_log events and increments globalVersion & subcategoryVersion.
+ * Cleans local SQLite and IndexedDB.
  */
 export async function bulkSoftDeleteSubcategories(ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('subcategoryVersion');
-
-    // 1. Update Firestore in batches of 400
-    const chunkSize = 400;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      for (const id of chunk) {
-        const subDocRef = doc(db, 'subcategories', String(id));
-        batch.set(subDocRef, {
-          deletedAt: nowIso,
-          isDeleted: true,
-          updatedAt: nowIso,
-          version: newVersion
-        }, { merge: true });
-      }
-      await batch.commit();
-    }
+    const res = await commitAtomicBulkDeleteWithEventLog(
+      'subcategories',
+      'subcategory',
+      'subcategoryVersion',
+      ids
+    );
 
     // 2. Remove locally from SQLite & IDB
     for (const id of ids) {
@@ -1818,7 +1965,8 @@ export async function bulkSoftDeleteSubcategories(ids: string[]): Promise<boolea
 
     // 3. Update local version checkpoint
     const local = await getLocalSyncVersions();
-    local.subcategoryVersion = newVersion;
+    local.subcategoryVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1833,22 +1981,20 @@ export async function bulkSoftDeleteSubcategories(ids: string[]): Promise<boolea
  */
 export async function softDeleteCourse(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('courseVersion');
-
-    const courseDocRef = doc(db, 'courses', id);
-    await updateDoc(courseDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'courses',
+      entityType: 'course',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'courseVersion'
     });
 
     await deleteCourseFromSQLite(id);
     await upsertCoursesToIDB([], [id]);
 
     const local = await getLocalSyncVersions();
-    local.courseVersion = newVersion;
+    local.courseVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1863,22 +2009,20 @@ export async function softDeleteCourse(id: string): Promise<boolean> {
  */
 export async function softDeleteLiveExam(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('examVersion');
-
-    const examDocRef = doc(db, 'live_exams', id);
-    await updateDoc(examDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'live_exams',
+      entityType: 'live_exam',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'examVersion'
     });
 
     await deleteLiveExamFromSQLite(id);
     await upsertLiveExamsToIDB([], [id]);
 
     const local = await getLocalSyncVersions();
-    local.examVersion = newVersion;
+    local.examVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1893,22 +2037,20 @@ export async function softDeleteLiveExam(id: string): Promise<boolean> {
  */
 export async function softDeleteRoutine(id: string): Promise<boolean> {
   try {
-    const nowIso = new Date().toISOString();
-    const newVersion = await incrementGlobalVersion('routineVersion');
-
-    const routineDocRef = doc(db, 'routines', id);
-    await updateDoc(routineDocRef, {
-      deletedAt: nowIso,
-      isDeleted: true,
-      updatedAt: nowIso,
-      version: newVersion
+    const res = await commitAtomicMutationWithEventLog({
+      collectionName: 'routines',
+      entityType: 'routine',
+      entityId: String(id),
+      action: 'delete',
+      versionKey: 'routineVersion'
     });
 
     await deleteRoutineFromSQLite(id);
     await upsertRoutinesToIDB([], [id]);
 
     const local = await getLocalSyncVersions();
-    local.routineVersion = newVersion;
+    local.routineVersion = res.entityVersion;
+    local.globalVersion = res.globalVersion;
     await saveLocalSyncVersions(local);
 
     return true;
@@ -1917,3 +2059,116 @@ export async function softDeleteRoutine(id: string): Promise<boolean> {
     return false;
   }
 }
+
+// 5. PHASE 3 GLOBAL EVENT-BASED CLIENT SYNC RE-EXPORTS
+export {
+  performGlobalEventSync,
+  establishSafeGlobalCheckpoint,
+  applySingleEventToLocalStorage
+} from './globalEventSyncService';
+export type {
+  GlobalEventSyncOptions,
+  GlobalEventSyncResult,
+  UnifiedSyncEvent
+} from './globalEventSyncService';
+
+// 6. EVENT LOG & DELETE VALIDATION RE-EXPORTS
+export {
+  validateDeleteLogEvent,
+  VERSIONED_COLLECTIONS,
+  getEntityTypeForCollection
+} from './eventLogService';
+export type {
+  DeleteLogValidationResult,
+  VersionedCollectionName
+} from './eventLogService';
+
+// 9. PHASE 3 STEP 3C, 3D & 3E DELETE AUTHORITY CUTOVER RE-EXPORTS
+export {
+  resolveDeletedEntityIds,
+  monitorRuntimeConcordance,
+  evaluateDeleteEventShadowAuthority,
+  verifyCheckpointSafety,
+  simulateDeleteLogOnlyBootstrap,
+  generateCutoverReadinessReport,
+  getDeleteAuthorityMode,
+  setDeleteAuthorityMode,
+  rollbackDeleteAuthority,
+  verifyDeleteAuthorityReadiness,
+  generateCutoverRuntimeReport,
+  DELETE_AUTHORITY_MODE_STORAGE_KEY,
+  // Step 3E exports
+  monitorAuthorityDivergence,
+  generateDualModeHealthReport,
+  evaluateDualModeSafety,
+  validateDualModeRollback,
+  verifyDualAuthorityPilotReadiness,
+  resetAuthorityModeToDefault,
+  recordRuntimeMismatch,
+  getRuntimeMismatchCount,
+  resetRuntimeMismatchCount
+} from './deleteAuthorityResolver';
+export type {
+  DeleteAuthorityMode,
+  SetAuthorityModeResult,
+  StartupAuthorityVerificationResult,
+  CutoverRuntimeReport,
+  ResolveDeletedIdsOptions,
+  DualAuthorityResolutionResult,
+  RuntimeConcordanceMetric,
+  RuntimeConcordanceReport,
+  ShadowAuthorityEvaluation,
+  CheckpointSafetyCheckParams,
+  CheckpointSafetyResult,
+  FreshInstallSimulationScenario,
+  FreshInstallSimulationResult,
+  CutoverReadinessReport,
+  // Step 3E types
+  CollectionDivergenceMetric,
+  AuthorityDivergenceReport,
+  DualModeHealthReport,
+  DualModeSafetyEvaluation,
+  RollbackValidationResult
+} from './deleteAuthorityResolver';
+export {
+  runStep3CVerification,
+  runStep3DVerification,
+  runStep3EVerification,
+  runStep3GVerification
+} from './deleteAuthorityCutoverVerifier';
+export type {
+  Step3CScenarioResult,
+  Step3CForensicVerificationReport,
+  Step3DScenarioResult,
+  Step3DForensicVerificationReport,
+  Step3EScenarioResult,
+  Step3EVerificationReport,
+  Step3GScenarioResult,
+  Step3GVerificationReport
+} from './deleteAuthorityCutoverVerifier';
+
+// 9. PHASE 3 STEP 3G SAFE DELETE_LOG_ONLY WRITE CUTOVER RE-EXPORTS
+export {
+  runPreCutoverDependencyAudit,
+  getDeleteLogWriteMode,
+  setDeleteLogWriteMode,
+  isDeleteLogOnlyWritesActive,
+  verifyDeleteLogOnlyReadiness,
+  activateDeleteLogOnlyWrites,
+  rollbackDeleteLogOnlyWrites,
+  generateDeleteLogOnlyHealthReport,
+  DELETE_LOG_WRITE_MODE_STORAGE_KEY
+} from './deleteLogWriteActivationService';
+export type {
+  DeleteLogWriteMode,
+  DependencyClassification,
+  PreCutoverDependencyItem,
+  PreCutoverDependencyReport,
+  DeleteLogOnlyReadinessResult,
+  DeleteLogOnlyHealthReport,
+  RollbackResult
+} from './deleteLogWriteActivationService';
+
+
+
+

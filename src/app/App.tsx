@@ -25,6 +25,9 @@ import {
   softDeleteLiveExam,
   softDeleteRoutine,
   softDeleteCoupon,
+  syncCoursesMetadataFirst,
+  syncLiveExamsMetadataFirst,
+  syncRoutinesMetadataFirst,
   syncCouponsMetadataFirst,
   syncPaymentSettingsMetadataFirst
 } from '../shared/lib/sync/versionSyncService';
@@ -37,14 +40,12 @@ import {
   getCoursesFromIDB,
   saveCoursesToIDB,
   upsertCoursesToIDB,
-  performIncrementalCourseSyncFromFirestore,
   getLiveExamsFromIDB,
   saveLiveExamsToIDB,
   upsertLiveExamsToIDB,
   getRoutinesFromIDB,
   saveRoutinesToIDB,
   upsertRoutinesToIDB,
-  performIncrementalExamSyncFromFirestore,
   getCategoriesFromIDB,
   saveCategoriesToIDB,
   upsertCategoriesToIDB,
@@ -214,6 +215,7 @@ export default function App() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [otpDeliveryMessage, setOtpDeliveryMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const hasStartupSubcategoriesSyncedRef = useRef(false);
 
   // Resend OTP Cooldown Timer Effect
   useEffect(() => {
@@ -377,7 +379,7 @@ export default function App() {
         const [sqliteCats, sqliteSubs, sqliteQs] = await Promise.all([
           getSQLiteCategories(),
           getSQLiteSubcategories(),
-          getSQLiteQuestions(10000, 0)
+          getSQLiteQuestions(2000, 0)
         ]);
 
         if (sqliteCats && sqliteCats.length > 0) {
@@ -406,12 +408,15 @@ export default function App() {
           }
         }
 
-        // Version-gated differential sync (0 collection reads if versions match)
-        performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
-          if (updatedSubs && updatedSubs.length > 0) {
-            setSubcategories(updatedSubs);
-          }
-        }).catch(() => {});
+        // Version-gated differential sync (0 collection reads if versions match, runs once per launch)
+        if (!hasStartupSubcategoriesSyncedRef.current) {
+          hasStartupSubcategoriesSyncedRef.current = true;
+          performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+            if (updatedSubs && updatedSubs.length > 0) {
+              setSubcategories(updatedSubs);
+            }
+          }).catch(() => {});
+        }
 
         if (sqliteQs && sqliteQs.length > 0) {
           const normalizedSQLiteQ = sqliteQs.map(q => {
@@ -438,6 +443,14 @@ export default function App() {
       }
     }).catch(err => {
       console.warn('[SQLite] Init notice in App.tsx:', err);
+      if (!hasStartupSubcategoriesSyncedRef.current) {
+        hasStartupSubcategoriesSyncedRef.current = true;
+        performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
+          if (updatedSubs && updatedSubs.length > 0) {
+            setSubcategories(updatedSubs);
+          }
+        }).catch(() => {});
+      }
     });
 
     // ==========================================
@@ -864,13 +877,6 @@ export default function App() {
 
     localStorage.setItem('medha_subcategories', JSON.stringify(loadedSubcats));
     setSubcategories(prev => (prev && prev.length >= loadedSubcats.length ? prev : loadedSubcats));
-
-    // Version-gated subcategory sync (0 reads if versions match)
-    performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
-      if (updatedSubs && updatedSubs.length > 0) {
-        setSubcategories(updatedSubs);
-      }
-    }).catch(() => {});
 
     // Automatic session restoration on startup is disabled per strict manual login policy.
     // Opening/reopening/reloading the application must never automatically log in a user or admin.
@@ -1911,7 +1917,7 @@ export default function App() {
           setCourses(localCached);
         }
       }
-      await performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+      await syncCoursesMetadataFirst((updatedCourses) => {
         if (updatedCourses && updatedCourses.length > 0) {
           setCourses(updatedCourses);
           try {
@@ -1937,14 +1943,14 @@ export default function App() {
           setRoutines(localCached);
         }
       }
-      await performIncrementalExamSyncFromFirestore(({ routines: updatedRoutines }) => {
+      await syncRoutinesMetadataFirst((updatedRoutines) => {
         if (updatedRoutines && updatedRoutines.length > 0) {
           setRoutines(updatedRoutines);
           try {
             localStorage.setItem('orjon_routines', JSON.stringify(updatedRoutines));
           } catch {}
         }
-      }, 'routines');
+      });
     } catch (e) {
       console.warn('On-demand routines load notice:', e);
     }
@@ -1963,14 +1969,14 @@ export default function App() {
           setLiveExams(localCached);
         }
       }
-      await performIncrementalExamSyncFromFirestore(({ liveExams: updatedLiveExams }) => {
+      await syncLiveExamsMetadataFirst((updatedLiveExams) => {
         if (updatedLiveExams && updatedLiveExams.length > 0) {
           setLiveExams(updatedLiveExams);
           try {
             localStorage.setItem('orjon_live_exams', JSON.stringify(updatedLiveExams));
           } catch {}
         }
-      }, 'exams');
+      });
     } catch (e) {
       console.warn('On-demand live exams load notice:', e);
     }

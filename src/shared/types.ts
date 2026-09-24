@@ -7,6 +7,9 @@ export interface GlobalSyncVersions {
   routineVersion: number;
   couponVersion?: number;
   paymentSettingsVersion?: number;
+  globalVersion?: number;
+  latestAppVersion?: string;
+  minimumSupportedAppVersion?: string;
   updatedAt?: string;
 }
 

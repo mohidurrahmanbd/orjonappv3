@@ -14,7 +14,7 @@ const defaultFirebaseConfig = {
 
 // Check for auto-provisioned firebase-applet-config.json if available
 let activeConfig: any = defaultFirebaseConfig;
-const configModules = (import.meta as any).glob('/firebase-applet-config.json', { eager: true });
+const configModules = typeof (import.meta as any)?.glob === 'function' ? (import.meta as any).glob('/firebase-applet-config.json', { eager: true }) : null;
 if (configModules && configModules['/firebase-applet-config.json']) {
   const mod: any = configModules['/firebase-applet-config.json'];
   activeConfig = mod.default || mod;

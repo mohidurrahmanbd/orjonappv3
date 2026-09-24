@@ -21,7 +21,10 @@ import {
 import UserApp from './UserApp';
 import { 
   syncCouponsMetadataFirst, 
-  syncPaymentSettingsMetadataFirst 
+  syncPaymentSettingsMetadataFirst,
+  syncCoursesMetadataFirst,
+  syncLiveExamsMetadataFirst,
+  syncRoutinesMetadataFirst
 } from '../shared/lib/sync/versionSyncService';
 import { 
   fetchQuestionsFromFirestore, 
@@ -41,16 +44,13 @@ import {
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
-  performIncrementalSyncFromFirestore,
   fetchQuestionsLazyFromFirestore,
   getCoursesFromIDB,
   saveCoursesToIDB,
-  performIncrementalCourseSyncFromFirestore,
   getLiveExamsFromIDB,
   saveLiveExamsToIDB,
   getRoutinesFromIDB,
   saveRoutinesToIDB,
-  performIncrementalExamSyncFromFirestore,
   saveCategoriesToIDB,
   saveSubcategoriesToIDB,
   getSubcategoriesFromIDB,
@@ -282,7 +282,7 @@ export default function MobileApp() {
         const [rawCats, rawSubs, rawQs] = await Promise.all([
           getSQLiteCategories(),
           getSQLiteSubcategories(),
-          getSQLiteQuestions(10000, 0)
+          getSQLiteQuestions(2000, 0)
         ]);
 
         const sqliteCats = (rawCats || []).filter(item => item && !(item as any).isDeleted && !(item as any).deletedAt);
@@ -597,39 +597,7 @@ export default function MobileApp() {
       }).catch(() => {});
     }
 
-    // 2. Background incremental sync for Courses and Exams
-    // Questions use version-gated page-level lazy synchronization
-    performIncrementalCourseSyncFromFirestore((updatedCourses) => {
-      if (Array.isArray(updatedCourses)) {
-        const activeCourses = updatedCourses.filter(c => c && !c.isDeleted && !c.deletedAt);
-        const dedupedC = dedupeCourses(activeCourses);
-        setCourses(dedupedC);
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(dedupedC));
-        } catch (e) {}
-      }
-    }).catch(() => {});
-
-    performIncrementalExamSyncFromFirestore(({ liveExams: updatedLE, routines: updatedR }) => {
-      if (Array.isArray(updatedLE)) {
-        const activeLE = updatedLE.filter(e => e && !e.isDeleted && !e.deletedAt);
-        const dedupedLE = dedupeLiveExams(activeLE);
-        setLiveExams(dedupedLE);
-        try {
-          localStorage.setItem('orjon_live_exams', JSON.stringify(dedupedLE));
-        } catch (e) {}
-      }
-      if (Array.isArray(updatedR)) {
-        const activeR = updatedR.filter(r => r && !r.isDeleted && !r.deletedAt);
-        const dedupedR = dedupeRoutines(activeR);
-        setRoutines(dedupedR);
-        try {
-          localStorage.setItem('orjon_routines', JSON.stringify(dedupedR));
-        } catch (e) {}
-      }
-    }).catch(() => {});
-
-    // 3. Version-gated incremental sync for subcategories
+    // Version-gated incremental sync for subcategories
     performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
       if (updatedSubs && updatedSubs.length > 0) {
         setSubcategories(updatedSubs);
@@ -1281,7 +1249,7 @@ export default function MobileApp() {
           setCourses(localCached);
         }
       }
-      await performIncrementalCourseSyncFromFirestore((updatedCourses) => {
+      await syncCoursesMetadataFirst((updatedCourses) => {
         if (updatedCourses && updatedCourses.length > 0) {
           setCourses(updatedCourses);
           try {
@@ -1307,14 +1275,14 @@ export default function MobileApp() {
           setRoutines(localCached);
         }
       }
-      await performIncrementalExamSyncFromFirestore(({ routines: updatedRoutines }) => {
+      await syncRoutinesMetadataFirst((updatedRoutines) => {
         if (updatedRoutines && updatedRoutines.length > 0) {
           setRoutines(updatedRoutines);
           try {
             localStorage.setItem('orjon_routines', JSON.stringify(updatedRoutines));
           } catch {}
         }
-      }, 'routines');
+      });
     } catch (e) {
       console.warn('On-demand routines load notice:', e);
     }
@@ -1333,14 +1301,14 @@ export default function MobileApp() {
           setLiveExams(localCached);
         }
       }
-      await performIncrementalExamSyncFromFirestore(({ liveExams: updatedLiveExams }) => {
+      await syncLiveExamsMetadataFirst((updatedLiveExams) => {
         if (updatedLiveExams && updatedLiveExams.length > 0) {
           setLiveExams(updatedLiveExams);
           try {
             localStorage.setItem('orjon_live_exams', JSON.stringify(updatedLiveExams));
           } catch {}
         }
-      }, 'exams');
+      });
     } catch (e) {
       console.warn('On-demand live exams load notice:', e);
     }
