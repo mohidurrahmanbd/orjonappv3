@@ -268,7 +268,7 @@ export async function runStep3CVerification(): Promise<Step3CForensicVerificatio
   // SCENARIO G: EXISTING SYNC COMPATIBILITY
   // ----------------------------------------------------
   try {
-    const allCollectionsMapped = VERSIONED_COLLECTIONS.length === 7 &&
+    const allCollectionsMapped = VERSIONED_COLLECTIONS.length >= 7 &&
       VERSIONED_COLLECTIONS.every(c => Boolean(getEntityTypeForCollection(c)));
 
     if (allCollectionsMapped) {

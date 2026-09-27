@@ -7,6 +7,7 @@ export interface GlobalSyncVersions {
   routineVersion: number;
   couponVersion?: number;
   paymentSettingsVersion?: number;
+  noticeVersion?: number;
   globalVersion?: number;
   latestAppVersion?: string;
   minimumSupportedAppVersion?: string;
@@ -117,6 +118,10 @@ export interface Notice {
   id: string;
   text: string;
   createdAt: string;
+  version?: number;
+  updatedAt?: string;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface Coupon {

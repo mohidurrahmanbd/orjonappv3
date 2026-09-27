@@ -20,11 +20,15 @@ import {
 } from '../shared/types';
 import UserApp from './UserApp';
 import { 
+  getGlobalSyncVersions,
+  getLocalSyncVersions,
+  saveLocalSyncVersions,
   syncCouponsMetadataFirst, 
   syncPaymentSettingsMetadataFirst,
   syncCoursesMetadataFirst,
   syncLiveExamsMetadataFirst,
-  syncRoutinesMetadataFirst
+  syncRoutinesMetadataFirst,
+  syncNoticesMetadataFirst
 } from '../shared/lib/sync/versionSyncService';
 import { 
   fetchQuestionsFromFirestore, 
@@ -586,16 +590,105 @@ export default function MobileApp() {
     if (hasSyncedAfterAuthRef.current) return;
     hasSyncedAfterAuthRef.current = true;
 
-    // 1. Notices (Cache-First on auth)
-    const storedN = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
-    if (!storedN) {
-      fetchCollectionFromFirestore<Notice>('notices').then(fsN => {
-        if (fsN && fsN.length > 0) {
-          setNotices(fsN);
-          localStorage.setItem('orjon_notices', JSON.stringify(fsN));
+    // 1. Authenticated Modules Sync: Global Version Gate -> Module Version Gates (Phase 4A)
+    const runAuthenticatedModulesSync = async () => {
+      try {
+        const [serverVersions, localVersions] = await Promise.all([
+          getGlobalSyncVersions(),
+          getLocalSyncVersions()
+        ]);
+
+        const serverGlobalVersion = serverVersions.globalVersion || 0;
+        const localGlobalVersion = localVersions.globalVersion || 0;
+
+        // Global Version Gate: If global version is unchanged and client is initialized (> 0), STOP
+        if (localGlobalVersion >= serverGlobalVersion && localGlobalVersion > 0) {
+          console.log(`[MobileApp] Global version unchanged (v${localGlobalVersion}). STOP modules sync.`);
+          return;
         }
-      }).catch(() => {});
-    }
+
+        console.log(`[MobileApp] Global version advanced (local: v${localGlobalVersion}, server: v${serverGlobalVersion}). Running module gates...`);
+        const preloaded = { serverVersions };
+
+        let allSucceeded = true;
+
+        // 1a. Notices: Phase 3A Notice sync
+        try {
+          await syncNoticesMetadataFirst((updatedNotices) => {
+            if (updatedNotices) {
+              setNotices(updatedNotices);
+            }
+          }, preloaded);
+        } catch (noticeSyncErr) {
+          allSucceeded = false;
+          console.warn('[MobileApp] Notice sync notice:', noticeSyncErr);
+        }
+
+        // 1b. Courses: Independent courseVersion gate & differential sync + delete_log reconciliation
+        try {
+          await syncCoursesMetadataFirst((updatedCourses) => {
+            if (updatedCourses && updatedCourses.length > 0) {
+              setCourses(updatedCourses);
+              try {
+                localStorage.setItem('orjon_courses', JSON.stringify(updatedCourses));
+              } catch {}
+            }
+          }, preloaded);
+        } catch (courseSyncErr) {
+          allSucceeded = false;
+          console.warn('[MobileApp] Course sync notice:', courseSyncErr);
+        }
+
+        // 1c. Live Exams: Independent examVersion gate & differential sync + delete_log reconciliation
+        try {
+          await syncLiveExamsMetadataFirst((updatedLiveExams) => {
+            if (updatedLiveExams && updatedLiveExams.length > 0) {
+              setLiveExams(updatedLiveExams);
+              try {
+                localStorage.setItem('orjon_live_exams', JSON.stringify(updatedLiveExams));
+              } catch {}
+            }
+          }, preloaded);
+        } catch (examSyncErr) {
+          allSucceeded = false;
+          console.warn('[MobileApp] Live exam sync notice:', examSyncErr);
+        }
+
+        // 1d. Routines: Independent routineVersion gate & differential sync + delete_log reconciliation
+        try {
+          await syncRoutinesMetadataFirst((updatedRoutines) => {
+            if (updatedRoutines && updatedRoutines.length > 0) {
+              setRoutines(updatedRoutines);
+              try {
+                localStorage.setItem('orjon_routines', JSON.stringify(updatedRoutines));
+              } catch {}
+            }
+          }, preloaded);
+        } catch (routineSyncErr) {
+          allSucceeded = false;
+          console.warn('[MobileApp] Routine sync notice:', routineSyncErr);
+        }
+
+        // Safest minimal checkpoint location: advance globalVersion ONLY when all orchestrated modules succeed
+        if (allSucceeded && serverGlobalVersion > 0) {
+          try {
+            const currentLocal = await getLocalSyncVersions();
+            if (serverGlobalVersion > (currentLocal.globalVersion || 0)) {
+              currentLocal.globalVersion = serverGlobalVersion;
+              currentLocal.updatedAt = new Date().toISOString();
+              await saveLocalSyncVersions(currentLocal);
+              console.log(`[MobileApp] All login modules synchronized. Checkpoint globalVersion advanced to ${serverGlobalVersion}.`);
+            }
+          } catch (chkErr) {
+            console.warn('[MobileApp] Final global checkpoint update notice:', chkErr);
+          }
+        }
+      } catch (syncErr) {
+        console.warn('[MobileApp] Authenticated modules sync notice:', syncErr);
+      }
+    };
+
+    runAuthenticatedModulesSync();
 
     // Version-gated incremental sync for subcategories
     performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
@@ -1311,6 +1404,23 @@ export default function MobileApp() {
       });
     } catch (e) {
       console.warn('On-demand live exams load notice:', e);
+    }
+  };
+
+  const handleLoadNoticesOnDemand = async () => {
+    const now = Date.now();
+    if (now - (lastSyncTimes.current['notices'] || 0) < 60000) {
+      return;
+    }
+    lastSyncTimes.current['notices'] = now;
+    try {
+      await syncNoticesMetadataFirst((updatedNotices) => {
+        if (updatedNotices) {
+          setNotices(updatedNotices);
+        }
+      });
+    } catch (e) {
+      console.warn('On-demand notices load notice:', e);
     }
   };
 

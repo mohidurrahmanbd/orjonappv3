@@ -30,7 +30,8 @@ import {
   Routine,
   Coupon,
   CourseEnrollment,
-  PaymentSettings
+  PaymentSettings,
+  Notice
 } from '../../types';
 import {
   getSQLiteDatabase,
@@ -117,6 +118,7 @@ export const BUNDLED_BASELINE_VERSIONS: Readonly<GlobalSyncVersions> = Object.fr
   routineVersion: 1,
   couponVersion: 1,
   paymentSettingsVersion: 1,
+  noticeVersion: 1,
   globalVersion: 10,
   updatedAt: '2026-09-20T09:32:35.592144+00:00'
 });
@@ -130,6 +132,7 @@ export const DEFAULT_GLOBAL_VERSIONS: GlobalSyncVersions = {
   routineVersion: 1,
   couponVersion: 1,
   paymentSettingsVersion: 1,
+  noticeVersion: 1,
   globalVersion: 10,
   updatedAt: '2026-09-20T09:32:35.592144+00:00'
 };
@@ -187,6 +190,7 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
         routineVersion: Number(data.routineVersion || 1),
         couponVersion: Number(data.couponVersion || 1),
         paymentSettingsVersion: Number(data.paymentSettingsVersion || 1),
+        noticeVersion: Number(data.noticeVersion || 1),
         globalVersion: Number(data.globalVersion || 0),
         latestAppVersion: data.latestAppVersion,
         minimumSupportedAppVersion: data.minimumSupportedAppVersion,
@@ -214,7 +218,7 @@ export async function getGlobalSyncVersions(): Promise<GlobalSyncVersions> {
  * Uses Firestore transaction to guarantee strict monotonicity and prevent race conditions.
  */
 export async function incrementGlobalVersion(
-  entity: 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion'
+  entity: 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion' | 'noticeVersion'
 ): Promise<number> {
   try {
     const versionDocRef = doc(db, 'meta', 'versions');
@@ -265,6 +269,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
     routineVersion: 0,
     couponVersion: 0,
     paymentSettingsVersion: 0,
+    noticeVersion: 0,
     globalVersion: 0,
     updatedAt: ''
   };
@@ -283,6 +288,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
         routineVersion: Number(parsed.routineVersion || 0),
         couponVersion: Number(parsed.couponVersion || 0),
         paymentSettingsVersion: Number(parsed.paymentSettingsVersion || 0),
+        noticeVersion: Number(parsed.noticeVersion || 0),
         globalVersion: Number(parsed.globalVersion || 0),
         updatedAt: parsed.updatedAt || ''
       };
@@ -305,6 +311,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
       if (k === 'routineVersion' && v > versions.routineVersion) versions.routineVersion = v;
       if (k === 'couponVersion' && v > (versions.couponVersion || 0)) versions.couponVersion = v;
       if (k === 'paymentSettingsVersion' && v > (versions.paymentSettingsVersion || 0)) versions.paymentSettingsVersion = v;
+      if (k === 'noticeVersion' && v > (versions.noticeVersion || 0)) versions.noticeVersion = v;
       if (k === 'globalVersion' && v > (versions.globalVersion || 0)) versions.globalVersion = v;
       if (k === 'updatedAt' && !versions.updatedAt && r.value) versions.updatedAt = String(r.value);
     });
@@ -324,6 +331,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
     if (versions.routineVersion === 0) versions.routineVersion = BUNDLED_BASELINE_VERSIONS.routineVersion;
     if (versions.couponVersion === 0) versions.couponVersion = BUNDLED_BASELINE_VERSIONS.couponVersion;
     if (versions.paymentSettingsVersion === 0) versions.paymentSettingsVersion = BUNDLED_BASELINE_VERSIONS.paymentSettingsVersion;
+    if (versions.noticeVersion === 0) versions.noticeVersion = BUNDLED_BASELINE_VERSIONS.noticeVersion || 1;
     if (!versions.updatedAt) versions.updatedAt = BUNDLED_BASELINE_VERSIONS.updatedAt;
 
     // Persist immediately across storage layers so subsequent reads retain checkpoint
@@ -336,6 +344,7 @@ export async function getLocalSyncVersions(): Promise<GlobalSyncVersions> {
     if (versions.courseVersion === 0) versions.courseVersion = BUNDLED_BASELINE_VERSIONS.courseVersion;
     if (versions.examVersion === 0) versions.examVersion = BUNDLED_BASELINE_VERSIONS.examVersion;
     if (versions.routineVersion === 0) versions.routineVersion = BUNDLED_BASELINE_VERSIONS.routineVersion;
+    if (versions.noticeVersion === 0) versions.noticeVersion = BUNDLED_BASELINE_VERSIONS.noticeVersion || 1;
   }
 
   return versions;
@@ -407,6 +416,7 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     routineVersion: Number(versions.routineVersion || 0),
     couponVersion: Number(versions.couponVersion || 0),
     paymentSettingsVersion: Number(versions.paymentSettingsVersion || 0),
+    noticeVersion: Number(versions.noticeVersion || 0),
     globalVersion: Number(versions.globalVersion || 0),
     updatedAt: versions.updatedAt || new Date().toISOString()
   };
@@ -427,6 +437,7 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['routineVersion', String(cleanVersions.routineVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['couponVersion', String(cleanVersions.couponVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['paymentSettingsVersion', String(cleanVersions.paymentSettingsVersion)]);
+    await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['noticeVersion', String(cleanVersions.noticeVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['globalVersion', String(cleanVersions.globalVersion)]);
     await dbInstance.run('INSERT OR REPLACE INTO sync_meta (key, value) VALUES (?, ?);', ['updatedAt', cleanVersions.updatedAt || '']);
   } catch (err) {
@@ -468,10 +479,11 @@ export async function saveLocalSyncVersions(versions: GlobalSyncVersions): Promi
  * 3. If server courseVersion > local courseVersion: fetches only modified courses (version > localCourseVersion).
  */
 export async function syncCoursesMetadataFirst(
-  onUpdate?: (courses: Course[]) => void
+  onUpdate?: (courses: Course[]) => void,
+  preloadedVersions?: { serverVersions?: GlobalSyncVersions; localVersions?: GlobalSyncVersions }
 ): Promise<{ hasChanges: boolean; updatedCount: number; removedCount: number }> {
   try {
-    const serverVersions = await getGlobalSyncVersions();
+    const serverVersions = preloadedVersions?.serverVersions || await getGlobalSyncVersions();
     const localVersions = await getLocalSyncVersions();
     const localCourses = await getCoursesFromIDB();
 
@@ -479,6 +491,9 @@ export async function syncCoursesMetadataFirst(
       ? localVersions.courseVersion
       : BUNDLED_BASELINE_VERSIONS.courseVersion;
     const serverCourseVersion = serverVersions.courseVersion || 1;
+    const localGlobalVersion = localVersions.globalVersion || 0;
+    const serverGlobalVersion = serverVersions.globalVersion || 0;
+    const needsDeleteLogCheck = serverGlobalVersion > localGlobalVersion;
 
     // Zero reads optimization: version matches baseline/server
     if (localCourseVersion >= serverCourseVersion) {
@@ -495,10 +510,10 @@ export async function syncCoursesMetadataFirst(
       );
       const snap = await getDocs(qDiff);
 
-      if (!snap.empty) {
-        const toUpsert: Course[] = [];
-        const toRemoveIds: string[] = [];
+      const toUpsert: Course[] = [];
+      const toRemoveIds: string[] = [];
 
+      if (!snap.empty) {
         snap.forEach((d) => {
           const data = d.data();
           const courseId = String(data.id || d.id);
@@ -514,32 +529,64 @@ export async function syncCoursesMetadataFirst(
             }));
           }
         });
+      }
 
-        if (toUpsert.length > 0 || toRemoveIds.length > 0) {
-          await upsertCoursesToIDB(toUpsert, toRemoveIds);
-          if (toUpsert.length > 0) await insertCourses(toUpsert);
-          for (const id of toRemoveIds) await deleteCourseFromSQLite(id);
-
-          const allUpdated = await getCoursesFromIDB();
-          if (onUpdate) onUpdate(allUpdated);
-
-          localVersions.courseVersion = serverCourseVersion;
-          localVersions.updatedAt = new Date().toISOString();
-          await saveLocalSyncVersions(localVersions);
-
-          return { hasChanges: true, updatedCount: toUpsert.length, removedCount: toRemoveIds.length };
+      // Course delete_log reconciliation
+      if (needsDeleteLogCheck) {
+        try {
+          let currentDelGlobal = localGlobalVersion;
+          while (currentDelGlobal < serverGlobalVersion) {
+            const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+            if (deleteLogEvents.length === 0) break;
+            for (const delEvt of deleteLogEvents) {
+              const entityTarget = (delEvt.entity || '').toLowerCase().trim();
+              if (entityTarget === 'course' || entityTarget === 'courses') {
+                toRemoveIds.push(String(delEvt.entityId));
+              }
+              if (delEvt.globalVersion > currentDelGlobal) {
+                currentDelGlobal = delEvt.globalVersion;
+              }
+            }
+            if (deleteLogEvents.length < 200) break;
+          }
+        } catch (delErr) {
+          console.error('[VersionSync] Course delete_log reconciliation error:', delErr);
+          // Checkpoint rule: DO NOT advance courseVersion if delete reconciliation fails
+          throw delErr;
         }
+      }
+
+      const uniqueRemoveIds = Array.from(new Set(toRemoveIds));
+      let updatedCount = 0;
+      let removedCount = 0;
+
+      if (toUpsert.length > 0 || uniqueRemoveIds.length > 0) {
+        await upsertCoursesToIDB(toUpsert, uniqueRemoveIds);
+        if (toUpsert.length > 0) await insertCourses(toUpsert);
+        for (const id of uniqueRemoveIds) await deleteCourseFromSQLite(id);
+
+        const allUpdated = await getCoursesFromIDB();
+        try {
+          localStorage.setItem('orjon_courses', JSON.stringify(allUpdated));
+        } catch {}
+
+        if (onUpdate) onUpdate(allUpdated);
+
+        updatedCount = toUpsert.length;
+        removedCount = uniqueRemoveIds.length;
       }
 
       localVersions.courseVersion = serverCourseVersion;
       localVersions.updatedAt = new Date().toISOString();
       await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: updatedCount > 0 || removedCount > 0, updatedCount, removedCount };
     }
 
     return { hasChanges: false, updatedCount: 0, removedCount: 0 };
   } catch (err) {
-    console.warn('[VersionSync] syncCoursesMetadataFirst notice:', err);
-    return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+    console.warn('[VersionSync] syncCoursesMetadataFirst error:', err);
+    throw err;
   }
 }
 
@@ -550,15 +597,19 @@ export async function syncCoursesMetadataFirst(
  * 3. If server examVersion > local examVersion: fetches only modified live exams (version > localExamVersion).
  */
 export async function syncLiveExamsMetadataFirst(
-  onUpdate?: (exams: LiveExam[]) => void
+  onUpdate?: (exams: LiveExam[]) => void,
+  preloadedVersions?: { serverVersions?: GlobalSyncVersions; localVersions?: GlobalSyncVersions }
 ): Promise<{ hasChanges: boolean; updatedCount: number; removedCount: number }> {
   try {
-    const serverVersions = await getGlobalSyncVersions();
+    const serverVersions = preloadedVersions?.serverVersions || await getGlobalSyncVersions();
     const localVersions = await getLocalSyncVersions();
     const localExams = await getLiveExamsFromIDB();
 
     const localExamVersion = localVersions.examVersion || 0;
     const serverExamVersion = serverVersions.examVersion || 1;
+    const localGlobalVersion = localVersions.globalVersion || 0;
+    const serverGlobalVersion = serverVersions.globalVersion || 0;
+    const needsDeleteLogCheck = serverGlobalVersion > localGlobalVersion;
 
     if (localExamVersion >= serverExamVersion && localExams.length > 0) {
       console.log(`[VersionSync] Live Exams up to date (v${localExamVersion}). 0 collection reads.`);
@@ -606,10 +657,10 @@ export async function syncLiveExamsMetadataFirst(
       );
       const snap = await getDocs(qDiff);
 
-      if (!snap.empty) {
-        const toUpsert: LiveExam[] = [];
-        const toRemoveIds: string[] = [];
+      const toUpsert: LiveExam[] = [];
+      const toRemoveIds: string[] = [];
 
+      if (!snap.empty) {
         snap.forEach((d) => {
           const data = d.data();
           const id = String(data.id || d.id);
@@ -625,32 +676,64 @@ export async function syncLiveExamsMetadataFirst(
             }));
           }
         });
+      }
 
-        if (toUpsert.length > 0 || toRemoveIds.length > 0) {
-          await upsertLiveExamsToIDB(toUpsert, toRemoveIds);
-          if (toUpsert.length > 0) await insertLiveExams(toUpsert);
-          for (const id of toRemoveIds) await deleteLiveExamFromSQLite(id);
-
-          const allUpdated = await getLiveExamsFromIDB();
-          if (onUpdate) onUpdate(allUpdated);
-
-          localVersions.examVersion = serverExamVersion;
-          localVersions.updatedAt = new Date().toISOString();
-          await saveLocalSyncVersions(localVersions);
-
-          return { hasChanges: true, updatedCount: toUpsert.length, removedCount: toRemoveIds.length };
+      // Live Exam delete_log reconciliation
+      if (needsDeleteLogCheck) {
+        try {
+          let currentDelGlobal = localGlobalVersion;
+          while (currentDelGlobal < serverGlobalVersion) {
+            const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+            if (deleteLogEvents.length === 0) break;
+            for (const delEvt of deleteLogEvents) {
+              const entityTarget = (delEvt.entity || '').toLowerCase().trim();
+              if (entityTarget === 'live_exam' || entityTarget === 'live_exams' || entityTarget === 'liveexam') {
+                toRemoveIds.push(String(delEvt.entityId));
+              }
+              if (delEvt.globalVersion > currentDelGlobal) {
+                currentDelGlobal = delEvt.globalVersion;
+              }
+            }
+            if (deleteLogEvents.length < 200) break;
+          }
+        } catch (delErr) {
+          console.error('[VersionSync] Live Exam delete_log reconciliation error:', delErr);
+          // Checkpoint rule: DO NOT advance examVersion if delete reconciliation fails
+          throw delErr;
         }
+      }
+
+      const uniqueRemoveIds = Array.from(new Set(toRemoveIds));
+      let updatedCount = 0;
+      let removedCount = 0;
+
+      if (toUpsert.length > 0 || uniqueRemoveIds.length > 0) {
+        await upsertLiveExamsToIDB(toUpsert, uniqueRemoveIds);
+        if (toUpsert.length > 0) await insertLiveExams(toUpsert);
+        for (const id of uniqueRemoveIds) await deleteLiveExamFromSQLite(id);
+
+        const allUpdated = await getLiveExamsFromIDB();
+        try {
+          localStorage.setItem('orjon_live_exams', JSON.stringify(allUpdated));
+        } catch {}
+
+        if (onUpdate) onUpdate(allUpdated);
+
+        updatedCount = toUpsert.length;
+        removedCount = uniqueRemoveIds.length;
       }
 
       localVersions.examVersion = serverExamVersion;
       localVersions.updatedAt = new Date().toISOString();
       await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: updatedCount > 0 || removedCount > 0, updatedCount, removedCount };
     }
 
     return { hasChanges: false, updatedCount: 0, removedCount: 0 };
   } catch (err) {
-    console.warn('[VersionSync] syncLiveExamsMetadataFirst notice:', err);
-    return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+    console.warn('[VersionSync] syncLiveExamsMetadataFirst error:', err);
+    throw err;
   }
 }
 
@@ -661,15 +744,19 @@ export async function syncLiveExamsMetadataFirst(
  * 3. If server routineVersion > local routineVersion: fetches only modified routines (version > localRoutineVersion).
  */
 export async function syncRoutinesMetadataFirst(
-  onUpdate?: (routines: Routine[]) => void
+  onUpdate?: (routines: Routine[]) => void,
+  preloadedVersions?: { serverVersions?: GlobalSyncVersions; localVersions?: GlobalSyncVersions }
 ): Promise<{ hasChanges: boolean; updatedCount: number; removedCount: number }> {
   try {
-    const serverVersions = await getGlobalSyncVersions();
+    const serverVersions = preloadedVersions?.serverVersions || await getGlobalSyncVersions();
     const localVersions = await getLocalSyncVersions();
     const localRoutines = await getRoutinesFromIDB();
 
     const localRoutineVersion = localVersions.routineVersion || 0;
     const serverRoutineVersion = serverVersions.routineVersion || 1;
+    const localGlobalVersion = localVersions.globalVersion || 0;
+    const serverGlobalVersion = serverVersions.globalVersion || 0;
+    const needsDeleteLogCheck = serverGlobalVersion > localGlobalVersion;
 
     if (localRoutineVersion >= serverRoutineVersion && localRoutines.length > 0) {
       console.log(`[VersionSync] Routines up to date (v${localRoutineVersion}). 0 collection reads.`);
@@ -717,10 +804,10 @@ export async function syncRoutinesMetadataFirst(
       );
       const snap = await getDocs(qDiff);
 
-      if (!snap.empty) {
-        const toUpsert: Routine[] = [];
-        const toRemoveIds: string[] = [];
+      const toUpsert: Routine[] = [];
+      const toRemoveIds: string[] = [];
 
+      if (!snap.empty) {
         snap.forEach((d) => {
           const data = d.data();
           const id = String(data.id || d.id);
@@ -736,32 +823,64 @@ export async function syncRoutinesMetadataFirst(
             }));
           }
         });
+      }
 
-        if (toUpsert.length > 0 || toRemoveIds.length > 0) {
-          await upsertRoutinesToIDB(toUpsert, toRemoveIds);
-          if (toUpsert.length > 0) await insertRoutines(toUpsert);
-          for (const id of toRemoveIds) await deleteRoutineFromSQLite(id);
-
-          const allUpdated = await getRoutinesFromIDB();
-          if (onUpdate) onUpdate(allUpdated);
-
-          localVersions.routineVersion = serverRoutineVersion;
-          localVersions.updatedAt = new Date().toISOString();
-          await saveLocalSyncVersions(localVersions);
-
-          return { hasChanges: true, updatedCount: toUpsert.length, removedCount: toRemoveIds.length };
+      // Routine delete_log reconciliation
+      if (needsDeleteLogCheck) {
+        try {
+          let currentDelGlobal = localGlobalVersion;
+          while (currentDelGlobal < serverGlobalVersion) {
+            const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+            if (deleteLogEvents.length === 0) break;
+            for (const delEvt of deleteLogEvents) {
+              const entityTarget = (delEvt.entity || '').toLowerCase().trim();
+              if (entityTarget === 'routine' || entityTarget === 'routines') {
+                toRemoveIds.push(String(delEvt.entityId));
+              }
+              if (delEvt.globalVersion > currentDelGlobal) {
+                currentDelGlobal = delEvt.globalVersion;
+              }
+            }
+            if (deleteLogEvents.length < 200) break;
+          }
+        } catch (delErr) {
+          console.error('[VersionSync] Routine delete_log reconciliation error:', delErr);
+          // Checkpoint rule: DO NOT advance routineVersion if delete reconciliation fails
+          throw delErr;
         }
+      }
+
+      const uniqueRemoveIds = Array.from(new Set(toRemoveIds));
+      let updatedCount = 0;
+      let removedCount = 0;
+
+      if (toUpsert.length > 0 || uniqueRemoveIds.length > 0) {
+        await upsertRoutinesToIDB(toUpsert, uniqueRemoveIds);
+        if (toUpsert.length > 0) await insertRoutines(toUpsert);
+        for (const id of uniqueRemoveIds) await deleteRoutineFromSQLite(id);
+
+        const allUpdated = await getRoutinesFromIDB();
+        try {
+          localStorage.setItem('orjon_routines', JSON.stringify(allUpdated));
+        } catch {}
+
+        if (onUpdate) onUpdate(allUpdated);
+
+        updatedCount = toUpsert.length;
+        removedCount = uniqueRemoveIds.length;
       }
 
       localVersions.routineVersion = serverRoutineVersion;
       localVersions.updatedAt = new Date().toISOString();
       await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: updatedCount > 0 || removedCount > 0, updatedCount, removedCount };
     }
 
     return { hasChanges: false, updatedCount: 0, removedCount: 0 };
   } catch (err) {
-    console.warn('[VersionSync] syncRoutinesMetadataFirst notice:', err);
-    return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+    console.warn('[VersionSync] syncRoutinesMetadataFirst error:', err);
+    throw err;
   }
 }
 
@@ -907,6 +1026,181 @@ export async function syncCouponsMetadataFirst(
   } catch (err) {
     console.warn('[VersionSync] syncCouponsMetadataFirst notice:', err);
     return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+  }
+}
+
+/**
+ * Metadata-First Notices Sync (Phase 3)
+ * 1. Checks `meta/versions` (getGlobalSyncVersions).
+ * 2. Compares server noticeVersion vs local noticeVersion.
+ * 3. If localNoticeVersion >= serverNoticeVersion and local cache exists: 0 collection reads!
+ * 4. Initial baseline download if localNoticeVersion === 0 && cache empty.
+ * 5. Differential query where('version', '>', localNoticeVersion) when serverNoticeVersion > localNoticeVersion.
+ * 6. Delete log reconciliation for notices if serverGlobalVersion > localGlobalVersion.
+ * 7. Updates local cache and persists local versions.
+ */
+export async function syncNoticesMetadataFirst(
+  onUpdate?: (notices: Notice[]) => void,
+  preloadedVersions?: { serverVersions?: GlobalSyncVersions; localVersions?: GlobalSyncVersions }
+): Promise<{ hasChanges: boolean; updatedCount: number; removedCount: number }> {
+  try {
+    const serverVersions = preloadedVersions?.serverVersions || await getGlobalSyncVersions();
+    const localVersions = await getLocalSyncVersions();
+
+    let localNotices: Notice[] = [];
+    try {
+      const raw = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
+      if (raw) localNotices = JSON.parse(raw);
+    } catch {}
+
+    const localNoticeVersion = localVersions.noticeVersion || 0;
+    const serverNoticeVersion = serverVersions.noticeVersion || 1;
+    const localGlobalVersion = localVersions.globalVersion || 0;
+    const serverGlobalVersion = serverVersions.globalVersion || 0;
+
+    // Check if delete_log reconciliation is needed even if noticeVersion hasn't changed
+    const needsDeleteLogCheck = serverGlobalVersion > localGlobalVersion;
+
+    // Notice Version Gate: Zero reads optimization when notice version matches, local cache exists, and no delete_log check is pending
+    if (localNoticeVersion >= serverNoticeVersion && localNotices.length > 0 && !needsDeleteLogCheck) {
+      console.log(`[VersionSync] Notices up to date (v${localNoticeVersion}). 0 collection reads.`);
+      return { hasChanges: false, updatedCount: 0, removedCount: 0 };
+    }
+
+    // Helper to reconcile delete_log for notices
+    const reconcileDeleteLogForNotices = async (currentList: Notice[]): Promise<{ updatedList: Notice[]; removedCount: number }> => {
+      if (!needsDeleteLogCheck) return { updatedList: currentList, removedCount: 0 };
+      let removedCount = 0;
+      let workingList = [...currentList];
+      try {
+        let currentDelGlobal = localGlobalVersion;
+        while (currentDelGlobal < serverGlobalVersion) {
+          const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+          if (deleteLogEvents.length === 0) break;
+          for (const delEvt of deleteLogEvents) {
+            const entityTarget = (delEvt.entity || '').toLowerCase().trim();
+            if (entityTarget === 'notice' || entityTarget === 'notices') {
+              const delId = String(delEvt.entityId);
+              const beforeLen = workingList.length;
+              workingList = workingList.filter(n => String(n.id) !== delId);
+              if (workingList.length < beforeLen) {
+                removedCount += (beforeLen - workingList.length);
+              }
+            }
+            if (delEvt.globalVersion > currentDelGlobal) {
+              currentDelGlobal = delEvt.globalVersion;
+            }
+          }
+          if (deleteLogEvents.length < 200) break;
+        }
+      } catch (delErr) {
+        console.error('[VersionSync] Reconcile delete_log error for notices:', delErr);
+        throw delErr;
+      }
+      return { updatedList: workingList, removedCount };
+    };
+
+    // Case 2: Initial fresh sync (localNoticeVersion is 0 and cache is empty)
+    if (localNoticeVersion === 0 && localNotices.length === 0) {
+      console.log(`[VersionSync] Initial notices baseline sync (v${serverNoticeVersion})...`);
+      const snap = await getDocs(collection(db, 'notices'));
+      const activeNotices: Notice[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        if (!data.deletedAt && !data.isDeleted) {
+          activeNotices.push({
+            ...data,
+            id: String(data.id || d.id),
+            version: data.version || serverNoticeVersion,
+            createdAt: data.createdAt || new Date().toISOString()
+          } as Notice);
+        }
+      });
+
+      // Sort notices newest first by createdAt/publishedAt if available
+      activeNotices.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+      try {
+        localStorage.setItem('orjon_notices', JSON.stringify(activeNotices));
+      } catch {}
+
+      if (onUpdate) onUpdate(activeNotices);
+
+      localVersions.noticeVersion = serverNoticeVersion;
+      localVersions.updatedAt = new Date().toISOString();
+      await saveLocalSyncVersions(localVersions);
+
+      return { hasChanges: activeNotices.length > 0, updatedCount: activeNotices.length, removedCount: 0 };
+    }
+
+    // Case 3: Differential sync: serverNoticeVersion > localNoticeVersion
+    let updatedCount = 0;
+    let removedCount = 0;
+    let workingNotices = [...localNotices];
+
+    if (serverNoticeVersion > localNoticeVersion) {
+      console.log(`[VersionSync] Differential notices sync: local v${localNoticeVersion} -> server v${serverNoticeVersion}`);
+      const qDiff = query(
+        collection(db, 'notices'),
+        where('version', '>', localNoticeVersion)
+      );
+      const snap = await getDocs(qDiff);
+
+      if (!snap.empty) {
+        const toUpsertMap = new Map<string, Notice>();
+        const toRemoveIds = new Set<string>();
+
+        snap.forEach((d) => {
+          const data = d.data();
+          const noticeId = String(data.id || d.id);
+          if (data.deletedAt || data.isDeleted) {
+            toRemoveIds.add(noticeId);
+          } else {
+            toUpsertMap.set(noticeId, {
+              ...data,
+              id: noticeId,
+              version: data.version || serverNoticeVersion,
+              createdAt: data.createdAt || new Date().toISOString()
+            } as Notice);
+          }
+        });
+
+        workingNotices = workingNotices.filter(n => !toRemoveIds.has(String(n.id)) && !toUpsertMap.has(String(n.id)));
+        workingNotices = [...Array.from(toUpsertMap.values()), ...workingNotices];
+        updatedCount += toUpsertMap.size;
+        removedCount += toRemoveIds.size;
+      }
+    }
+
+    // Step 4: Reconcile delete_log events if globalVersion advanced
+    if (needsDeleteLogCheck) {
+      const deleteReconcileRes = await reconcileDeleteLogForNotices(workingNotices);
+      workingNotices = deleteReconcileRes.updatedList;
+      removedCount += deleteReconcileRes.removedCount;
+    }
+
+    // Sort newest first
+    workingNotices.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const hasChanges = updatedCount > 0 || removedCount > 0;
+    if (hasChanges || serverNoticeVersion > localNoticeVersion || needsDeleteLogCheck) {
+      try {
+        localStorage.setItem('orjon_notices', JSON.stringify(workingNotices));
+      } catch {}
+
+      if (hasChanges && onUpdate) {
+        onUpdate(workingNotices);
+      }
+
+      localVersions.noticeVersion = serverNoticeVersion;
+      localVersions.updatedAt = new Date().toISOString();
+      await saveLocalSyncVersions(localVersions);
+    }
+
+    return { hasChanges, updatedCount, removedCount };
+  } catch (err) {
+    console.warn('[VersionSync] syncNoticesMetadataFirst error:', err);
+    throw err;
   }
 }
 

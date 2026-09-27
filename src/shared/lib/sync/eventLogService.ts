@@ -8,7 +8,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GlobalSyncVersions } from '../../types';
+import { GlobalSyncVersions, Notice } from '../../types';
 import { isDeleteLogOnlyWritesActive } from './deleteLogWriteActivationService';
 
 export const VERSIONED_COLLECTIONS = [
@@ -18,7 +18,8 @@ export const VERSIONED_COLLECTIONS = [
   'courses',
   'live_exams',
   'routines',
-  'coupons'
+  'coupons',
+  'notices'
 ] as const;
 
 export type VersionedCollectionName = typeof VERSIONED_COLLECTIONS[number];
@@ -32,6 +33,7 @@ export function getEntityTypeForCollection(col: string): string {
     case 'live_exams': return 'live_exam';
     case 'routines': return 'routine';
     case 'coupons': return 'coupon';
+    case 'notices': return 'notice';
     default: return col.replace(/s$/, '');
   }
 }
@@ -136,7 +138,8 @@ export type VersionKey =
   | 'examVersion'
   | 'routineVersion'
   | 'couponVersion'
-  | 'paymentSettingsVersion';
+  | 'paymentSettingsVersion'
+  | 'noticeVersion';
 
 export interface AtomicMutationOptions<T = any> {
   collectionName: string;
@@ -408,3 +411,55 @@ export async function getDeleteLogEventsSince(sinceGlobalVersion: number): Promi
     return [];
   }
 }
+
+/**
+ * Atomically soft-deletes a notice document, writes a delete_log entry, and increments noticeVersion + globalVersion.
+ */
+export async function softDeleteNotice(id: string): Promise<AtomicMutationResult> {
+  return await commitAtomicMutationWithEventLog({
+    collectionName: 'notices',
+    entityType: 'notice',
+    entityId: String(id),
+    action: 'delete',
+    versionKey: 'noticeVersion'
+  });
+}
+
+/**
+ * Atomically saves (creates or updates) a notice document, stamps entity version,
+ * increments noticeVersion + globalVersion, and records a change_log event.
+ */
+export async function saveNoticeWithEventLog(
+  noticeData: Partial<Notice> & { text: string; id?: string },
+  action: 'create' | 'update' = 'create'
+): Promise<AtomicMutationResult & { notice: Notice }> {
+  const docId = String(noticeData.id || `notice_${Date.now()}`);
+  const nowIso = new Date().toISOString();
+  const payload: Notice = {
+    ...noticeData,
+    id: docId,
+    text: noticeData.text,
+    createdAt: noticeData.createdAt || nowIso,
+    updatedAt: nowIso,
+    isDeleted: false,
+    deletedAt: null
+  };
+
+  const result = await commitAtomicMutationWithEventLog<Notice>({
+    collectionName: 'notices',
+    entityType: 'notice',
+    entityId: docId,
+    action,
+    versionKey: 'noticeVersion',
+    data: payload
+  });
+
+  return {
+    ...result,
+    notice: {
+      ...payload,
+      version: result.entityVersion
+    }
+  };
+}
+

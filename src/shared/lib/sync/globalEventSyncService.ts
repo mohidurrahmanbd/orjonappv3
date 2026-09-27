@@ -16,7 +16,8 @@ import {
   Routine,
   Coupon,
   PaymentSettings,
-  GlobalSyncVersions
+  GlobalSyncVersions,
+  Notice
 } from '../../types';
 import { ChangeLogEvent, DeleteLogEvent, validateDeleteLogEvent } from './eventLogService';
 import {
@@ -66,6 +67,7 @@ export interface GlobalEventSyncOptions {
   onCoursesUpdate?: (courses: Course[]) => void;
   onLiveExamsUpdate?: (exams: LiveExam[]) => void;
   onRoutinesUpdate?: (routines: Routine[]) => void;
+  onNoticesUpdate?: (notices: Notice[]) => void;
   /**
    * By default, if local globalVersion is 0, the sync service will establish
    * a safe baseline first rather than replaying from 0 (preventing missed pre-Phase 2 data).
@@ -86,6 +88,7 @@ export interface GlobalEventSyncResult {
     routines: number;
     coupons: number;
     paymentSettings: number;
+    notices?: number;
   };
   eventsDeleted: {
     questions: number;
@@ -95,6 +98,7 @@ export interface GlobalEventSyncResult {
     exams: number;
     routines: number;
     coupons: number;
+    notices?: number;
   };
   initialCheckpoint: number;
   finalCheckpoint: number;
@@ -361,6 +365,40 @@ export async function applySingleEventToLocalStorage(event: UnifiedSyncEvent): P
     return;
   }
 
+  // 9. NOTICES
+  if (target === 'notice' || target === 'notices') {
+    const noticeId = String(entityId);
+    let noticesList: Notice[] = [];
+    try {
+      const raw = localStorage.getItem('orjon_notices') || localStorage.getItem('medha_notices');
+      if (raw) noticesList = JSON.parse(raw);
+    } catch {}
+
+    if (isDelete) {
+      noticesList = noticesList.filter(n => String(n.id) !== noticeId);
+    } else {
+      if (!data) throw new Error(`[GlobalEventSync] Missing snapshot data for notice ${noticeId}`);
+      const cleanNotice: Notice = {
+        ...data,
+        id: noticeId,
+        version: event.entityVersion || data.version,
+        updatedAt: data.updatedAt || new Date().toISOString(),
+        isDeleted: false,
+        deletedAt: null
+      };
+      const existingIdx = noticesList.findIndex(n => String(n.id) === noticeId);
+      if (existingIdx >= 0) {
+        noticesList[existingIdx] = cleanNotice;
+      } else {
+        noticesList.unshift(cleanNotice);
+      }
+    }
+    try {
+      localStorage.setItem('orjon_notices', JSON.stringify(noticesList));
+    } catch {}
+    return;
+  }
+
   console.warn(`[GlobalEventSync] Unhandled entity type "${target}" (id: ${entityId}). Skipping.`);
 }
 
@@ -376,6 +414,7 @@ function getVersionKeyForEntity(target: string): keyof GlobalSyncVersions | null
   if (norm === 'live_exam' || norm === 'live_exams' || norm === 'liveexam') return 'examVersion';
   if (norm === 'routine' || norm === 'routines') return 'routineVersion';
   if (norm === 'coupon' || norm === 'coupons') return 'couponVersion';
+  if (norm === 'notice' || norm === 'notices') return 'noticeVersion';
   if (norm === 'payment_settings' || norm === 'paymentsettings') return 'paymentSettingsVersion';
   return null;
 }
@@ -430,7 +469,8 @@ export async function performGlobalEventSync(
       exams: 0,
       routines: 0,
       coupons: 0,
-      paymentSettings: 0
+      paymentSettings: 0,
+      notices: 0
     },
     eventsDeleted: {
       questions: 0,
@@ -439,7 +479,8 @@ export async function performGlobalEventSync(
       courses: 0,
       exams: 0,
       routines: 0,
-      coupons: 0
+      coupons: 0,
+      notices: 0
     },
     initialCheckpoint: 0,
     finalCheckpoint: 0,
@@ -582,6 +623,9 @@ export async function performGlobalEventSync(
         } else if (target.includes('coupon')) {
           if (isDelete) result.eventsDeleted.coupons++;
           else result.eventsApplied.coupons++;
+        } else if (target.includes('notice')) {
+          if (isDelete) (result.eventsDeleted as any).notices = ((result.eventsDeleted as any).notices || 0) + 1;
+          else (result.eventsApplied as any).notices = ((result.eventsApplied as any).notices || 0) + 1;
         } else if (target.includes('payment')) {
           result.eventsApplied.paymentSettings++;
         }

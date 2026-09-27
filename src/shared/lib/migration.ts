@@ -29,7 +29,7 @@ export interface MigrationReport {
   logs: string[];
 }
 
-function getVersionKeyForCollection(collectionName: string): 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion' | null {
+function getVersionKeyForCollection(collectionName: string): 'questionVersion' | 'categoryVersion' | 'subcategoryVersion' | 'courseVersion' | 'examVersion' | 'routineVersion' | 'couponVersion' | 'paymentSettingsVersion' | 'noticeVersion' | null {
   switch (collectionName) {
     case 'courses': return 'courseVersion';
     case 'live_exams': return 'examVersion';
@@ -39,6 +39,7 @@ function getVersionKeyForCollection(collectionName: string): 'questionVersion' |
     case 'subcategories': return 'subcategoryVersion';
     case 'coupons': return 'couponVersion';
     case 'payment_settings': return 'paymentSettingsVersion';
+    case 'notices': return 'noticeVersion';
     default: return null;
   }
 }

@@ -25,8 +25,15 @@ import {
   softDeleteRoutine,
   syncCoursesMetadataFirst,
   syncLiveExamsMetadataFirst,
-  syncRoutinesMetadataFirst
+  syncRoutinesMetadataFirst,
+  getLocalSyncVersions,
+  saveLocalSyncVersions
 } from '../shared/lib/sync/versionSyncService';
+import {
+  commitAtomicMutationWithEventLog,
+  softDeleteNotice,
+  saveNoticeWithEventLog
+} from '../shared/lib/sync/eventLogService';
 import {
   getQuestionsFromIDB,
   saveQuestionsToIDB,
@@ -1059,7 +1066,6 @@ export default function AdminOnlyApp() {
   const updateNoticesDB = (newN: Notice[]) => {
     setNotices(newN);
     localStorage.setItem('orjon_notices', JSON.stringify(newN));
-    syncCollectionToFirestore('notices', newN, 'notice');
   };
 
   const dedupeRoutines = (rList: Routine[]): Routine[] => {
@@ -2196,15 +2202,77 @@ export default function AdminOnlyApp() {
     addAuditLog('বাল্ক প্রশ্ন ফাইল আপলোড (Bulk Upload)', `একসাথে ${questionsList.length} টি নতুন প্রশ্ন আপলোড করা হয়েছে`, 'bulk');
   };
 
-  const handleSaveNotice = (text: string) => {
-    const newNotice: Notice = {
-      id: `notice_${Date.now()}`,
-      text,
-      createdAt: new Date().toISOString()
-    };
-    // We only keep the latest notices
-    updateNoticesDB([newNotice, ...notices]);
+  const handleSaveNotice = async (text: string) => {
+    try {
+      const res = await saveNoticeWithEventLog({ text }, 'create');
+      const updatedNotices = [res.notice, ...notices.filter(n => n.id !== res.notice.id)];
+      setNotices(updatedNotices);
+      localStorage.setItem('orjon_notices', JSON.stringify(updatedNotices));
+
+      try {
+        const local = await getLocalSyncVersions();
+        local.noticeVersion = res.entityVersion;
+        local.globalVersion = res.globalVersion;
+        await saveLocalSyncVersions(local);
+      } catch (verErr) {
+        console.warn('Could not update local sync versions after notice create:', verErr);
+      }
+    } catch (err) {
+      console.error('Failed to commit notice creation with event log:', err);
+      // Fallback local update if network/firestore error
+      const newNotice: Notice = {
+        id: `notice_${Date.now()}`,
+        text,
+        createdAt: new Date().toISOString()
+      };
+      const updatedNotices = [newNotice, ...notices];
+      setNotices(updatedNotices);
+      localStorage.setItem('orjon_notices', JSON.stringify(updatedNotices));
+    }
     addAuditLog('নোটিশ প্রকাশ (Notice)', `নতুন এডমিন নোটিশ প্রকাশ করা হয়েছে: "${text.slice(0, 45)}..."`, 'create');
+  };
+
+  const handleUpdateNotice = async (id: string, text: string) => {
+    const existing = notices.find(n => n.id === id);
+    try {
+      const res = await saveNoticeWithEventLog({ ...(existing || {}), id, text }, 'update');
+      const updatedNotices = notices.map(n => n.id === id ? res.notice : n);
+      setNotices(updatedNotices);
+      localStorage.setItem('orjon_notices', JSON.stringify(updatedNotices));
+
+      try {
+        const local = await getLocalSyncVersions();
+        local.noticeVersion = res.entityVersion;
+        local.globalVersion = res.globalVersion;
+        await saveLocalSyncVersions(local);
+      } catch {}
+      addAuditLog('নোটিশ আপডেট (Notice)', `এডমিন নোটিশ আপডেট করা হয়েছে: "${text.slice(0, 45)}..."`, 'update');
+    } catch (err) {
+      console.error('Failed to update notice with event log:', err);
+    }
+  };
+
+  const handleDeleteNotice = async (id: string): Promise<boolean> => {
+    const target = notices.find(n => n.id === id);
+    try {
+      const res = await softDeleteNotice(id);
+      const remaining = notices.filter(n => n.id !== id);
+      setNotices(remaining);
+      localStorage.setItem('orjon_notices', JSON.stringify(remaining));
+
+      try {
+        const local = await getLocalSyncVersions();
+        local.noticeVersion = res.entityVersion;
+        local.globalVersion = res.globalVersion;
+        await saveLocalSyncVersions(local);
+      } catch {}
+
+      addAuditLog('নোটিশ মুছে ফেলা (Delete Notice)', `নোটিশ মুছে ফেলা হয়েছে: "${target ? target.text.slice(0, 45) : id}"`, 'delete');
+      return true;
+    } catch (err) {
+      console.error('Failed to delete notice with event log:', err);
+      return false;
+    }
   };
 
   const handleCreateLiveExam = (exam: Omit<LiveExam, 'id' | 'createdAt' | 'updatedAt'>) => {
