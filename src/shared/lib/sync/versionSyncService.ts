@@ -106,7 +106,8 @@ const LOCAL_STORAGE_VERSIONS_KEY = 'orjon_sync_versions';
  * - routineVersion: 1 (bundled baseline schema initialized at v1)
  * - couponVersion: 1
  * - paymentSettingsVersion: 1
- * - globalVersion: 10 (chronological event checkpoint corresponding to the bundled baseline snapshot)
+ * - noticeVersion: 1
+ * - globalVersion: 0 (uninitialized on fresh install, established via first module sync)
  * - updatedAt: '2026-09-20T09:32:35.592144+00:00'
  */
 export const BUNDLED_BASELINE_VERSIONS: Readonly<GlobalSyncVersions> = Object.freeze({
@@ -119,7 +120,7 @@ export const BUNDLED_BASELINE_VERSIONS: Readonly<GlobalSyncVersions> = Object.fr
   couponVersion: 1,
   paymentSettingsVersion: 1,
   noticeVersion: 1,
-  globalVersion: 10,
+  globalVersion: 0,
   updatedAt: '2026-09-20T09:32:35.592144+00:00'
 });
 
@@ -133,7 +134,7 @@ export const DEFAULT_GLOBAL_VERSIONS: GlobalSyncVersions = {
   couponVersion: 1,
   paymentSettingsVersion: 1,
   noticeVersion: 1,
-  globalVersion: 10,
+  globalVersion: 0,
   updatedAt: '2026-09-20T09:32:35.592144+00:00'
 };
 

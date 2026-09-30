@@ -599,7 +599,16 @@ export default function MobileApp() {
         ]);
 
         const serverGlobalVersion = serverVersions.globalVersion || 0;
-        const localGlobalVersion = localVersions.globalVersion || 0;
+        let localGlobalVersion = localVersions.globalVersion || 0;
+
+        // Healing guard for existing installs: If localGlobalVersion was corrupted to 10 (ahead of server)
+        // by the legacy hardcoded baseline, reset it to 0 so module gates and delete_log reconcile.
+        if (localGlobalVersion > serverGlobalVersion && serverGlobalVersion > 0) {
+          console.warn(`[MobileApp] Local globalVersion (v${localGlobalVersion}) is ahead of server (v${serverGlobalVersion}). Resetting to 0 to align with server.`);
+          localGlobalVersion = 0;
+          localVersions.globalVersion = 0;
+          await saveLocalSyncVersions(localVersions);
+        }
 
         // Global Version Gate: If global version is unchanged and client is initialized (> 0), STOP
         if (localGlobalVersion >= serverGlobalVersion && localGlobalVersion > 0) {

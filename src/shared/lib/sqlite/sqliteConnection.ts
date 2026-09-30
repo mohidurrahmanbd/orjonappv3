@@ -98,7 +98,7 @@ class WebSQLiteFallback {
       this.tables.sync_meta.set('routineVersion', { key: 'routineVersion', value: '1' });
       this.tables.sync_meta.set('couponVersion', { key: 'couponVersion', value: '1' });
       this.tables.sync_meta.set('paymentSettingsVersion', { key: 'paymentSettingsVersion', value: '1' });
-      this.tables.sync_meta.set('globalVersion', { key: 'globalVersion', value: '10' });
+      this.tables.sync_meta.set('globalVersion', { key: 'globalVersion', value: '0' });
       this.tables.sync_meta.set('updatedAt', { key: 'updatedAt', value: '2026-09-20T09:32:35.592144+00:00' });
     }
   }

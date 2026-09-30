@@ -374,6 +374,7 @@ def generate_database():
         ('categoryVersion', str(versions["categoryVersion"])),
         ('subcategoryVersion', str(versions["subcategoryVersion"])),
         ('questionVersion', str(versions["questionVersion"])),
+        ('globalVersion', '0'),
         ('updatedAt', now_iso)
     ])
 
