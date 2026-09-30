@@ -627,7 +627,7 @@ export default function MobileApp() {
         // 1b. Courses: Independent courseVersion gate & differential sync + delete_log reconciliation
         try {
           await syncCoursesMetadataFirst((updatedCourses) => {
-            if (updatedCourses && updatedCourses.length > 0) {
+            if (Array.isArray(updatedCourses)) {
               setCourses(updatedCourses);
               try {
                 localStorage.setItem('orjon_courses', JSON.stringify(updatedCourses));
@@ -1343,7 +1343,7 @@ export default function MobileApp() {
         }
       }
       await syncCoursesMetadataFirst((updatedCourses) => {
-        if (updatedCourses && updatedCourses.length > 0) {
+        if (Array.isArray(updatedCourses)) {
           setCourses(updatedCourses);
           try {
             localStorage.setItem('orjon_courses', JSON.stringify(updatedCourses));

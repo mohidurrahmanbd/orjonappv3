@@ -495,13 +495,16 @@ export async function syncCoursesMetadataFirst(
     const serverGlobalVersion = serverVersions.globalVersion || 0;
     const needsDeleteLogCheck = serverGlobalVersion > localGlobalVersion;
 
-    // Zero reads optimization: version matches baseline/server
-    if (localCourseVersion >= serverCourseVersion) {
+    // Zero reads optimization: version matches baseline/server AND globalVersion is unchanged
+    if (localCourseVersion >= serverCourseVersion && !needsDeleteLogCheck) {
       console.log(`[VersionSync] Courses up to date (v${localCourseVersion}). 0 collection reads.`);
       return { hasChanges: false, updatedCount: 0, removedCount: 0 };
     }
 
-    // Differential sync: fetch only courses with version > localCourseVersion
+    const toUpsert: Course[] = [];
+    const toRemoveIds: string[] = [];
+
+    // Differential sync: fetch only courses with version > localCourseVersion (0 reads if already current)
     if (serverCourseVersion > localCourseVersion) {
       console.log(`[VersionSync] Differential courses sync: local v${localCourseVersion} -> server v${serverCourseVersion}`);
       const qDiff = query(
@@ -509,9 +512,6 @@ export async function syncCoursesMetadataFirst(
         where('version', '>', localCourseVersion)
       );
       const snap = await getDocs(qDiff);
-
-      const toUpsert: Course[] = [];
-      const toRemoveIds: string[] = [];
 
       if (!snap.empty) {
         snap.forEach((d) => {
@@ -530,58 +530,63 @@ export async function syncCoursesMetadataFirst(
           }
         });
       }
-
-      // Course delete_log reconciliation
-      if (needsDeleteLogCheck) {
-        try {
-          let currentDelGlobal = localGlobalVersion;
-          while (currentDelGlobal < serverGlobalVersion) {
-            const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
-            if (deleteLogEvents.length === 0) break;
-            for (const delEvt of deleteLogEvents) {
-              const entityTarget = (delEvt.entity || '').toLowerCase().trim();
-              if (entityTarget === 'course' || entityTarget === 'courses') {
-                toRemoveIds.push(String(delEvt.entityId));
-              }
-              if (delEvt.globalVersion > currentDelGlobal) {
-                currentDelGlobal = delEvt.globalVersion;
-              }
-            }
-            if (deleteLogEvents.length < 200) break;
-          }
-        } catch (delErr) {
-          console.error('[VersionSync] Course delete_log reconciliation error:', delErr);
-          // Checkpoint rule: DO NOT advance courseVersion if delete reconciliation fails
-          throw delErr;
-        }
-      }
-
-      const uniqueRemoveIds = Array.from(new Set(toRemoveIds));
-      let updatedCount = 0;
-      let removedCount = 0;
-
-      if (toUpsert.length > 0 || uniqueRemoveIds.length > 0) {
-        await upsertCoursesToIDB(toUpsert, uniqueRemoveIds);
-        if (toUpsert.length > 0) await insertCourses(toUpsert);
-        for (const id of uniqueRemoveIds) await deleteCourseFromSQLite(id);
-
-        const allUpdated = await getCoursesFromIDB();
-        try {
-          localStorage.setItem('orjon_courses', JSON.stringify(allUpdated));
-        } catch {}
-
-        if (onUpdate) onUpdate(allUpdated);
-
-        updatedCount = toUpsert.length;
-        removedCount = uniqueRemoveIds.length;
-      }
-
-      localVersions.courseVersion = serverCourseVersion;
-      localVersions.updatedAt = new Date().toISOString();
-      await saveLocalSyncVersions(localVersions);
-
-      return { hasChanges: updatedCount > 0 || removedCount > 0, updatedCount, removedCount };
     }
+
+    // Course delete_log reconciliation (runs if globalVersion advanced, even if courseVersion was already current)
+    if (needsDeleteLogCheck) {
+      try {
+        let currentDelGlobal = localGlobalVersion;
+        while (currentDelGlobal < serverGlobalVersion) {
+          const deleteLogEvents = await fetchDeleteLogPage(currentDelGlobal, 200);
+          if (deleteLogEvents.length === 0) break;
+          for (const delEvt of deleteLogEvents) {
+            const entityTarget = (delEvt.entity || '').toLowerCase().trim();
+            if (entityTarget === 'course' || entityTarget === 'courses') {
+              toRemoveIds.push(String(delEvt.entityId));
+            }
+            if (delEvt.globalVersion > currentDelGlobal) {
+              currentDelGlobal = delEvt.globalVersion;
+            }
+          }
+          if (deleteLogEvents.length < 200) break;
+        }
+      } catch (delErr) {
+        console.error('[VersionSync] Course delete_log reconciliation error:', delErr);
+        // Checkpoint rule: DO NOT advance courseVersion if delete reconciliation fails
+        throw delErr;
+      }
+    }
+
+    const uniqueRemoveIds = Array.from(new Set(toRemoveIds));
+    const removeSet = new Set(uniqueRemoveIds);
+
+    // TARGET 2: Conflict resolution — Deletions win over upserts in memory (prevents resurrection)
+    const safeToUpsert = toUpsert.filter(course => course && course.id && !removeSet.has(String(course.id)));
+    let updatedCount = 0;
+    let removedCount = 0;
+
+    if (safeToUpsert.length > 0 || uniqueRemoveIds.length > 0) {
+      await upsertCoursesToIDB(safeToUpsert, uniqueRemoveIds);
+      if (safeToUpsert.length > 0) await insertCourses(safeToUpsert);
+      for (const id of uniqueRemoveIds) await deleteCourseFromSQLite(id);
+
+      const allUpdated = await getCoursesFromIDB();
+      try {
+        localStorage.setItem('orjon_courses', JSON.stringify(allUpdated));
+      } catch {}
+
+      if (onUpdate) onUpdate(allUpdated);
+
+      updatedCount = safeToUpsert.length;
+      removedCount = uniqueRemoveIds.length;
+    }
+
+    // TARGET 6: Checkpoint Safety — Advance courseVersion ONLY after local reconciliation succeeds
+    localVersions.courseVersion = serverCourseVersion;
+    localVersions.updatedAt = new Date().toISOString();
+    await saveLocalSyncVersions(localVersions);
+
+    return { hasChanges: updatedCount > 0 || removedCount > 0, updatedCount, removedCount };
 
     return { hasChanges: false, updatedCount: 0, removedCount: 0 };
   } catch (err) {
