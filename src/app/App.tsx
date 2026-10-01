@@ -2262,7 +2262,7 @@ export default function App() {
     addAuditLog('নোটিশ প্রকাশ (Notice)', `নতুন এডমিন নোটিশ প্রকাশ করা হয়েছে: "${text.slice(0, 45)}..."`, 'create');
   };
 
-  const handleUpdateNotice = async (id: string, text: string) => {
+  const handleUpdateNotice = async (id: string, text: string): Promise<boolean> => {
     const existing = notices.find(n => n.id === id);
     try {
       const res = await saveNoticeWithEventLog({ ...(existing || {}), id, text }, 'update');
@@ -2277,8 +2277,10 @@ export default function App() {
         await saveLocalSyncVersions(local);
       } catch {}
       addAuditLog('নোটিশ আপডেট (Notice)', `এডমিন নোটিশ আপডেট করা হয়েছে: "${text.slice(0, 45)}..."`, 'update');
+      return true;
     } catch (err) {
       console.error('Failed to update notice with event log:', err);
+      return false;
     }
   };
 
@@ -3148,6 +3150,8 @@ export default function App() {
             onBulkMoveQuestions={handleBulkMoveQuestions}
             onBulkUploadQuestions={handleBulkUploadQuestions}
             onSaveNotice={handleSaveNotice}
+            onUpdateNotice={handleUpdateNotice}
+            onDeleteNotice={handleDeleteNotice}
             onCreateLiveExam={handleCreateLiveExam}
             onUpdateLiveExam={handleUpdateLiveExam}
             onDeleteLiveExam={handleDeleteLiveExam}

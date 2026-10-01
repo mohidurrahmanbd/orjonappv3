@@ -2469,6 +2469,245 @@ export type {
   RollbackResult
 } from './deleteLogWriteActivationService';
 
+// 10. BASELINE ENTITIES METADATA-FIRST DIFFERENTIAL SYNC (CATEGORIES, SUBCATEGORIES, QUESTIONS)
+export interface BaselineSyncOptions {
+  onCategoriesUpdate?: (categories: CategoryItem[]) => void;
+  onSubcategoriesUpdate?: (subcategories: SubcategoryItem[]) => void;
+  onQuestionsUpdate?: (questions: Question[]) => void;
+  preloadedVersions?: {
+    serverVersions?: GlobalSyncVersions;
+    localVersions?: GlobalSyncVersions;
+  };
+}
+
+export interface BaselineSyncResult {
+  hasChanges: boolean;
+  categoriesUpdated: number;
+  subcategoriesUpdated: number;
+  questionsUpdated: number;
+  serverVersions: GlobalSyncVersions;
+  localVersions: GlobalSyncVersions;
+}
+
+/**
+ * Metadata-first Differential Incremental Sync for Bundled Baseline Entities:
+ * - Categories
+ * - Subcategories
+ * - Questions
+ *
+ * Sequence:
+ * 1. Checks meta/versions (serverVersions) vs localVersions.
+ * 2. If serverVersion > localVersion, queries ONLY modified documents where version > localVersion.
+ * 3. Updates Local SQLite, IndexedDB, localStorage, and React state via callbacks.
+ * 4. Advances localVersion checkpoint.
+ * If serverVersion === localVersion: ZERO Firestore collection reads.
+ */
+export async function syncBaselineEntitiesMetadataFirst(
+  options: BaselineSyncOptions = {}
+): Promise<BaselineSyncResult> {
+  const result: BaselineSyncResult = {
+    hasChanges: false,
+    categoriesUpdated: 0,
+    subcategoriesUpdated: 0,
+    questionsUpdated: 0,
+    serverVersions: { ...DEFAULT_GLOBAL_VERSIONS },
+    localVersions: { ...DEFAULT_GLOBAL_VERSIONS }
+  };
+
+  try {
+    const serverVersions = options.preloadedVersions?.serverVersions || await getGlobalSyncVersions();
+    const localVersions = options.preloadedVersions?.localVersions || await getLocalSyncVersions();
+
+    result.serverVersions = serverVersions;
+    result.localVersions = { ...localVersions };
+
+    const updatedLocalVersions = { ...localVersions };
+
+    // --- 1. CATEGORIES SYNC ---
+    try {
+      const effectiveLocalCatVersion = (localVersions.categoryVersion && localVersions.categoryVersion > 0)
+        ? localVersions.categoryVersion
+        : BUNDLED_BASELINE_VERSIONS.categoryVersion;
+
+      if (serverVersions.categoryVersion > effectiveLocalCatVersion) {
+        console.log(`[BaselineSync] Category version upgrade: server v${serverVersions.categoryVersion} > local v${effectiveLocalCatVersion}. Fetching differential...`);
+        const qDiff = query(
+          collection(db, 'categories'),
+          where('version', '>', effectiveLocalCatVersion)
+        );
+        const snap = await getDocs(qDiff);
+
+        if (!snap.empty) {
+          const toUpsert: CategoryItem[] = [];
+          const toRemoveIds: string[] = [];
+
+          snap.forEach((d) => {
+            const data = d.data();
+            const catId = String(data.id || d.id);
+            if (data.deletedAt || data.isDeleted) {
+              toRemoveIds.push(catId);
+            } else {
+              toUpsert.push({
+                id: catId,
+                name: data.name || '',
+                subHeading: data.subHeading || undefined,
+                version: data.version || serverVersions.categoryVersion,
+                updatedAt: data.updatedAt || new Date().toISOString(),
+                deletedAt: null
+              });
+            }
+          });
+
+          if (toUpsert.length > 0 || toRemoveIds.length > 0) {
+            await upsertCategoriesToIDB(toUpsert, toRemoveIds);
+            if (toUpsert.length > 0) await insertCategories(toUpsert);
+            for (const id of toRemoveIds) await deleteCategoryFromSQLite(id);
+
+            result.categoriesUpdated = toUpsert.length;
+            result.hasChanges = true;
+
+            const allUpdated = await getCategoriesFromIDB();
+            try {
+              localStorage.setItem('orjon_categories', JSON.stringify(allUpdated));
+            } catch {}
+            options.onCategoriesUpdate?.(allUpdated);
+          }
+        }
+        updatedLocalVersions.categoryVersion = serverVersions.categoryVersion;
+      }
+    } catch (cErr) {
+      console.warn('[BaselineSync] Categories sync notice:', cErr);
+    }
+
+    // --- 2. SUBCATEGORIES SYNC ---
+    try {
+      const effectiveLocalSubVersion = (localVersions.subcategoryVersion && localVersions.subcategoryVersion > 0)
+        ? localVersions.subcategoryVersion
+        : BUNDLED_BASELINE_VERSIONS.subcategoryVersion;
+
+      if (serverVersions.subcategoryVersion > effectiveLocalSubVersion) {
+        console.log(`[BaselineSync] Subcategory version upgrade: server v${serverVersions.subcategoryVersion} > local v${effectiveLocalSubVersion}. Fetching differential...`);
+        const qDiff = query(
+          collection(db, 'subcategories'),
+          where('version', '>', effectiveLocalSubVersion)
+        );
+        const snap = await getDocs(qDiff);
+
+        if (!snap.empty) {
+          const toUpsert: SubcategoryItem[] = [];
+          const toRemoveIds: string[] = [];
+
+          snap.forEach((d) => {
+            const data = d.data();
+            const subId = String(data.id || d.id);
+            if (data.deletedAt || data.isDeleted) {
+              toRemoveIds.push(subId);
+            } else {
+              toUpsert.push({
+                id: subId,
+                name: data.name || '',
+                parentCategory: data.parentCategory || '',
+                parentCategoryId: data.parentCategoryId || undefined,
+                date: data.date || undefined,
+                subHeading: data.subHeading || undefined,
+                text: data.text || undefined,
+                details: data.details || undefined,
+                createdAt: data.createdAt || undefined,
+                updatedAt: data.updatedAt || new Date().toISOString(),
+                version: data.version || serverVersions.subcategoryVersion,
+                deletedAt: null
+              });
+            }
+          });
+
+          if (toUpsert.length > 0 || toRemoveIds.length > 0) {
+            await upsertSubcategoriesToIDB(toUpsert, toRemoveIds);
+            if (toUpsert.length > 0) await insertSubcategories(toUpsert);
+            for (const id of toRemoveIds) await deleteSubcategoryFromSQLite(id);
+
+            result.subcategoriesUpdated = toUpsert.length;
+            result.hasChanges = true;
+
+            const allUpdated = await getSubcategoriesFromIDB();
+            try {
+              localStorage.setItem('orjon_subcategories', JSON.stringify(allUpdated));
+            } catch {}
+            options.onSubcategoriesUpdate?.(allUpdated);
+          }
+        }
+        updatedLocalVersions.subcategoryVersion = serverVersions.subcategoryVersion;
+      }
+    } catch (sErr) {
+      console.warn('[BaselineSync] Subcategories sync notice:', sErr);
+    }
+
+    // --- 3. QUESTIONS SYNC ---
+    try {
+      const effectiveLocalQVersion = (localVersions.questionVersion && localVersions.questionVersion > 0)
+        ? localVersions.questionVersion
+        : BUNDLED_BASELINE_VERSIONS.questionVersion;
+
+      if (serverVersions.questionVersion > effectiveLocalQVersion) {
+        console.log(`[BaselineSync] Question version upgrade: server v${serverVersions.questionVersion} > local v${effectiveLocalQVersion}. Fetching differential...`);
+        const qDiff = query(
+          collection(db, 'questions'),
+          where('version', '>', effectiveLocalQVersion)
+        );
+        const snap = await getDocs(qDiff);
+
+        if (!snap.empty) {
+          const toUpsert: Question[] = [];
+          const toRemoveIds: string[] = [];
+
+          snap.forEach((d) => {
+            const data = d.data();
+            const qId = String(data.id || d.id);
+            const isDeleted = Boolean(data.deletedAt || data.isDeleted);
+
+            if (isDeleted) {
+              toRemoveIds.push(qId);
+            } else {
+              toUpsert.push(normalizeQuestion({
+                ...data,
+                id: qId,
+                version: data.version || serverVersions.questionVersion,
+                updatedAt: data.updatedAt || new Date().toISOString(),
+                deletedAt: null
+              }));
+            }
+          });
+
+          if (toUpsert.length > 0 || toRemoveIds.length > 0) {
+            await upsertQuestionsToIDB(toUpsert, toRemoveIds);
+            if (toUpsert.length > 0) await insertQuestions(toUpsert);
+            if (toRemoveIds.length > 0) await deleteQuestionsFromSQLite(toRemoveIds);
+
+            result.questionsUpdated = toUpsert.length;
+            result.hasChanges = true;
+
+            const allUpdated = await getQuestionsFromIDB();
+            try {
+              localStorage.setItem('orjon_questions', JSON.stringify(allUpdated));
+            } catch {}
+            options.onQuestionsUpdate?.(allUpdated);
+          }
+        }
+        updatedLocalVersions.questionVersion = serverVersions.questionVersion;
+      }
+    } catch (qErr) {
+      console.warn('[BaselineSync] Questions sync notice:', qErr);
+    }
+
+    if (result.hasChanges) {
+      await saveLocalSyncVersions(updatedLocalVersions);
+    }
+  } catch (err) {
+    console.warn('[BaselineSync] Baseline sync notice:', err);
+  }
+
+  return result;
+}
+
 
 
 

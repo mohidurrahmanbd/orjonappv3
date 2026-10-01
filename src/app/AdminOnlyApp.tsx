@@ -26,6 +26,7 @@ import {
   syncCoursesMetadataFirst,
   syncLiveExamsMetadataFirst,
   syncRoutinesMetadataFirst,
+  syncBaselineEntitiesMetadataFirst,
   getLocalSyncVersions,
   saveLocalSyncVersions
 } from '../shared/lib/sync/versionSyncService';
@@ -218,7 +219,7 @@ export default function AdminOnlyApp() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [otpDeliveryMessage, setOtpDeliveryMessage] = useState<{ text: string; isError: boolean } | null>(null);
-  const hasStartupSubcategoriesSyncedRef = useRef(false);
+  const hasStartupBaselineSyncedRef = useRef(false);
 
   // Resend OTP Cooldown Timer Effect
   useEffect(() => {
@@ -368,15 +369,19 @@ export default function AdminOnlyApp() {
 
     setQuestions(normalizedQ);
 
-    // Initialize SQLite (Primary Source)
+    // Initialize SQLite (automatically copies questions.db from APK assets on native if not present, or seeds web fallback)
     initSQLite().then(async () => {
-      try {
-        console.log('[SQLite] Initialized successfully in App.tsx. Loading primary data from SQLite...');
-        const [sqliteCats, sqliteSubs, sqliteQs] = await Promise.all([
+       try {
+        console.log('[SQLite] Initialized successfully. Loading primary data from SQLite for Admin...');
+        const [rawCats, rawSubs, rawQs] = await Promise.all([
           getSQLiteCategories(),
           getSQLiteSubcategories(),
           getSQLiteQuestions(2000, 0)
         ]);
+
+        const sqliteCats = (rawCats || []).filter(item => item && !(item as any).isDeleted && !(item as any).deletedAt);
+        const sqliteSubs = (rawSubs || []).filter(item => item && !(item as any).isDeleted && !(item as any).deletedAt);
+        const sqliteQs = (rawQs || []).filter(item => item && !item.isDeleted && !item.deletedAt);
 
         if (sqliteCats && sqliteCats.length > 0) {
           setCategories(sqliteCats);
@@ -404,16 +409,6 @@ export default function AdminOnlyApp() {
           }
         }
 
-        // Version-gated differential sync (0 collection reads if versions match, runs once per launch)
-        if (!hasStartupSubcategoriesSyncedRef.current) {
-          hasStartupSubcategoriesSyncedRef.current = true;
-          performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
-            if (updatedSubs && updatedSubs.length > 0) {
-              setSubcategories(updatedSubs);
-            }
-          }).catch(() => {});
-        }
-
         if (sqliteQs && sqliteQs.length > 0) {
           const normalizedSQLiteQ = sqliteQs.map(q => {
             let cat = q.category || '';
@@ -434,16 +429,40 @@ export default function AdminOnlyApp() {
         } else if (normalizedQ.length > 0) {
           insertSQLiteQuestions(normalizedQ).catch(() => {});
         }
+
+        // Version Check & Incremental Sync (Metadata-First) for Baseline Entities: categories, subcategories, questions
+        if (!hasStartupBaselineSyncedRef.current) {
+          hasStartupBaselineSyncedRef.current = true;
+          syncBaselineEntitiesMetadataFirst({
+            onCategoriesUpdate: (updatedCats) => {
+              if (updatedCats && updatedCats.length > 0) setCategories(updatedCats);
+            },
+            onSubcategoriesUpdate: (updatedSubs) => {
+              if (updatedSubs && updatedSubs.length > 0) setSubcategories(updatedSubs);
+            },
+            onQuestionsUpdate: (updatedQs) => {
+              if (updatedQs && updatedQs.length > 0) setQuestions(dedupeQuestions(updatedQs));
+            }
+          }).catch(syncErr => {
+            console.warn('[AdminOnlyApp] Baseline incremental sync notice:', syncErr);
+          });
+        }
       } catch (sqlErr) {
-        console.warn('[SQLite] Primary loading notice in App.tsx:', sqlErr);
+        console.warn('[SQLite] Primary loading notice in AdminOnlyApp:', sqlErr);
       }
     }).catch(err => {
-      console.warn('[SQLite] Init notice in App.tsx:', err);
-      if (!hasStartupSubcategoriesSyncedRef.current) {
-        hasStartupSubcategoriesSyncedRef.current = true;
-        performIncrementalSubcategorySyncFromFirestore((updatedSubs) => {
-          if (updatedSubs && updatedSubs.length > 0) {
-            setSubcategories(updatedSubs);
+      console.warn('[SQLite] Init notice in AdminOnlyApp:', err);
+      if (!hasStartupBaselineSyncedRef.current) {
+        hasStartupBaselineSyncedRef.current = true;
+        syncBaselineEntitiesMetadataFirst({
+          onCategoriesUpdate: (updatedCats) => {
+            if (updatedCats && updatedCats.length > 0) setCategories(updatedCats);
+          },
+          onSubcategoriesUpdate: (updatedSubs) => {
+            if (updatedSubs && updatedSubs.length > 0) setSubcategories(updatedSubs);
+          },
+          onQuestionsUpdate: (updatedQs) => {
+            if (updatedQs && updatedQs.length > 0) setQuestions(dedupeQuestions(updatedQs));
           }
         }).catch(() => {});
       }
@@ -649,16 +668,25 @@ export default function AdminOnlyApp() {
       setBookmarks([]);
     }
 
-    // Categories database seed
+    // Categories database seed (Fallback if not yet loaded from SQLite)
     const storedCat = localStorage.getItem('orjon_categories') || localStorage.getItem('medha_categories');
-    const targetCats: CategoryItem[] = [
-      { id: 'cat-prep', name: 'বিষয়ভিত্তিক প্রস্তুতি' },
-      { id: 'cat-job', name: 'জব সলিউশন পরীক্ষা' },
-      { id: 'cat-year', name: 'সাল ভিত্তিক জব সলিউশন' },
-      { id: 'cat-current', name: 'সাম্প্রতিক বিষয়াবলী' }
-    ];
-    setCategories(targetCats);
-    localStorage.setItem('orjon_categories', JSON.stringify(targetCats));
+    if (storedCat) {
+      try {
+        const parsed = JSON.parse(storedCat);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCategories(parsed);
+        }
+      } catch {}
+    } else {
+      const targetCats: CategoryItem[] = [
+        { id: 'cat-prep', name: 'বিষয়ভিত্তিক প্রস্তুতি' },
+        { id: 'cat-job', name: 'জব সলিউশন পরীক্ষা' },
+        { id: 'cat-year', name: 'সাল ভিত্তিক জব সলিউশন' },
+        { id: 'cat-current', name: 'সাম্প্রতিক বিষয়াবলী' }
+      ];
+      setCategories(targetCats);
+      localStorage.setItem('orjon_categories', JSON.stringify(targetCats));
+    }
 
     // Subcategories database seed
     const storedSubcat = localStorage.getItem('orjon_subcategories') || localStorage.getItem('medha_subcategories');
@@ -2232,7 +2260,7 @@ export default function AdminOnlyApp() {
     addAuditLog('নোটিশ প্রকাশ (Notice)', `নতুন এডমিন নোটিশ প্রকাশ করা হয়েছে: "${text.slice(0, 45)}..."`, 'create');
   };
 
-  const handleUpdateNotice = async (id: string, text: string) => {
+  const handleUpdateNotice = async (id: string, text: string): Promise<boolean> => {
     const existing = notices.find(n => n.id === id);
     try {
       const res = await saveNoticeWithEventLog({ ...(existing || {}), id, text }, 'update');
@@ -2247,8 +2275,10 @@ export default function AdminOnlyApp() {
         await saveLocalSyncVersions(local);
       } catch {}
       addAuditLog('নোটিশ আপডেট (Notice)', `এডমিন নোটিশ আপডেট করা হয়েছে: "${text.slice(0, 45)}..."`, 'update');
+      return true;
     } catch (err) {
       console.error('Failed to update notice with event log:', err);
+      return false;
     }
   };
 
@@ -3047,6 +3077,8 @@ export default function AdminOnlyApp() {
             onBulkMoveQuestions={handleBulkMoveQuestions}
             onBulkUploadQuestions={handleBulkUploadQuestions}
             onSaveNotice={handleSaveNotice}
+            onUpdateNotice={handleUpdateNotice}
+            onDeleteNotice={handleDeleteNotice}
             onCreateLiveExam={handleCreateLiveExam}
             onUpdateLiveExam={handleUpdateLiveExam}
             onDeleteLiveExam={handleDeleteLiveExam}

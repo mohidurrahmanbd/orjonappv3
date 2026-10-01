@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime } from '../shared/types';
+import { Question, LiveExam, Notice, Routine, ScheduledExamConfig, User, Attempt, CategoryItem, SubcategoryItem, AuditLog, Course, Coupon, CourseEnrollment, PaymentSettings, DEFAULT_PAYMENT_SETTINGS, formatBengaliDate, formatBengaliDateTime, GlobalSyncVersions } from '../shared/types';
 import { 
   Plus, Trash2, Edit, Upload, BookOpen, Users, 
   Settings, AlertCircle, Calendar, Award, X, RefreshCw, FolderTree,
@@ -23,6 +23,7 @@ import {
 
 import UserGrowthChart from '../admin/UserGrowthChart';
 import { downloadCourseRoutinePDF } from '../shared/lib/pdfGenerator';
+import { getLocalSyncVersions } from '../shared/lib/sync/versionSyncService';
 import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchicalMCQModal';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../shared/lib/routineUtils';
 import CurrentAffairsAdmin from '../admin/CurrentAffairsAdmin';
@@ -101,6 +102,8 @@ interface AdminPanelProps {
   onBulkMoveQuestions: (ids: string[], targetCategory: string, targetSubcategory?: string, mode?: 'move' | 'link') => void;
   onBulkUploadQuestions: (questionsList: Omit<Question, 'id'>[]) => void;
   onSaveNotice: (text: string) => void;
+  onUpdateNotice?: (id: string, text: string) => Promise<boolean | void> | void;
+  onDeleteNotice?: (id: string) => Promise<boolean | void> | void;
   onCreateLiveExam: (exam: Omit<LiveExam, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateLiveExam?: (id: string, updatedExam: Partial<LiveExam>) => void;
   onDeleteLiveExam: (id: string) => Promise<boolean> | void;
@@ -250,6 +253,8 @@ export default function AdminPanel({
   onBulkMoveQuestions,
   onBulkUploadQuestions,
   onSaveNotice,
+  onUpdateNotice,
+  onDeleteNotice,
   onCreateLiveExam,
   onUpdateLiveExam,
   onDeleteLiveExam,
@@ -1350,6 +1355,13 @@ export default function AdminPanel({
 
   // Exam and Notice settings states
   const [noticeText, setNoticeText] = useState(notices[0]?.text || '');
+  const [editingNoticeId, setEditingNoticeId] = useState<string | null>(null);
+  const [isNoticeSubmitting, setIsNoticeSubmitting] = useState(false);
+  const [syncVersions, setSyncVersions] = useState<GlobalSyncVersions | null>(null);
+
+  useEffect(() => {
+    getLocalSyncVersions().then(setSyncVersions).catch(() => {});
+  }, [notices]);
   const [examTitle, setExamTitle] = useState('');
   const [examQLimit, setExamQLimit] = useState(10);
   const [examTimeLimit, setExamTimeLimit] = useState(10);
@@ -4041,14 +4053,115 @@ export default function AdminPanel({
     }
   };
 
-  // Notice & Exam publish handlers
-  const handleSaveNoticeText = () => {
+  // Notice management helpers & handlers
+  const sortedNotices = useMemo(() => {
+    return [...(notices || [])]
+      .filter(n => !n.isDeleted && !n.deletedAt)
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  }, [notices]);
+
+  const getNoticeBadge = (n: Notice) => {
+    if (n.isDeleted || n.deletedAt) {
+      return {
+        type: 'DELETE' as const,
+        label: 'DELETE',
+        bg: 'bg-rose-100 text-rose-700 border-rose-200',
+        statusText: 'মুছে ফেলা (Soft Deleted)'
+      };
+    }
+    const isUpdated = Boolean(
+      n.updatedAt &&
+      n.createdAt &&
+      (new Date(n.updatedAt).getTime() > new Date(n.createdAt).getTime() + 1000 ||
+       ((n.version ?? 1) > 1 && n.updatedAt !== n.createdAt))
+    );
+    if (isUpdated) {
+      return {
+        type: 'UPDATE' as const,
+        label: 'UPDATE',
+        bg: 'bg-amber-100 text-amber-800 border-amber-200',
+        statusText: 'আপডেট করা (Updated)'
+      };
+    }
+    return {
+      type: 'ADD' as const,
+      label: 'ADD',
+      bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      statusText: 'সক্রিয় (Active)'
+    };
+  };
+
+  const handleStartEditNotice = (notice: Notice) => {
+    setEditingNoticeId(notice.id);
+    setNoticeText(notice.text);
+  };
+
+  const handleCancelEditNotice = () => {
+    setEditingNoticeId(null);
+    setNoticeText('');
+  };
+
+  const handleSaveNoticeText = async () => {
     if (!noticeText.trim()) {
       alert('নোটিশের জন্য বিবরণ লিখুন!');
       return;
     }
-    onSaveNotice(noticeText.trim());
-    alert('📢 নোটিশ বোর্ড সফলভাবে আপডেট করা হয়েছে!');
+    setIsNoticeSubmitting(true);
+    try {
+      if (editingNoticeId) {
+        if (onUpdateNotice) {
+          const success = await onUpdateNotice(editingNoticeId, noticeText.trim());
+          if (success !== false) {
+            alert('📢 নোটিশ সফলভাবে আপডেট করা হয়েছে!');
+            setEditingNoticeId(null);
+            setNoticeText('');
+          } else {
+            alert('নোটিশ আপডেট করতে ব্যর্থ হয়েছে!');
+          }
+        } else {
+          alert('নোটিশ আপডেট হ্যান্ডলার সংযুক্ত নয়!');
+        }
+      } else {
+        onSaveNotice(noticeText.trim());
+        alert('📢 নতুন নোটিশ সফলভাবে পাবলিশ করা হয়েছে!');
+        setNoticeText('');
+      }
+      getLocalSyncVersions().then(setSyncVersions).catch(() => {});
+    } catch (err) {
+      console.error('Failed to save/update notice:', err);
+      alert('নোটিশ প্রসেস করতে সমস্যা হয়েছে!');
+    } finally {
+      setIsNoticeSubmitting(false);
+    }
+  };
+
+  const handleDeleteNoticeClick = async (id: string, text: string) => {
+    if (!window.confirm(`আপনি কি নিশ্চিতভাবে এই নোটিশটি মুছে ফেলতে চান?\n\n"${text.slice(0, 50)}..."`)) {
+      return;
+    }
+    setIsNoticeSubmitting(true);
+    try {
+      if (onDeleteNotice) {
+        const success = await onDeleteNotice(id);
+        if (success !== false) {
+          alert('🗑️ নোটিশ সফলভাবে মুছে ফেলা হয়েছে!');
+          if (editingNoticeId === id) {
+            setEditingNoticeId(null);
+            setNoticeText('');
+          }
+        } else {
+          alert('নোটিশ মুছে ফেলতে ব্যর্থ হয়েছে!');
+        }
+      } else {
+        alert('নোটিশ ডিলিট হ্যান্ডলার সংযুক্ত নয়!');
+      }
+      getLocalSyncVersions().then(setSyncVersions).catch(() => {});
+    } catch (err) {
+      console.error('Failed to delete notice:', err);
+      alert('নোটিশ মুছে ফেলতে সমস্যা হয়েছে!');
+    } finally {
+      setIsNoticeSubmitting(false);
+    }
   };
 
   const MANUAL_CATEGORIES = [
@@ -7829,28 +7942,205 @@ export default function AdminPanel({
       {/* 3. EXAMS & NOTICE BOARD */}
       {activeTab === 'exams' && (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
-          {/* Notice Board Settings */}
-          <div className="md:col-span-5 bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
-            <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-indigo-600" />
-              📢 নোটিশ বোর্ড আপডেট করুন
-            </h3>
-            <div>
-              <label className="block text-gray-500 mb-1">সর্বশেষ নোটিশ টেক্সট:</label>
-              <textarea 
-                rows={4}
-                value={noticeText}
-                onChange={e => setNoticeText(e.target.value)}
-                placeholder="নতুন কোনো আপডেট থাকলে এখানে লিখুন যা সরাসরি হোমপেজে প্রদর্শিত হবে..."
-                className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none"
-              />
+          {/* Notice Board Settings & Hybrid Version Management */}
+          <div className="md:col-span-5 flex flex-col gap-4">
+            
+            {/* Hybrid Versioning Architecture Status Card */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-2xl border border-indigo-800/40 shadow-sm flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <span className="font-extrabold text-xs tracking-wide">Hybrid Versioning Status</span>
+                </div>
+                <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-mono px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Metadata-First
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-300 leading-tight">
+                নোটিশ পরিবর্তন (Add, Update, Delete) স্বয়ংক্রিয়ভাবে <code className="text-amber-300 font-mono">noticeVersion</code> ও <code className="text-cyan-300 font-mono">globalVersion</code> বৃদ্ধি করে চেঞ্জ/ডিলিট লগ রেকর্ড করে।
+              </p>
+              <div className="grid grid-cols-3 gap-2 font-mono text-center">
+                <div className="bg-slate-800/90 p-2 rounded-xl border border-slate-700/80">
+                  <span className="text-[10px] text-gray-400 block uppercase font-sans">noticeVersion</span>
+                  <span className="font-black text-amber-300 text-sm">v{syncVersions?.noticeVersion ?? 1}</span>
+                </div>
+                <div className="bg-slate-800/90 p-2 rounded-xl border border-slate-700/80">
+                  <span className="text-[10px] text-gray-400 block uppercase font-sans">globalVersion</span>
+                  <span className="font-black text-cyan-300 text-sm">v{syncVersions?.globalVersion ?? 0}</span>
+                </div>
+                <div className="bg-slate-800/90 p-2 rounded-xl border border-slate-700/80">
+                  <span className="text-[10px] text-gray-400 block uppercase font-sans">মোট নোটিশ</span>
+                  <span className="font-black text-emerald-300 text-sm">{sortedNotices.length} টি</span>
+                </div>
+              </div>
             </div>
-            <button 
-              onClick={handleSaveNoticeText}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition shadow"
-            >
-              নোটিশ পাবলিশ করুন
-            </button>
+
+            {/* Notice Create / Edit Card */}
+            <div className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col gap-3 transition-colors ${editingNoticeId ? 'border-amber-300 ring-2 ring-amber-100' : 'border-gray-100'}`}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-sm text-gray-800 flex items-center gap-1.5">
+                  {editingNoticeId ? (
+                    <>
+                      <Edit className="w-4 h-4 text-amber-600" />
+                      <span>নোটিশ সম্পাদনা করুন</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-indigo-600" />
+                      <span>📢 নতুন নোটিশ প্রকাশ করুন</span>
+                    </>
+                  )}
+                </h3>
+                {editingNoticeId && (
+                  <span className="bg-amber-100 text-amber-800 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">
+                    Editing: {editingNoticeId}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-gray-500 mb-1 font-medium">
+                  {editingNoticeId ? 'নোটিশের সংশোধিত বিবরণ:' : 'নোটিশের বিবরণ:'}
+                </label>
+                <textarea 
+                  rows={4}
+                  value={noticeText}
+                  onChange={e => setNoticeText(e.target.value)}
+                  placeholder="নতুন কোনো আপডেট থাকলে এখানে লিখুন যা সরাসরি হোমপেজে প্রদর্শিত হবে..."
+                  className="w-full px-3 py-2 border rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleSaveNoticeText}
+                  disabled={isNoticeSubmitting}
+                  className={`flex-1 font-bold py-2.5 rounded-xl transition shadow text-xs flex items-center justify-center gap-1.5 ${
+                    editingNoticeId 
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  } ${isNoticeSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isNoticeSubmitting ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : editingNoticeId ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
+                  {isNoticeSubmitting ? 'সংরক্ষণ হচ্ছে...' : editingNoticeId ? 'নোটিশ আপডেট করুন' : 'নোটিশ পাবলিশ করুন'}
+                </button>
+                {editingNoticeId && (
+                  <button 
+                    onClick={handleCancelEditNotice}
+                    disabled={isNoticeSubmitting}
+                    className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition text-xs"
+                  >
+                    বাতিল
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Notice History & Management List */}
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-indigo-600" />
+                  <h4 className="font-bold text-sm text-gray-800">নোটিশ হিস্টোরি</h4>
+                </div>
+                <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {sortedNotices.length} টি সংরক্ষিত
+                </span>
+              </div>
+
+              {sortedNotices.length === 0 ? (
+                <div className="py-8 text-center text-gray-400">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p>এখনও কোনো নোটিশ প্রকাশিত হয়নি।</p>
+                </div>
+              ) : (
+                <div className="max-h-[460px] overflow-y-auto space-y-3 pr-1">
+                  {sortedNotices.map((n, index) => {
+                    const badge = getNoticeBadge(n);
+                    const isEditingThis = editingNoticeId === n.id;
+                    const isLatest = index === 0;
+
+                    return (
+                      <div 
+                        key={n.id}
+                        className={`p-3.5 rounded-xl border transition-all text-xs flex flex-col gap-2 ${
+                          isEditingThis
+                            ? 'border-amber-400 bg-amber-50/40 shadow-sm'
+                            : isLatest
+                            ? 'border-indigo-200 bg-indigo-50/20'
+                            : 'border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200'
+                        }`}
+                      >
+                        {/* Notice Card Header: ID, Badges, Status */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono font-bold text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200 text-[10px]">
+                              ID: {n.id}
+                            </span>
+                            <span className="font-mono text-[10px] font-extrabold bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">
+                              v{n.version ?? 1}
+                            </span>
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${badge.bg}`}>
+                              {badge.label}
+                            </span>
+                            {isLatest && (
+                              <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">
+                                ইউজার ভিউ (Running)
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-500">
+                            {badge.statusText}
+                          </span>
+                        </div>
+
+                        {/* Notice Body */}
+                        <p className="text-gray-800 leading-relaxed whitespace-pre-line font-medium text-[11px] bg-white p-2 rounded-lg border border-gray-100">
+                          {n.text}
+                        </p>
+
+                        {/* Notice Timestamps & Actions */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100/80">
+                          <div className="flex flex-col text-[10px] text-gray-500">
+                            <span>তৈরি: {n.createdAt ? formatBengaliDateTime(n.createdAt) : 'N/A'}</span>
+                            {n.updatedAt && n.updatedAt !== n.createdAt && (
+                              <span className="text-amber-700">আপডেট: {formatBengaliDateTime(n.updatedAt)}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleStartEditNotice(n)}
+                              disabled={isNoticeSubmitting}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg transition font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                              title="নোটিশ সম্পাদনা করুন"
+                            >
+                              <Edit className="w-3 h-3" />
+                              সম্পাদনা
+                            </button>
+                            <button
+                              onClick={() => handleDeleteNoticeClick(n.id, n.text)}
+                              disabled={isNoticeSubmitting}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                              title="নোটিশ মুছে ফেলুন (Soft Delete)"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              মুছুন
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
 
           {/* Live Exam Management */}
