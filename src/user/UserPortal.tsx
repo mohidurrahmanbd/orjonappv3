@@ -1243,13 +1243,13 @@ export default function UserPortal({
         await onUpdateUser(updatedUser);
       }
 
-      setProfileSuccessMsg('পুরোফাইল তথ্য সফলভাবে আপডেট হয়েছে!');
+      setProfileSuccessMsg('প্রোফাইল তথ্য সফলভাবে আপডেট হয়েছে!');
       setTimeout(() => {
         setProfileModalOpen(false);
         setProfileSuccessMsg(null);
       }, 1200);
     } catch (err: any) {
-      setProfileErrorMsg(err?.message || 'পুরোফাইল আপডেট করতে সমস্যা হয়েছে।');
+      setProfileErrorMsg(err?.message || 'প্রোফাইল আপডেট করতে সমস্যা হয়েছে।');
     } finally {
       setIsSavingProfile(false);
     }
@@ -4459,7 +4459,7 @@ export default function UserPortal({
               onClick={() => setActiveTab('profile')}
               className={`text-[11px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white hover:bg-gray-100 text-indigo-700'}`}
             >
-              👤 পুরোফাইল
+              👤 প্রোফাইল
             </button>
             <button 
               onClick={onLogout}
@@ -4562,7 +4562,7 @@ export default function UserPortal({
                     { id: 'results', label: '📍 পরীক্ষার ফলাফল', icon: Award },
                     { id: 'courses', label: '🎓 চলমান কোর্স স্পেস', icon: GraduationCap },
                     { id: 'routines', label: '📅 একাডেমিক রুটিন', icon: Calendar },
-                    { id: 'profile', label: '👤 পুরোফাইল ও সেটিংস', icon: UserIcon },
+                    { id: 'profile', label: '👤 প্রোফাইল ও সেটিংস', icon: UserIcon },
                   ].map(item => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
@@ -4603,7 +4603,7 @@ export default function UserPortal({
                 >
                   🚪 লগআউট করুন
                 </button>
-                <p className="text-[9px] text-center text-slate-400 font-medium">অর্জন পোর্টাল Â© {new Date().getFullYear()}</p>
+                <p className="text-[9px] text-center text-slate-400 font-medium">অর্জন MCQ©2026</p>
               </div>
             </motion.div>
           </div>
@@ -5414,7 +5414,7 @@ export default function UserPortal({
               <div className="bg-white border border-gray-100 p-3 rounded-2xl shadow-sm">
                 <h3 className="text-xs font-extrabold text-gray-800 mb-2 uppercase tracking-wider flex items-center gap-1.5">
                   <Compass className="w-4 h-4 text-indigo-600" />
-                  দ্র্ত নেভিগেশন ক্যাটাগরি
+                  দ্রুত নেভিগেশন ক্যাটাগরি
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   <div 
@@ -5447,7 +5447,7 @@ export default function UserPortal({
                     onClick={() => handleTabSelect('recentJob')}
                     className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-emerald-50/60 to-teal-100/40 border-emerald-200/90 hover:border-emerald-300 hover:shadow transition flex flex-col justify-between min-h-[85px] group"
                   >
-                    <span className="text-xl group-hover:scale-110 transition-transform">âš¡</span>
+                    <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
                     <div>
                       <h4 className="text-xs font-bold text-emerald-950 group-hover:text-emerald-700 transition-colors">রিসেন্ট জব সলিউশন</h4>
                       <p className="text-[9px] text-emerald-700/80 mt-0.5">সাম্প্রতিক সকল পরীক্ষা</p>
@@ -5461,7 +5461,7 @@ export default function UserPortal({
                     <span className="text-xl">🌍</span>
                     <div>
                       <h4 className="text-xs font-bold text-teal-950">সাম্প্রতিক বিষয়াবলী</h4>
-                      <p className="text-[9px] text-teal-700/80 mt-0.5">দৈনিক ব্লেট পয়েন্ট ও প্রশ্ন</p>
+                      <p className="text-[9px] text-teal-700/80 mt-0.5">দৈনিক সাম্প্রতিক বুলেট পয়েন্ট ও প্রশ্ন</p>
                     </div>
                   </div>
 
@@ -5494,7 +5494,7 @@ export default function UserPortal({
                     <span className="text-xl">📅</span>
                     <div>
                       <h4 className="text-xs font-bold text-amber-950">সাল ভিত্তিক জব সলিউশন</h4>
-                      <p className="text-[9px] text-amber-700/80 mt-0.5">বছর অন্যায়ী পরীক্ষা সমূহ</p>
+                      <p className="text-[9px] text-amber-700/80 mt-0.5">সাল অনুযায়ী পরিক্ষা সমূহ</p>
                     </div>
                   </div>
 
@@ -6116,7 +6116,7 @@ export default function UserPortal({
                                           title={`পড়ার অগ্রগতি: ${toBengaliDigits(progress.readCount)}/${toBengaliDigits(progress.totalCount)} (${toBengaliDigits(progress.percentage)}%)`}
                                         />
                                         <span className={`text-[9px] sm:text-[9.5px] ${theme.badgeBg} font-extrabold px-1.5 py-0.5 rounded-md border shrink-0`}>
-                                          {subCount.toLocaleString('bn-BD')} টি
+                                          {subCount.toLocaleString('bn-BD')} টি চ্যাপ্টার
                                         </span>
                                       </div>
                                     </div>
@@ -6134,12 +6134,12 @@ export default function UserPortal({
 
                                     <div className="pt-1.5 border-t border-slate-100/90 flex items-center justify-between text-[9px] sm:text-[9.5px]">
                                       {showMcqCount ? (
-                                        <span className="bg-slate-900 text-white font-extrabold px-1.5 py-0.5 rounded-md shadow-2xs">
+                                        <span className="text-slate-700 font-extrabold px-0.5 py-0.5">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       ) : <span />}
                                       <span className={`${theme.subText} font-black flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform`}>
-                                        খ্ল্ন <ChevronRight className="w-3 h-3" />
+                                        খুলুন <ChevronRight className="w-3 h-3" />
                                       </span>
                                     </div>
                                   </button>
@@ -6238,7 +6238,7 @@ export default function UserPortal({
                                         </div>
                                       </div>
                                       {showMcqCount && (
-                                        <span className="text-[10px] bg-slate-900 text-white font-black px-2.5 py-1 rounded-md shrink-0 shadow-2xs">
+                                        <span className="text-[10px] text-slate-700 font-black px-1 py-0.5 shrink-0">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       )}
@@ -9294,7 +9294,7 @@ export default function UserPortal({
                     className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5 shrink-0"
                   >
                     <Settings className="w-4 h-4" />
-                    পুরোফাইল সেটিংস (Profile Settings)
+                    প্রোফাইল সেটিংস (Profile Settings)
                   </button>
                 </div>
 
