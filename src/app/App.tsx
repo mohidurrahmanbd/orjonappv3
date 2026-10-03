@@ -2550,7 +2550,7 @@ export default function App() {
     return true;
   };
 
-  const handleAddCategory = (name: string, subHeading?: string) => {
+  const handleAddCategory = (name: string, subHeading?: string, order?: number) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const lowerName = trimmed.toLowerCase();
@@ -2566,7 +2566,8 @@ export default function App() {
       id: `subcat-${Date.now()}`,
       name: trimmed,
       parentCategory: 'বিষয়ভিত্তিক প্রস্তুতি',
-      subHeading: subHeading ? subHeading.trim() : undefined
+      subHeading: subHeading ? subHeading.trim() : undefined,
+      order: (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined
     };
     updateSubcategoriesDB([...subcategories, newSub]);
     saveItemToFirestore('subcategories', newSub, 'subcat');
@@ -2574,7 +2575,7 @@ export default function App() {
     alert('🎯 নতুন বিষয়ভিত্তিক প্রস্তুতি ক্যাটাগরি সফলভাবে যোগ করা হয়েছে!');
   };
 
-  const handleAddSubcategory = (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string) => {
+  const handleAddSubcategory = (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string, order?: number) => {
     const trimmed = name.trim();
     if (!trimmed || !parentCategory) return;
     
@@ -2601,14 +2602,15 @@ export default function App() {
     let currentSubcats = [...subcategories];
     
     if (currentSubcats.some(s => s.name.trim().toLowerCase() === trimmed.toLowerCase() && s.parentCategory && s.parentCategory.trim().toLowerCase() === normalizedParent.toLowerCase())) {
-      // If already exists, update its text / date / subHeading if provided
+      // If already exists, update its text / date / subHeading / order if provided
       const updated = currentSubcats.map(s => {
         if (s.name.trim().toLowerCase() === trimmed.toLowerCase() && s.parentCategory && s.parentCategory.trim().toLowerCase() === normalizedParent.toLowerCase()) {
           const u: SubcategoryItem = {
             ...s,
             date: date !== undefined ? date : s.date,
             subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading,
-            text: text !== undefined ? text : s.text
+            text: text !== undefined ? text : s.text,
+            order: order !== undefined ? ((order !== null && !isNaN(Number(order))) ? Number(order) : undefined) : s.order
           };
           saveItemToFirestore('subcategories', u, 'subcat');
           return u;
@@ -2627,6 +2629,7 @@ export default function App() {
       date: date || undefined,
       subHeading: subHeading ? subHeading.trim() : undefined,
       text: text || undefined,
+      order: (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined,
       createdAt: new Date().toISOString()
     };
     
@@ -2802,7 +2805,7 @@ export default function App() {
     addAuditLog('বাল্ক সাব-ক্যাটাগরি মুভ (Bulk Move Categories)', `একসাথে ${ids.length} টি সাব-ক্যাটাগরি নতুন প্যারেন্ট "${normalizedParent}" এ স্থানান্তরিত করা হয়েছে`, 'category');
   };
 
-  const handleUpdateCategory = (id: string, newName: string, subHeading?: string) => {
+  const handleUpdateCategory = (id: string, newName: string, subHeading?: string, order?: number) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     const cat = categories.find(c => c.id === id);
@@ -2813,16 +2816,26 @@ export default function App() {
     }
     const oldName = cat.name;
 
-    const updatedCats = categories.map(c => c.id === id ? { ...c, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : c.subHeading } : c);
+    const parsedOrder = (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined;
+    const updatedCats = categories.map(c => {
+      if (c.id === id) {
+        const updatedC = { ...c, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : c.subHeading, order: parsedOrder !== undefined ? parsedOrder : c.order };
+        saveItemToFirestore('categories', updatedC, 'cat');
+        return updatedC;
+      }
+      return c;
+    });
     updateCategoriesDB(updatedCats);
 
     const updatedSubcats = subcategories.map(s => {
       let item = s;
       if (s.id === id) {
-        item = { ...item, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading };
+        item = { ...item, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading, order: parsedOrder !== undefined ? parsedOrder : s.order };
+        saveItemToFirestore('subcategories', item, 'subcat');
       }
       if (item.parentCategory === oldName) {
         item = { ...item, parentCategory: trimmed };
+        saveItemToFirestore('subcategories', item, 'subcat');
       }
       return item;
     });
@@ -2846,7 +2859,7 @@ export default function App() {
     alert('🎯 ক্যাটাগরি সফলভাবে আপডেট করা হয়েছে!');
   };
 
-  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => {
+  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string, order?: number) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     
@@ -2874,19 +2887,25 @@ export default function App() {
     if (!sub) return;
     const oldName = sub.name;
 
+    const parsedOrder = (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined;
     const updatedSubcats = subcategories.map(s => {
       if (s.id === id) {
-        return { 
+        const updated = { 
           ...s, 
           name: trimmed, 
           parentCategory: normalizedParent,
           date: date !== undefined ? date : s.date,
           subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading,
-          text: text !== undefined ? text : s.text
+          text: text !== undefined ? text : s.text,
+          order: parsedOrder !== undefined ? parsedOrder : s.order
         };
+        saveItemToFirestore('subcategories', updated, 'subcat');
+        return updated;
       }
       if (s.parentCategory === oldName) {
-        return { ...s, parentCategory: trimmed };
+        const repointed = { ...s, parentCategory: trimmed };
+        saveItemToFirestore('subcategories', repointed, 'subcat');
+        return repointed;
       }
       return s;
     });

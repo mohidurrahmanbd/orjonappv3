@@ -5999,18 +5999,58 @@ export default function UserPortal({
             const currentPrepNode = isPrepRoot ? '' : prepPath[prepPath.length - 1];
             const prepQuestions = getQuestionsForPrepNode(currentPrepNode, isPrepRoot);
             
+            // Helper to resolve parent-scoped order for nodes at this level
+            const targetParent = isPrepRoot ? 'বিষয়ভিত্তিক প্রস্তুতি' : currentPrepNode;
+            const getNodeOrder = (name: string): number => {
+              const matchedSub = subcategories.find(s => 
+                s.name && s.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+                s.parentCategory && s.parentCategory.trim().toLowerCase() === targetParent.trim().toLowerCase()
+              );
+              if (matchedSub && matchedSub.order !== undefined && matchedSub.order !== null && !isNaN(Number(matchedSub.order))) {
+                return Number(matchedSub.order);
+              }
+              if (isPrepRoot) {
+                const matchedCat = categories.find(c => 
+                  c.name && c.name.trim().toLowerCase() === name.trim().toLowerCase()
+                );
+                if (matchedCat && matchedCat.order !== undefined && matchedCat.order !== null && !isNaN(Number(matchedCat.order))) {
+                  return Number(matchedCat.order);
+                }
+              }
+              return 999999;
+            };
+
             // Get items to display at current level (excluding root categories, self-references, or duplicates)
-            const prepItems = Array.from(new Set(isPrepRoot 
-              ? subcategories.filter(s => 
-                  s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি' && 
-                  s.name.trim().toLowerCase() !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase()
-                ).map(s => s.name.trim())
+            const rawPrepItems = Array.from(new Set(isPrepRoot 
+              ? [
+                  ...subcategories.filter(s => 
+                    s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি' && 
+                    s.name.trim().toLowerCase() !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase()
+                  ).map(s => s.name.trim()),
+                  ...categories.filter(c => 
+                    c.name && 
+                    c.name.trim().toLowerCase() !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase() &&
+                    c.name.trim().toLowerCase() !== 'জব সলিউশন পরীক্ষা'.toLowerCase() &&
+                    c.name.trim().toLowerCase() !== 'সাল ভিত্তিক জব সলিউশন'.toLowerCase() &&
+                    c.name.trim().toLowerCase() !== 'সাম্প্রতিক বিষয়াবলী'.toLowerCase()
+                  ).map(c => c.name.trim())
+                ]
               : subcategories.filter(s => 
                   s.parentCategory && 
                   s.parentCategory.trim().toLowerCase() === currentPrepNode.trim().toLowerCase() &&
                   s.name.trim().toLowerCase() !== currentPrepNode.trim().toLowerCase() &&
                   s.name.trim().toLowerCase() !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase()
                 ).map(s => s.name.trim())));
+
+            // Sort items with parent-scoped order ASC (safe fallback 999999 for legacy records)
+            const prepItems = [...rawPrepItems].sort((a, b) => {
+              const orderA = getNodeOrder(a);
+              const orderB = getNodeOrder(b);
+              if (orderA !== orderB) {
+                return orderA - orderB;
+              }
+              return 0;
+            });
 
             return (
               <div className="bg-white border border-slate-200/60 p-2 sm:p-3.5 rounded-xl shadow-2xs flex flex-col gap-3 text-xs animate-fade-in">

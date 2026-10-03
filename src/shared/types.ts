@@ -271,6 +271,7 @@ export interface CategoryItem {
   id: string;
   name: string;
   subHeading?: string;
+  order?: number;
   createdAt?: string;
   updatedAt?: string;
   version?: number;
@@ -287,6 +288,7 @@ export interface SubcategoryItem {
   subHeading?: string;
   text?: string; // Text bullet points for current affairs & notes
   details?: string;
+  order?: number;
   createdAt?: string;
   updatedAt?: string;
   version?: number;

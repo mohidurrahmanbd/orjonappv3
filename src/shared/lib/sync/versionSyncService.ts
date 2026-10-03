@@ -1636,6 +1636,7 @@ export async function performDifferentialSync(
               id: String(data.id || d.id),
               name: data.name || '',
               subHeading: data.subHeading || undefined,
+              order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
               version: data.version || serverVersions.categoryVersion,
               updatedAt: data.updatedAt || new Date().toISOString(),
               deletedAt: null
@@ -1672,6 +1673,7 @@ export async function performDifferentialSync(
                 id: catId,
                 name: data.name || '',
                 subHeading: data.subHeading || undefined,
+                order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
                 version: data.version || serverVersions.categoryVersion,
                 updatedAt: data.updatedAt || new Date().toISOString(),
                 deletedAt: null
@@ -1743,6 +1745,7 @@ export async function performDifferentialSync(
               subHeading: data.subHeading || undefined,
               text: data.text || undefined,
               details: data.details || undefined,
+              order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
               createdAt: data.createdAt || undefined,
               updatedAt: data.updatedAt || new Date().toISOString(),
               version: data.version || serverVersions.subcategoryVersion,
@@ -1788,6 +1791,7 @@ export async function performDifferentialSync(
                 subHeading: data.subHeading || undefined,
                 text: data.text || undefined,
                 details: data.details || undefined,
+                order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
                 createdAt: data.createdAt || undefined,
                 updatedAt: data.updatedAt || new Date().toISOString(),
                 version: data.version || serverVersions.subcategoryVersion,
@@ -2551,6 +2555,7 @@ export async function syncBaselineEntitiesMetadataFirst(
                 id: catId,
                 name: data.name || '',
                 subHeading: data.subHeading || undefined,
+                order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
                 version: data.version || serverVersions.categoryVersion,
                 updatedAt: data.updatedAt || new Date().toISOString(),
                 deletedAt: null
@@ -2612,6 +2617,7 @@ export async function syncBaselineEntitiesMetadataFirst(
                 subHeading: data.subHeading || undefined,
                 text: data.text || undefined,
                 details: data.details || undefined,
+                order: (data.order !== undefined && data.order !== null && !isNaN(Number(data.order))) ? Number(data.order) : undefined,
                 createdAt: data.createdAt || undefined,
                 updatedAt: data.updatedAt || new Date().toISOString(),
                 version: data.version || serverVersions.subcategoryVersion,

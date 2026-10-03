@@ -87,14 +87,14 @@ interface AdminPanelProps {
   attempts: Attempt[];
   categories: CategoryItem[];
   subcategories: SubcategoryItem[];
-  onAddCategory: (name: string, subHeading?: string) => void;
-  onAddSubcategory: (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string) => void;
+  onAddCategory: (name: string, subHeading?: string, order?: number) => void;
+  onAddSubcategory: (name: string, parentCategory: string, date?: string, subHeading?: string, text?: string, order?: number) => void;
   onDeleteCategory: (id: string) => Promise<boolean> | void;
   onDeleteSubcategory: (id: string) => Promise<boolean> | void;
   onBulkDeleteSubcategories?: (ids: string[]) => Promise<boolean> | void;
   onBulkMoveSubcategories?: (ids: string[], newParentCategory: string) => void;
-  onUpdateCategory?: (id: string, newName: string, subHeading?: string) => void;
-  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => void;
+  onUpdateCategory?: (id: string, newName: string, subHeading?: string, order?: number) => void;
+  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string, order?: number) => void;
   onAddQuestion: (q: Omit<Question, 'id'>) => void;
   onUpdateQuestion: (id: string, q: Partial<Question>) => void;
   onDeleteQuestion: (id: string) => Promise<boolean> | void;
@@ -1157,11 +1157,13 @@ export default function AdminPanel({
   const [editingNodeParentChain, setEditingNodeParentChain] = useState<string[]>([]);
   const [editingNodeSubHeading, setEditingNodeSubHeading] = useState('');
   const [editingNodeDate, setEditingNodeDate] = useState('');
+  const [editingNodeOrder, setEditingNodeOrder] = useState<string>('');
   const [editingNodeType, setEditingNodeType] = useState<'category' | 'subcategory' | null>(null);
   const [addingChildUnderNodeId, setAddingChildUnderNodeId] = useState<string | null>(null);
   const [newChildNodeName, setNewChildNodeName] = useState('');
   const [newChildNodeSubHeading, setNewChildNodeSubHeading] = useState('');
   const [newChildNodeDate, setNewChildNodeDate] = useState('');
+  const [newChildNodeOrder, setNewChildNodeOrder] = useState<string>('');
 
   // Expanded state for hierarchy tree nodes (Default = empty set, so all nodes are collapsed on initial load)
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
@@ -2145,6 +2147,7 @@ export default function AdminPanel({
     setEditingNodeNewName(sub.name);
     setEditingNodeSubHeading(sub.subHeading || '');
     setEditingNodeDate(sub.date || '');
+    setEditingNodeOrder(sub.order !== undefined && sub.order !== null ? String(sub.order) : '');
     setEditingNodeType('subcategory');
     setAddingChildUnderNodeId(null);
 
@@ -2485,13 +2488,15 @@ export default function AdminPanel({
     const nodeQuestions = getQuestionsForNode(name);
     const qCount = nodeQuestions.length;
 
-    // Direct child subcategories (excluding self-referential loops)
-    const children = subcategories.filter(s => 
-      s.id !== realEntityId &&
-      s.parentCategory && 
-      s.parentCategory.trim().toLowerCase() === name.trim().toLowerCase() &&
-      s.name.trim().toLowerCase() !== name.trim().toLowerCase()
-    );
+    // Direct child subcategories (excluding self-referential loops) sorted by order ASC
+    const children = subcategories
+      .filter(s => 
+        s.id !== realEntityId &&
+        s.parentCategory && 
+        s.parentCategory.trim().toLowerCase() === name.trim().toLowerCase() &&
+        s.name.trim().toLowerCase() !== name.trim().toLowerCase()
+      )
+      .sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999));
     const hasChildren = children.length > 0;
 
     // Categorize child subcategories into branch folders vs leaf nodes
@@ -2652,6 +2657,18 @@ export default function AdminPanel({
                 </div>
               )}
 
+              {(targetSub?.order !== undefined && targetSub?.order !== null) && (
+                <div className="text-[9px] text-amber-900 bg-amber-100 font-extrabold px-1.5 py-0.5 rounded border border-amber-300 w-max flex items-center gap-1">
+                  <span>🔢 Order:</span> {targetSub.order}
+                </div>
+              )}
+
+              {type === 'category' && targetCat?.order !== undefined && targetCat?.order !== null && (
+                <div className="text-[9px] text-amber-900 bg-amber-100 font-extrabold px-1.5 py-0.5 rounded border border-amber-300 w-max flex items-center gap-1">
+                  <span>🔢 Order:</span> {targetCat.order}
+                </div>
+              )}
+
               {targetSub && (
                 <div className="flex items-center gap-1.5 text-[10px] bg-emerald-50/90 px-2 py-0.5 rounded-md border border-emerald-200/90 shrink-0 flex-wrap">
                   <Calendar className="w-3 h-3 text-emerald-600 shrink-0" />
@@ -2704,6 +2721,7 @@ export default function AdminPanel({
                   } else {
                     setEditingNodeId(realEntityId);
                     setEditingNodeNewName(name);
+                    setEditingNodeOrder('');
                     setEditingNodeType('subcategory');
                     setEditingNodeRootCat('বিষয়ভিত্তিক প্রস্তুতি');
                     setEditingNodeParentChain([]);
@@ -2713,6 +2731,7 @@ export default function AdminPanel({
                   setEditingNodeNewName(name);
                   const cat = targetCat || categories.find(c => c.id === realEntityId);
                   setEditingNodeSubHeading(cat?.subHeading || '');
+                  setEditingNodeOrder(cat?.order !== undefined && cat?.order !== null ? String(cat.order) : '');
                   setEditingNodeType('category');
                 }
               }}
@@ -2791,6 +2810,18 @@ export default function AdminPanel({
                 </div>
               )}
 
+              <div>
+                <label className="block text-[10px] text-amber-950 font-bold mb-1">🔢 প্রদর্শন ক্রম / Order (ঐচ্ছিক):</label>
+                <input 
+                  type="number"
+                  min="1"
+                  value={editingNodeOrder}
+                  onChange={e => setEditingNodeOrder(e.target.value)}
+                  placeholder="যেমন: 1, 2, 3..."
+                  className="w-full px-3 py-1.5 border border-amber-300 rounded-lg bg-white text-gray-850 font-semibold focus:outline-none text-[11px]"
+                />
+              </div>
+
               {type === 'subcategory' && (
                 <div>
                   <label className="block text-[10px] text-amber-950 font-bold mb-1">
@@ -2812,9 +2843,10 @@ export default function AdminPanel({
                 <button
                   type="button"
                   onClick={() => {
+                    const parsedOrder = editingNodeOrder.trim() !== '' && !isNaN(Number(editingNodeOrder)) ? Number(editingNodeOrder) : undefined;
                     if (type === 'category') {
                       if (onUpdateCategory) {
-                        onUpdateCategory(realEntityId, editingNodeNewName, editingNodeSubHeading);
+                        onUpdateCategory(realEntityId, editingNodeNewName, editingNodeSubHeading, parsedOrder);
                       }
                       setEditingNodeId(null);
                     } else {
@@ -2854,7 +2886,7 @@ export default function AdminPanel({
                           () => {
                             executeSingleMergeAndMove(
                               realEntityId,
-                              sub || { id: realEntityId, name, parentCategory: destinationParent },
+                              sub || { id: realEntityId, name, parentCategory: destinationParent, order: parsedOrder },
                               existingDestSub,
                               destinationParent,
                               trimmedNewName,
@@ -2869,7 +2901,7 @@ export default function AdminPanel({
                         );
                       } else {
                         if (onUpdateSubcategory) {
-                          onUpdateSubcategory(realEntityId, trimmedNewName, destinationParent, editingNodeDate || undefined, editingNodeSubHeading);
+                          onUpdateSubcategory(realEntityId, trimmedNewName, destinationParent, editingNodeDate || undefined, editingNodeSubHeading, undefined, parsedOrder);
                         }
                         setEditingNodeId(null);
                       }
@@ -2924,6 +2956,17 @@ export default function AdminPanel({
                   className="w-full px-3 py-1.5 border border-indigo-200 rounded-lg bg-white text-gray-800 font-semibold focus:outline-none text-[11px]"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] text-indigo-900 font-bold mb-0.5">🔢 প্রদর্শন ক্রম / Order (ঐচ্ছিক):</label>
+                <input 
+                  type="number"
+                  min="1"
+                  value={newChildNodeOrder}
+                  onChange={e => setNewChildNodeOrder(e.target.value)}
+                  placeholder="যেমন: 1, 2, 3..."
+                  className="w-full px-3 py-1.5 border border-indigo-200 rounded-lg bg-white text-gray-800 font-semibold focus:outline-none text-[11px]"
+                />
+              </div>
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"
@@ -2932,11 +2975,13 @@ export default function AdminPanel({
                       alert('সঠিক নাম লিখুন!');
                       return;
                     }
-                    onAddSubcategory(newChildNodeName.trim(), name, newChildNodeDate.trim() || undefined, newChildNodeSubHeading.trim() || undefined);
+                    const childOrder = newChildNodeOrder.trim() && !isNaN(Number(newChildNodeOrder)) ? Number(newChildNodeOrder) : undefined;
+                    onAddSubcategory(newChildNodeName.trim(), name, newChildNodeDate.trim() || undefined, newChildNodeSubHeading.trim() || undefined, undefined, childOrder);
                     setAddingChildUnderNodeId(null);
                     setNewChildNodeName('');
                     setNewChildNodeSubHeading('');
                     setNewChildNodeDate('');
+                    setNewChildNodeOrder('');
                   }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg transition text-[10px] cursor-pointer"
                 >
@@ -6897,14 +6942,16 @@ export default function AdminPanel({
                   const parentCat = fd.get('parentCat') as string;
                   const subDate = fd.get('subDate') as string;
                   const subHeading = fd.get('subHeading') as string;
+                  const subOrder = fd.get('subOrder') as string;
+                  const parsedOrder = subOrder && subOrder.trim() && !isNaN(Number(subOrder)) ? Number(subOrder) : undefined;
                   if (subName && subName.trim()) {
-                    onAddSubcategory(subName.trim(), parentCat, subDate || undefined, subHeading ? subHeading.trim() : undefined);
+                    onAddSubcategory(subName.trim(), parentCat, subDate || undefined, subHeading ? subHeading.trim() : undefined, undefined, parsedOrder);
                   }
                   e.currentTarget.reset();
                 }}
                 className="flex flex-col gap-3"
               >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-[10px] text-gray-500 mb-1 font-bold">মূল ক্যাটাগরি বা প্যারেন্ট নির্ধারণ করুন:</label>
                     <select 
@@ -6944,10 +6991,21 @@ export default function AdminPanel({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] text-gray-500 mb-1 font-bold">📅 পরীক্ষার তারিখ (লিফ নোড বা সাব-ক্যাটাগরির জন্য):</label>
+                    <label className="block text-[10px] text-gray-500 mb-1 font-bold">📅 পরীক্ষার তারিখ (ঐচ্ছিক):</label>
                     <input 
                       name="subDate"
                       type="date"
+                      className="w-full px-3 py-1.5 border rounded-xl bg-white text-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[11px]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1 font-bold">🔢 প্রদর্শন ক্রম / Order (ঐচ্ছিক):</label>
+                    <input 
+                      name="subOrder"
+                      type="number"
+                      min="1"
+                      placeholder="যেমন: 1, 2, 3..."
                       className="w-full px-3 py-1.5 border rounded-xl bg-white text-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[11px]"
                     />
                   </div>
@@ -7176,6 +7234,7 @@ export default function AdminPanel({
                         ) : (
                           subcategories
                             .filter(s => s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')
+                            .sort((a, b) => (a.order ?? 999999) - (b.order ?? 999999))
                             .map((sub, idx) => renderTreeNode(sub.name, sub.id, 'subcategory', 0))
                         )}
                       </div>
@@ -7383,6 +7442,11 @@ export default function AdminPanel({
                                           <span>🏷️ Sub-heading:</span> {leaf.subHeading}
                                         </div>
                                       )}
+                                      {leaf.order !== undefined && leaf.order !== null && (
+                                        <div className="text-[10px] text-amber-800 font-bold bg-amber-50/80 px-2 py-0.5 rounded-md border border-amber-200/80 truncate flex items-center gap-1">
+                                          <span>🔢 Order:</span> {leaf.order}
+                                        </div>
+                                      )}
                                     </div>
 
                                     {/* Action Buttons */}
@@ -7500,6 +7564,18 @@ export default function AdminPanel({
                                       🏷️ {catObj.subHeading}
                                     </div>
                                   )}
+                                  {(() => {
+                                    const subObj = subcategories.find(s => s.name === rootName && s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি');
+                                    const rootOrder = catObj?.order ?? subObj?.order;
+                                    if (rootOrder !== undefined && rootOrder !== null) {
+                                      return (
+                                        <div className="text-[10px] text-amber-800 font-bold ml-6 mt-0.5">
+                                          🔢 Order: {rootOrder}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </td>
                                 <td className="p-3">
                                   <span className="bg-indigo-50 text-indigo-700 font-extrabold text-[10px] px-2 py-0.5 rounded-md">
@@ -7509,17 +7585,24 @@ export default function AdminPanel({
                                 <td className="p-3 text-slate-600 font-bold">{childCount} টি উপ-ধাপ</td>
                                 <td className="p-3 font-bold text-indigo-600">{qCount} টি</td>
                                 <td className="p-3 text-right">
-                                  {catObj && (
-                                    <div className="flex items-center justify-end gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingNodeId(catObj.id);
-                                          setEditingNodeNewName(catObj.name);
-                                          setEditingNodeSubHeading(catObj.subHeading || '');
-                                          setEditingNodeType('category');
-                                          setCategoryViewTab('tree');
-                                        }}
+                                    {(catObj || subcategories.some(s => s.name === rootName && s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি')) && (
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const subObj = subcategories.find(s => s.name === rootName && s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি');
+                                            if (catObj) {
+                                              setEditingNodeId(catObj.id);
+                                              setEditingNodeNewName(catObj.name);
+                                              setEditingNodeSubHeading(catObj.subHeading || '');
+                                              setEditingNodeOrder(catObj.order !== undefined && catObj.order !== null ? String(catObj.order) : (subObj?.order !== undefined && subObj?.order !== null ? String(subObj.order) : ''));
+                                              setEditingNodeType('category');
+                                              setCategoryViewTab('tree');
+                                            } else if (subObj) {
+                                              startEditSubcategory(subObj);
+                                              setCategoryViewTab('tree');
+                                            }
+                                          }}
                                         className="text-amber-700 hover:underline font-bold text-[10px] px-1.5 py-1 cursor-pointer"
                                       >
                                         ✏️ এডিট
@@ -7683,6 +7766,11 @@ export default function AdminPanel({
                                   <div className="text-[10px] text-emerald-700 font-bold ml-5 truncate flex items-center gap-1">
                                     <Calendar className="w-3 h-3 text-emerald-600 shrink-0" />
                                     <span>{formatBengaliDate(sub.date)}</span>
+                                  </div>
+                                )}
+                                {sub.order !== undefined && sub.order !== null && (
+                                  <div className="text-[10px] text-amber-800 font-bold ml-5 truncate flex items-center gap-1">
+                                    <span>🔢 Order:</span> {sub.order}
                                   </div>
                                 )}
                               </div>
