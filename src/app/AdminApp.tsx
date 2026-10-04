@@ -93,8 +93,9 @@ interface AdminPanelProps {
   onDeleteSubcategory: (id: string) => Promise<boolean> | void;
   onBulkDeleteSubcategories?: (ids: string[]) => Promise<boolean> | void;
   onBulkMoveSubcategories?: (ids: string[], newParentCategory: string) => void;
-  onUpdateCategory?: (id: string, newName: string, subHeading?: string, order?: number) => void;
-  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string, order?: number) => void;
+  onUpdateCategory?: (id: string, newName: string, subHeading?: string) => void;
+  onUpdateSubcategory?: (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => void;
+  onUpdateOrder?: (id: string, type: 'category' | 'subcategory', newOrder: number | undefined) => Promise<boolean | void> | void;
   onAddQuestion: (q: Omit<Question, 'id'>) => void;
   onUpdateQuestion: (id: string, q: Partial<Question>) => void;
   onDeleteQuestion: (id: string) => Promise<boolean> | void;
@@ -246,6 +247,7 @@ export default function AdminPanel({
   onBulkMoveSubcategories,
   onUpdateCategory,
   onUpdateSubcategory,
+  onUpdateOrder,
   onAddQuestion,
   onUpdateQuestion,
   onDeleteQuestion,
@@ -1157,13 +1159,50 @@ export default function AdminPanel({
   const [editingNodeParentChain, setEditingNodeParentChain] = useState<string[]>([]);
   const [editingNodeSubHeading, setEditingNodeSubHeading] = useState('');
   const [editingNodeDate, setEditingNodeDate] = useState('');
-  const [editingNodeOrder, setEditingNodeOrder] = useState<string>('');
   const [editingNodeType, setEditingNodeType] = useState<'category' | 'subcategory' | null>(null);
   const [addingChildUnderNodeId, setAddingChildUnderNodeId] = useState<string | null>(null);
   const [newChildNodeName, setNewChildNodeName] = useState('');
   const [newChildNodeSubHeading, setNewChildNodeSubHeading] = useState('');
   const [newChildNodeDate, setNewChildNodeDate] = useState('');
   const [newChildNodeOrder, setNewChildNodeOrder] = useState<string>('');
+
+  // Dedicated Order Management Modal state
+  const [orderingItem, setOrderingItem] = useState<{
+    id: string;
+    name: string;
+    type: 'category' | 'subcategory';
+    currentOrder: number | undefined;
+  } | null>(null);
+  const [orderingInputVal, setOrderingInputVal] = useState<string>('');
+  const [isSavingOrder, setIsSavingOrder] = useState<boolean>(false);
+
+  const openOrderModal = (id: string, name: string, type: 'category' | 'subcategory', currentOrder: number | undefined) => {
+    setOrderingItem({ id, name, type, currentOrder });
+    setOrderingInputVal(currentOrder !== undefined && currentOrder !== null ? String(currentOrder) : '');
+  };
+
+  const closeOrderModal = () => {
+    if (isSavingOrder) return;
+    setOrderingItem(null);
+    setOrderingInputVal('');
+  };
+
+  const handleSaveOrderSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!orderingItem || !onUpdateOrder) return;
+    setIsSavingOrder(true);
+    try {
+      const trimmed = orderingInputVal.trim();
+      const parsedOrder = trimmed !== '' && !isNaN(Number(trimmed)) ? Number(trimmed) : undefined;
+      await onUpdateOrder(orderingItem.id, orderingItem.type, parsedOrder);
+      setOrderingItem(null);
+      setOrderingInputVal('');
+    } catch (err) {
+      console.error('Error updating order:', err);
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   // Expanded state for hierarchy tree nodes (Default = empty set, so all nodes are collapsed on initial load)
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
@@ -2147,7 +2186,6 @@ export default function AdminPanel({
     setEditingNodeNewName(sub.name);
     setEditingNodeSubHeading(sub.subHeading || '');
     setEditingNodeDate(sub.date || '');
-    setEditingNodeOrder(sub.order !== undefined && sub.order !== null ? String(sub.order) : '');
     setEditingNodeType('subcategory');
     setAddingChildUnderNodeId(null);
 
@@ -2721,7 +2759,6 @@ export default function AdminPanel({
                   } else {
                     setEditingNodeId(realEntityId);
                     setEditingNodeNewName(name);
-                    setEditingNodeOrder('');
                     setEditingNodeType('subcategory');
                     setEditingNodeRootCat('বিষয়ভিত্তিক প্রস্তুতি');
                     setEditingNodeParentChain([]);
@@ -2731,7 +2768,6 @@ export default function AdminPanel({
                   setEditingNodeNewName(name);
                   const cat = targetCat || categories.find(c => c.id === realEntityId);
                   setEditingNodeSubHeading(cat?.subHeading || '');
-                  setEditingNodeOrder(cat?.order !== undefined && cat?.order !== null ? String(cat.order) : '');
                   setEditingNodeType('category');
                 }
               }}
@@ -2739,6 +2775,19 @@ export default function AdminPanel({
               title="সম্পাদনা বা মুভ করুন"
             >
               ✏️ এডিট/মুভ
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const currentOrder = type === 'category'
+                  ? (targetCat?.order ?? categories.find(c => c.id === realEntityId)?.order)
+                  : (targetSub?.order ?? subcategories.find(s => s.id === realEntityId)?.order);
+                openOrderModal(realEntityId, name, type, currentOrder);
+              }}
+              className="text-indigo-600 hover:text-indigo-850 hover:bg-indigo-50 px-1.5 py-1 rounded-md transition text-[10px] font-bold flex items-center gap-0.5 cursor-pointer"
+              title="প্রদর্শন ক্রম পরিবর্তন করুন"
+            >
+              🔢 অর্ডার
             </button>
             <button
               type="button"
@@ -2810,18 +2859,6 @@ export default function AdminPanel({
                 </div>
               )}
 
-              <div>
-                <label className="block text-[10px] text-amber-950 font-bold mb-1">🔢 প্রদর্শন ক্রম / Order (ঐচ্ছিক):</label>
-                <input 
-                  type="number"
-                  min="1"
-                  value={editingNodeOrder}
-                  onChange={e => setEditingNodeOrder(e.target.value)}
-                  placeholder="যেমন: 1, 2, 3..."
-                  className="w-full px-3 py-1.5 border border-amber-300 rounded-lg bg-white text-gray-850 font-semibold focus:outline-none text-[11px]"
-                />
-              </div>
-
               {type === 'subcategory' && (
                 <div>
                   <label className="block text-[10px] text-amber-950 font-bold mb-1">
@@ -2843,10 +2880,9 @@ export default function AdminPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    const parsedOrder = editingNodeOrder.trim() !== '' && !isNaN(Number(editingNodeOrder)) ? Number(editingNodeOrder) : undefined;
                     if (type === 'category') {
                       if (onUpdateCategory) {
-                        onUpdateCategory(realEntityId, editingNodeNewName, editingNodeSubHeading, parsedOrder);
+                        onUpdateCategory(realEntityId, editingNodeNewName, editingNodeSubHeading);
                       }
                       setEditingNodeId(null);
                     } else {
@@ -2886,7 +2922,7 @@ export default function AdminPanel({
                           () => {
                             executeSingleMergeAndMove(
                               realEntityId,
-                              sub || { id: realEntityId, name, parentCategory: destinationParent, order: parsedOrder },
+                              sub || { id: realEntityId, name, parentCategory: destinationParent },
                               existingDestSub,
                               destinationParent,
                               trimmedNewName,
@@ -2901,7 +2937,7 @@ export default function AdminPanel({
                         );
                       } else {
                         if (onUpdateSubcategory) {
-                          onUpdateSubcategory(realEntityId, trimmedNewName, destinationParent, editingNodeDate || undefined, editingNodeSubHeading, undefined, parsedOrder);
+                          onUpdateSubcategory(realEntityId, trimmedNewName, destinationParent, editingNodeDate || undefined, editingNodeSubHeading);
                         }
                         setEditingNodeId(null);
                       }
@@ -7480,6 +7516,14 @@ export default function AdminPanel({
                                         </button>
                                         <button
                                           type="button"
+                                          onClick={() => openOrderModal(leaf.id, leaf.name, 'subcategory', leaf.order)}
+                                          className="text-indigo-700 hover:bg-indigo-100 px-2 py-1 rounded-md text-[10px] font-bold transition cursor-pointer"
+                                          title="প্রদর্শন ক্রম পরিবর্তন করুন"
+                                        >
+                                          🔢 অর্ডার
+                                        </button>
+                                        <button
+                                          type="button"
                                           onClick={() => {
                                             showCustomConfirm(
                                               'ডিলিট নিশ্চিতকরণ',
@@ -7595,7 +7639,6 @@ export default function AdminPanel({
                                               setEditingNodeId(catObj.id);
                                               setEditingNodeNewName(catObj.name);
                                               setEditingNodeSubHeading(catObj.subHeading || '');
-                                              setEditingNodeOrder(catObj.order !== undefined && catObj.order !== null ? String(catObj.order) : (subObj?.order !== undefined && subObj?.order !== null ? String(subObj.order) : ''));
                                               setEditingNodeType('category');
                                               setCategoryViewTab('tree');
                                             } else if (subObj) {
@@ -7606,6 +7649,21 @@ export default function AdminPanel({
                                         className="text-amber-700 hover:underline font-bold text-[10px] px-1.5 py-1 cursor-pointer"
                                       >
                                         ✏️ এডিট
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const subObj = subcategories.find(s => s.name === rootName && s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি');
+                                          if (catObj) {
+                                            openOrderModal(catObj.id, catObj.name, 'category', catObj.order ?? subObj?.order);
+                                          } else if (subObj) {
+                                            openOrderModal(subObj.id, subObj.name, 'subcategory', subObj.order);
+                                          }
+                                        }}
+                                        className="text-indigo-700 hover:underline font-bold text-[10px] px-1.5 py-1 cursor-pointer"
+                                        title="প্রদর্শন ক্রম পরিবর্তন করুন"
+                                      >
+                                        🔢 অর্ডার
                                       </button>
                                       <button
                                         type="button"
@@ -7824,6 +7882,14 @@ export default function AdminPanel({
                                     className="text-amber-700 hover:underline font-bold text-[10px] px-1 cursor-pointer"
                                   >
                                     ✏️ এডিট
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openOrderModal(sub.id, sub.name, 'subcategory', sub.order)}
+                                    className="text-indigo-700 hover:underline font-bold text-[10px] px-1 cursor-pointer"
+                                    title="প্রদর্শন ক্রম পরিবর্তন করুন"
+                                  >
+                                    🔢 অর্ডার
                                   </button>
                                   <button
                                     type="button"
@@ -13472,6 +13538,73 @@ export default function AdminPanel({
                 বন্ধ করুন
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED ORDER MANAGEMENT MODAL */}
+      {orderingItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🔢</span>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-850">প্রদর্শন ক্রম পরিবর্তন (Set Order)</h3>
+                  <p className="text-[10px] text-slate-500 font-semibold truncate max-w-[220px]">
+                    {orderingItem.name} ({orderingItem.type === 'category' ? 'ক্যাটাগরি' : 'সাব-ক্যাটাগরি'})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeOrderModal}
+                disabled={isSavingOrder}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOrderSubmit} className="flex flex-col gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  ক্রম সংখ্যা / Order Number:
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  autoFocus
+                  disabled={isSavingOrder}
+                  value={orderingInputVal}
+                  onChange={(e) => setOrderingInputVal(e.target.value)}
+                  placeholder="যেমন: 1, 2, 3... (খালি রাখলে ডিফল্ট)"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 text-slate-800 font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs"
+                />
+                <p className="text-[9.5px] text-slate-500 mt-1">
+                  * ছোট সংখ্যা আগে প্রদর্শিত হবে (যেমন: ১, ২, ৩)। খালি রাখলে এটি ডিফল্ট ক্রমানুসারে থাকবে।
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={closeOrderModal}
+                  disabled={isSavingOrder}
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-extrabold text-xs transition cursor-pointer"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingOrder}
+                  className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs transition flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingOrder ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

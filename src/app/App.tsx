@@ -2805,7 +2805,7 @@ export default function App() {
     addAuditLog('বাল্ক সাব-ক্যাটাগরি মুভ (Bulk Move Categories)', `একসাথে ${ids.length} টি সাব-ক্যাটাগরি নতুন প্যারেন্ট "${normalizedParent}" এ স্থানান্তরিত করা হয়েছে`, 'category');
   };
 
-  const handleUpdateCategory = (id: string, newName: string, subHeading?: string, order?: number) => {
+  const handleUpdateCategory = (id: string, newName: string, subHeading?: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     const cat = categories.find(c => c.id === id);
@@ -2816,10 +2816,9 @@ export default function App() {
     }
     const oldName = cat.name;
 
-    const parsedOrder = (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined;
     const updatedCats = categories.map(c => {
       if (c.id === id) {
-        const updatedC = { ...c, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : c.subHeading, order: parsedOrder !== undefined ? parsedOrder : c.order };
+        const updatedC = { ...c, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : c.subHeading };
         saveItemToFirestore('categories', updatedC, 'cat');
         return updatedC;
       }
@@ -2830,7 +2829,7 @@ export default function App() {
     const updatedSubcats = subcategories.map(s => {
       let item = s;
       if (s.id === id) {
-        item = { ...item, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading, order: parsedOrder !== undefined ? parsedOrder : s.order };
+        item = { ...item, name: trimmed, subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading };
         saveItemToFirestore('subcategories', item, 'subcat');
       }
       if (item.parentCategory === oldName) {
@@ -2859,7 +2858,7 @@ export default function App() {
     alert('🎯 ক্যাটাগরি সফলভাবে আপডেট করা হয়েছে!');
   };
 
-  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string, order?: number) => {
+  const handleUpdateSubcategory = (id: string, newName: string, newParent: string, date?: string, subHeading?: string, text?: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     
@@ -2887,7 +2886,6 @@ export default function App() {
     if (!sub) return;
     const oldName = sub.name;
 
-    const parsedOrder = (order !== undefined && order !== null && !isNaN(Number(order))) ? Number(order) : undefined;
     const updatedSubcats = subcategories.map(s => {
       if (s.id === id) {
         const updated = { 
@@ -2896,8 +2894,7 @@ export default function App() {
           parentCategory: normalizedParent,
           date: date !== undefined ? date : s.date,
           subHeading: subHeading !== undefined ? subHeading.trim() : s.subHeading,
-          text: text !== undefined ? text : s.text,
-          order: parsedOrder !== undefined ? parsedOrder : s.order
+          text: text !== undefined ? text : s.text
         };
         saveItemToFirestore('subcategories', updated, 'subcat');
         return updated;
@@ -2971,6 +2968,45 @@ export default function App() {
     updateQuestionsDB(updatedQs);
     addAuditLog('সাব-ক্যাটাগরি আপডেট (Update Category)', `সাব-ক্যাটাগরি আপডেট করা হয়েছে: "${oldName}" ➔ "${trimmed}" (প্যারেন্ট: ${normalizedParent})`, 'category');
     alert('🎯 সাব-ক্যাটাগরি সফলভাবে আপডেট ও মুভ করা হয়েছে!');
+  };
+
+  const handleUpdateNodeOrder = async (id: string, type: 'category' | 'subcategory', newOrder: number | undefined) => {
+    const nowIso = new Date().toISOString();
+    if (type === 'category') {
+      const cat = categories.find(c => c.id === id);
+      if (!cat) return;
+      const updatedCat: CategoryItem = {
+        ...cat,
+        order: newOrder,
+        updatedAt: nowIso
+      };
+      const ok = await saveItemToFirestore('categories', updatedCat, 'cat');
+      if (ok) {
+        const updatedCats = categories.map(c => c.id === id ? updatedCat : c);
+        updateCategoriesDB(updatedCats);
+        addAuditLog('অর্ডার আপডেট (Update Order)', `ক্যাটাগরি "${cat.name}" এর প্রদর্শন ক্রম আপডেট করা হয়েছে: ${newOrder !== undefined ? newOrder : 'ডিফল্ট'}`, 'category');
+        alert('🎯 প্রদর্শন ক্রম সফলভাবে সংরক্ষণ করা হয়েছে!');
+      } else {
+        alert('⚠️ ত্রুটি: প্রদর্শন ক্রম সংরক্ষণ করা সম্ভব হয়নি!');
+      }
+    } else {
+      const sub = subcategories.find(s => s.id === id);
+      if (!sub) return;
+      const updatedSub: SubcategoryItem = {
+        ...sub,
+        order: newOrder,
+        updatedAt: nowIso
+      };
+      const ok = await saveItemToFirestore('subcategories', updatedSub, 'subcat');
+      if (ok) {
+        const updatedSubs = subcategories.map(s => s.id === id ? updatedSub : s);
+        updateSubcategoriesDB(updatedSubs);
+        addAuditLog('অর্ডার আপডেট (Update Order)', `সাব-ক্যাটাগরি "${sub.name}" এর প্রদর্শন ক্রম আপডেট করা হয়েছে: ${newOrder !== undefined ? newOrder : 'ডিফল্ট'}`, 'category');
+        alert('🎯 প্রদর্শন ক্রম সফলভাবে সংরক্ষণ করা হয়েছে!');
+      } else {
+        alert('⚠️ ত্রুটি: প্রদর্শন ক্রম সংরক্ষণ করা সম্ভব হয়নি!');
+      }
+    }
   };
 
   // 4. User Wrapper Actions
@@ -3162,6 +3198,7 @@ export default function App() {
             onBulkMoveSubcategories={handleBulkMoveSubcategories}
             onUpdateCategory={handleUpdateCategory}
             onUpdateSubcategory={handleUpdateSubcategory}
+            onUpdateOrder={handleUpdateNodeOrder}
             onAddQuestion={handleAddQuestion}
             onUpdateQuestion={handleUpdateQuestion}
             onDeleteQuestion={handleDeleteQuestion}
