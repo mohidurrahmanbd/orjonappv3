@@ -1538,6 +1538,26 @@ export default function AdminPanel({
     return null;
   };
 
+  // Helper to find category by exact ID (exact match, no fuzzy logic or normalization)
+  const findCategoryById = (id?: string): CategoryItem | { id: string; name: string } | null => {
+    if (!id) return null;
+    const trimmed = id.trim();
+    if (!trimmed) return null;
+    const directCat = categories.find(c => c && c.id === trimmed);
+    if (directCat) return directCat;
+    const rootSub = subcategories.find(s => s && s.id === trimmed && s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি');
+    if (rootSub) return rootSub;
+    return null;
+  };
+
+  // Helper to find subcategory by exact ID (exact match, no fuzzy logic or normalization)
+  const findSubcategoryById = (id?: string): SubcategoryItem | null => {
+    if (!id) return null;
+    const trimmed = id.trim();
+    if (!trimmed) return null;
+    return subcategories.find(s => s && s.id === trimmed) || null;
+  };
+
   // Hierarchy integrity validation before creating any subcategory
   const validateSubcategoryIntegrity = (
     subName: string, 
@@ -1636,9 +1656,20 @@ export default function AdminPanel({
     ]);
 
     pendingQuestions.forEach((q, idx) => {
+      const qAny = q as any;
       const rowNum = idx + 2; // Line 1 is header
       const rawCat = q.category ? q.category.trim() : '';
       const rawSub = q.subcategory ? q.subcategory.trim() : '';
+      const catId = qAny.categoryId ? String(qAny.categoryId).trim() : '';
+      const subcatId = qAny.subcategoryId ? String(qAny.subcategoryId).trim() : '';
+
+      // If valid subcategoryId or categoryId provided, bypass missing checks
+      if (subcatId && findSubcategoryById(subcatId)) {
+        return;
+      }
+      if (catId && findCategoryById(catId) && (!rawSub || normSubcatNames.has(normalizeName(rawSub)))) {
+        return;
+      }
 
       const normCat = normalizeName(rawCat);
       const normSub = normalizeName(rawSub);
@@ -3317,8 +3348,21 @@ export default function AdminPanel({
       }
 
       if (!enableCsvValidation || errors.length === 0) {
-        const rawCat = rowData.category || rowData.subject || rowData['ক্যাটাগরি'] || rowData['বিষয়'] || 'সাধারণ জ্ঞান';
-        const rawSub = rowData.subcategory || rowData.topic || rowData['সাব-ক্যাটাগরি'] || rowData['উপ-বিষয়'] || rowData['টপিক'] || '';
+        // Read optional categoryId and subcategoryId from CSV headers
+        const rawCatId = (rowData.categoryId || rowData.category_id || rowData['ক্যাটাগরি_আইডি'] || '').trim();
+        const rawSubId = (rowData.subcategoryId || rowData.subcategory_id || rowData['সাব_ক্যাটাগরি_আইডি'] || '').trim();
+
+        // Exact ID resolution
+        const resolvedSubById = rawSubId ? findSubcategoryById(rawSubId) : null;
+        const resolvedCatById = rawCatId ? findCategoryById(rawCatId) : null;
+
+        // Determine category and subcategory with ID resolution priority and legacy name fallback
+        const rawCat = resolvedCatById 
+          ? resolvedCatById.name 
+          : (resolvedSubById?.parentCategory || rowData.category || rowData.subject || rowData['ক্যাটাগরি'] || rowData['বিষয়'] || 'সাধারণ জ্ঞান');
+        const rawSub = resolvedSubById 
+          ? resolvedSubById.name 
+          : (rowData.subcategory || rowData.topic || rowData['সাব-ক্যাটাগরি'] || rowData['উপ-বিষয়'] || rowData['টপিক'] || '');
 
         results.push({
           text: textVal || `প্রশ্নহীন কুইজ ${rowNum}`,
@@ -3333,8 +3377,10 @@ export default function AdminPanel({
           csvCategory: rawCat,
           csvSubcategory: rawSub,
           subjectCategory: rawCat,
-          subjectSubcategory: rawSub
-        });
+          subjectSubcategory: rawSub,
+          ...(rawCatId ? { categoryId: rawCatId } : {}),
+          ...(rawSubId ? { subcategoryId: rawSubId } : {})
+        } as any);
       }
     }
 
@@ -5733,6 +5779,9 @@ export default function AdminPanel({
                 <code className="block text-pink-600 font-mono font-bold text-[9px] bg-pink-50 p-1.5 rounded-md border border-pink-100 mt-1 break-all select-all">
                   text, optionA, optionB, optionC, optionD, correct, explanation, category, subcategory
                 </code>
+                <span className="block text-[8.5px] text-gray-500 mt-1">
+                  💡 <strong>ঐচ্ছিক আইডি ম্যাপিং (Hybrid ID Mapping):</strong> হেডারে ঐচ্ছিকভাবে <code className="text-indigo-600 font-mono font-bold">categoryId</code> ও <code className="text-indigo-600 font-mono font-bold">subcategoryId</code> কলাম ব্যবহার করে সরাসরি আইডি দ্বারা সুনির্দিষ্ট ক্যাটাগরি ও সাব-ক্যাটাগরিতে নির্ভুল ম্যাপিং করতে পারেন।
+                </span>
               </p>
 
               {/* Cascading Filter Destination for CSV Upload */}
