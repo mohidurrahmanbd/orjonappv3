@@ -31,6 +31,7 @@ class WebSQLiteFallback {
           id: c.id,
           name: c.name,
           subheading: c.subHeading || '',
+          orderindex: c.order !== undefined && c.order !== null ? Number(c.order) : null,
           createdat: '2026-08-01T00:00:00Z',
           updatedat: '2026-08-01T00:00:00Z'
         });
@@ -49,6 +50,7 @@ class WebSQLiteFallback {
           subheading: s.subHeading || '',
           text: s.text || '',
           details: s.details || '',
+          orderindex: s.order !== undefined && s.order !== null ? Number(s.order) : null,
           createdat: s.createdAt || '2026-08-01T00:00:00Z',
           updatedat: '2026-08-01T00:00:00Z'
         });
@@ -347,8 +349,10 @@ export async function initSQLite(): Promise<SQLiteDBConnection | WebSQLiteFallba
     // Safely ensure migration columns exist on existing databases
     try { await dbConnection.execute('ALTER TABLE categories ADD COLUMN version INTEGER DEFAULT 1;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE categories ADD COLUMN deletedAt TEXT;'); } catch {}
+    try { await dbConnection.execute('ALTER TABLE categories ADD COLUMN orderIndex INTEGER;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE subcategories ADD COLUMN version INTEGER DEFAULT 1;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE subcategories ADD COLUMN deletedAt TEXT;'); } catch {}
+    try { await dbConnection.execute('ALTER TABLE subcategories ADD COLUMN orderIndex INTEGER;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE questions ADD COLUMN version INTEGER DEFAULT 1;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE questions ADD COLUMN deletedAt TEXT;'); } catch {}
     try { await dbConnection.execute('ALTER TABLE courses ADD COLUMN version INTEGER DEFAULT 1;'); } catch {}

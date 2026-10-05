@@ -42,12 +42,13 @@ export async function insertCategory(cat: CategoryItem): Promise<boolean> {
     const db = await getSQLiteDatabase();
     const now = new Date().toISOString();
     await db.run(
-      `INSERT OR REPLACE INTO categories (id, name, subHeading, createdAt, updatedAt, version, deletedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT OR REPLACE INTO categories (id, name, subHeading, orderIndex, createdAt, updatedAt, version, deletedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         cat.id,
         cat.name,
         cat.subHeading || '',
+        cat.order !== undefined && cat.order !== null ? Number(cat.order) : null,
         cat.createdAt || now,
         cat.updatedAt || now,
         cat.version !== undefined ? cat.version : 1,
@@ -68,12 +69,13 @@ export async function insertCategories(cats: CategoryItem[]): Promise<boolean> {
     const now = new Date().toISOString();
     for (const cat of cats) {
       await db.run(
-        `INSERT OR REPLACE INTO categories (id, name, subHeading, createdAt, updatedAt, version, deletedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?);`,
+        `INSERT OR REPLACE INTO categories (id, name, subHeading, orderIndex, createdAt, updatedAt, version, deletedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           cat.id,
           cat.name,
           cat.subHeading || '',
+          cat.order !== undefined && cat.order !== null ? Number(cat.order) : null,
           cat.createdAt || now,
           cat.updatedAt || now,
           cat.version !== undefined ? cat.version : 1,
@@ -131,7 +133,11 @@ function mapRowToCategory(r: any): CategoryItem {
     id: r.id,
     name: r.name,
     subHeading: r.subHeading || r.subheading || undefined,
-    order: (r.orderIndex !== undefined && r.orderIndex !== null) ? Number(r.orderIndex) : ((r.order !== undefined && r.order !== null) ? Number(r.order) : undefined),
+    order: (r.orderIndex !== undefined && r.orderIndex !== null)
+      ? Number(r.orderIndex)
+      : ((r.order !== undefined && r.order !== null)
+        ? Number(r.order)
+        : ((r.orderindex !== undefined && r.orderindex !== null) ? Number(r.orderindex) : undefined)),
     createdAt: r.createdAt || r.createdat || undefined,
     updatedAt: r.updatedAt || r.updatedat || undefined,
     version: r.version !== undefined ? Number(r.version) : 1,
@@ -192,8 +198,8 @@ export async function insertSubcategory(sub: SubcategoryItem): Promise<boolean> 
     const now = new Date().toISOString();
     await db.run(
       `INSERT OR REPLACE INTO subcategories (
-        id, name, parentCategory, parentCategoryId, date, subHeading, text, details, createdAt, updatedAt, version, deletedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        id, name, parentCategory, parentCategoryId, date, subHeading, text, details, orderIndex, createdAt, updatedAt, version, deletedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         sub.id,
         sub.name,
@@ -203,6 +209,7 @@ export async function insertSubcategory(sub: SubcategoryItem): Promise<boolean> 
         sub.subHeading || '',
         sub.text || '',
         sub.details || '',
+        sub.order !== undefined && sub.order !== null ? Number(sub.order) : null,
         sub.createdAt || now,
         sub.updatedAt || now,
         sub.version !== undefined ? sub.version : 1,
@@ -224,8 +231,8 @@ export async function insertSubcategories(subs: SubcategoryItem[]): Promise<bool
     for (const sub of subs) {
       await db.run(
         `INSERT OR REPLACE INTO subcategories (
-          id, name, parentCategory, parentCategoryId, date, subHeading, text, details, createdAt, updatedAt, version, deletedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          id, name, parentCategory, parentCategoryId, date, subHeading, text, details, orderIndex, createdAt, updatedAt, version, deletedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           sub.id,
           sub.name,
@@ -235,6 +242,7 @@ export async function insertSubcategories(subs: SubcategoryItem[]): Promise<bool
           sub.subHeading || '',
           sub.text || '',
           sub.details || '',
+          sub.order !== undefined && sub.order !== null ? Number(sub.order) : null,
           sub.createdAt || now,
           sub.updatedAt || now,
           sub.version !== undefined ? sub.version : 1,
@@ -297,7 +305,11 @@ function mapRowToSubcategory(r: any): SubcategoryItem {
     subHeading: r.subHeading || r.subheading || undefined,
     text: r.text || undefined,
     details: r.details || undefined,
-    order: (r.orderIndex !== undefined && r.orderIndex !== null) ? Number(r.orderIndex) : ((r.order !== undefined && r.order !== null) ? Number(r.order) : undefined),
+    order: (r.orderIndex !== undefined && r.orderIndex !== null)
+      ? Number(r.orderIndex)
+      : ((r.order !== undefined && r.order !== null)
+        ? Number(r.order)
+        : ((r.orderindex !== undefined && r.orderindex !== null) ? Number(r.orderindex) : undefined)),
     createdAt: r.createdAt || r.createdat || undefined,
     updatedAt: r.updatedAt || r.updatedat || undefined,
     version: r.version !== undefined ? Number(r.version) : 1,
