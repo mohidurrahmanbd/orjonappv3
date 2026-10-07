@@ -149,6 +149,7 @@ def generate_database():
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       subHeading TEXT,
+      orderIndex INTEGER,
       createdAt TEXT,
       updatedAt TEXT,
       version INTEGER DEFAULT 1,
@@ -165,6 +166,7 @@ def generate_database():
       subHeading TEXT,
       text TEXT,
       details TEXT,
+      orderIndex INTEGER,
       createdAt TEXT,
       updatedAt TEXT,
       version INTEGER DEFAULT 1,
@@ -272,14 +274,15 @@ def generate_database():
         c_id = str(c.get("id") or "")
         name = str(c.get("name") or "")
         sub_heading = c.get("subHeading")
+        order_val = c.get("order")
         created_at = str(c.get("createdAt") or now_iso)
         updated_at = str(c.get("updatedAt") or now_iso)
         ver = int(c.get("version") or versions["categoryVersion"])
-        cat_rows.append((c_id, name, sub_heading, created_at, updated_at, ver, None))
+        cat_rows.append((c_id, name, sub_heading, order_val, created_at, updated_at, ver, None))
 
     cursor.executemany('''
-    INSERT OR REPLACE INTO categories (id, name, subHeading, createdAt, updatedAt, version, deletedAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO categories (id, name, subHeading, orderIndex, createdAt, updatedAt, version, deletedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', cat_rows)
 
     # 5. Insert Subcategories
@@ -293,19 +296,20 @@ def generate_database():
         sub_heading = s.get("subHeading")
         text_val = s.get("text")
         details_val = s.get("details")
+        order_val = s.get("order")
         created_at = str(s.get("createdAt") or now_iso)
         updated_at = str(s.get("updatedAt") or now_iso)
         ver = int(s.get("version") or versions["subcategoryVersion"])
         sub_rows.append((
             s_id, name, parent_cat, parent_cat_id, date_val, sub_heading,
-            text_val, details_val, created_at, updated_at, ver, None
+            text_val, details_val, order_val, created_at, updated_at, ver, None
         ))
 
     cursor.executemany('''
     INSERT OR REPLACE INTO subcategories (
       id, name, parentCategory, parentCategoryId, date, subHeading,
-      text, details, createdAt, updatedAt, version, deletedAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      text, details, orderIndex, createdAt, updatedAt, version, deletedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', sub_rows)
 
     # 6. Insert Questions
