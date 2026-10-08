@@ -6020,6 +6020,17 @@ export default function UserPortal({
               return 999999;
             };
 
+            const getNodeDateTimestamp = (name: string): number => {
+              const matchedSub = subcategories.find(s => 
+                s.name && s.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+                s.parentCategory && s.parentCategory.trim().toLowerCase() === targetParent.trim().toLowerCase()
+              );
+              if (!matchedSub || !matchedSub.date) return 0;
+              const parsed = new Date(matchedSub.date);
+              const time = parsed.getTime();
+              return isNaN(time) ? 0 : time;
+            };
+
             // Get items to display at current level (excluding root categories, self-references, or duplicates)
             const rawPrepItems = Array.from(new Set(isPrepRoot 
               ? [
@@ -6042,8 +6053,18 @@ export default function UserPortal({
                   s.name.trim().toLowerCase() !== 'বিষয়ভিত্তিক প্রস্তুতি'.toLowerCase()
                 ).map(s => s.name.trim())));
 
-            // Sort items with parent-scoped order ASC (safe fallback 999999 for legacy records)
+            // Hybrid sort: If direct children contain valid dates, sort by date DESC; otherwise preserve existing order ASC
+            const prepHasDateContent = rawPrepItems.some(name => getNodeDateTimestamp(name) > 0);
             const prepItems = [...rawPrepItems].sort((a, b) => {
+              if (prepHasDateContent) {
+                const timeA = getNodeDateTimestamp(a);
+                const timeB = getNodeDateTimestamp(b);
+                if (timeA !== timeB) {
+                  if (timeA > 0 && timeB > 0) return timeB - timeA;
+                  if (timeA > 0) return -1;
+                  if (timeB > 0) return 1;
+                }
+              }
               const orderA = getNodeOrder(a);
               const orderB = getNodeOrder(b);
               if (orderA !== orderB) {
@@ -6315,17 +6336,51 @@ export default function UserPortal({
               ? subcategories.filter(s => isJobSolutionVariation(s.parentCategory)).map(s => s.name.trim())
               : subcategories.filter(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === currentJobNode.trim().toLowerCase()).map(s => s.name.trim());
 
-            const jobItems = Array.from(new Set(jobRawItems)).sort((aName, bName) => {
-              const subA = subcategories.find(s => s.name.trim().toLowerCase() === aName.trim().toLowerCase());
-              const subB = subcategories.find(s => s.name.trim().toLowerCase() === bName.trim().toLowerCase());
-              
-              const isLeafA = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === aName.trim().toLowerCase());
-              const isLeafB = !subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === bName.trim().toLowerCase());
+            const rawUniqueJobItems = Array.from(new Set(jobRawItems));
+            const targetJobParent = isJobRoot ? 'জব সলিউশন পরীক্ষা' : currentJobNode;
 
-              if (isLeafA && isLeafB) {
-                const timeA = subA?.date ? new Date(subA.date).getTime() : 0;
-                const timeB = subB?.date ? new Date(subB.date).getTime() : 0;
-                return timeB - timeA; // latest date first
+            const getJobNodeOrder = (name: string): number => {
+              const matchedSub = subcategories.find(s => 
+                s.name && s.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+                (isJobRoot 
+                  ? isJobSolutionVariation(s.parentCategory)
+                  : s.parentCategory && s.parentCategory.trim().toLowerCase() === targetJobParent.trim().toLowerCase())
+              );
+              if (matchedSub && matchedSub.order !== undefined && matchedSub.order !== null && !isNaN(Number(matchedSub.order))) {
+                return Number(matchedSub.order);
+              }
+              return 999999;
+            };
+
+            const getJobNodeDateTimestamp = (name: string): number => {
+              const matchedSub = subcategories.find(s => 
+                s.name && s.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+                (isJobRoot 
+                  ? isJobSolutionVariation(s.parentCategory)
+                  : s.parentCategory && s.parentCategory.trim().toLowerCase() === targetJobParent.trim().toLowerCase())
+              );
+              if (!matchedSub || !matchedSub.date) return 0;
+              const parsed = new Date(matchedSub.date);
+              const time = parsed.getTime();
+              return isNaN(time) ? 0 : time;
+            };
+
+            // Hybrid sort: If direct children contain valid dates, sort by date DESC; otherwise preserve existing order ASC
+            const jobHasDateContent = rawUniqueJobItems.some(name => getJobNodeDateTimestamp(name) > 0);
+            const jobItems = [...rawUniqueJobItems].sort((aName, bName) => {
+              if (jobHasDateContent) {
+                const timeA = getJobNodeDateTimestamp(aName);
+                const timeB = getJobNodeDateTimestamp(bName);
+                if (timeA !== timeB) {
+                  if (timeA > 0 && timeB > 0) return timeB - timeA;
+                  if (timeA > 0) return -1;
+                  if (timeB > 0) return 1;
+                }
+              }
+              const orderA = getJobNodeOrder(aName);
+              const orderB = getJobNodeOrder(bName);
+              if (orderA !== orderB) {
+                return orderA - orderB;
               }
               return 0;
             });
