@@ -2068,6 +2068,28 @@ export default function UserPortal({
     });
   };
 
+  // Dedicated helper for Year-Based Job Solution exam-level direct questions
+  // Excludes ancestor aggregation so child exam questions are not duplicated under parent folders
+  const getQuestionsForYearExamDirect = (examName: string): Question[] => {
+    const norm = examName.trim().toLowerCase();
+    if (!norm) return [];
+
+    return questions.filter(q => {
+      const qSub = q.subcategory ? q.subcategory.trim().toLowerCase() : '';
+      const qExamSub = q.examSubcategory ? q.examSubcategory.trim().toLowerCase() : '';
+
+      if (qSub === norm || qExamSub === norm) return true;
+
+      // Compatibility fallback: if subcategory is empty or matches root category, check csvSubcategory
+      if (!qSub) {
+        const qCsvSub = q.csvSubcategory ? q.csvSubcategory.trim().toLowerCase() : '';
+        if (qCsvSub === norm) return true;
+      }
+
+      return false;
+    });
+  };
+
   // General computed stats
   const totalUserExams = attempts.length;
   const totalNetScore = attempts.reduce((sum, a) => sum + a.score, 0);
@@ -2494,7 +2516,14 @@ export default function UserPortal({
       const hasChildren = subcategories.some(s => s.parentCategory && s.parentCategory.trim().toLowerCase() === name.toLowerCase());
       const hasDirectQuestions = questions.some(q => {
         const qSub = (q.subcategory || '').trim().toLowerCase();
-        return qSub === name.toLowerCase() || (q.subcategories && q.subcategories.some(s => s.trim().toLowerCase() === name.toLowerCase()));
+        const qExamSub = (q.examSubcategory || '').trim().toLowerCase();
+        const normName = name.toLowerCase();
+        if (qSub === normName || qExamSub === normName) return true;
+        if (!qSub) {
+          const qCsvSub = (q.csvSubcategory || '').trim().toLowerCase();
+          if (qCsvSub === normName) return true;
+        }
+        return false;
       });
 
       if (!hasChildren || hasDirectQuestions) {
@@ -2557,7 +2586,7 @@ export default function UserPortal({
     const compiledExams: YearWiseCompiledExam[] = [];
 
     candidateExamNodesMap.forEach(node => {
-      const examQuestions = getQuestionsForJobNode(node.name, false);
+      const examQuestions = getQuestionsForYearExamDirect(node.name);
       const qCount = examQuestions.length;
 
       // Extract best date
@@ -6935,13 +6964,16 @@ export default function UserPortal({
                                               key={`year-exam-${exam.id}-${exIdx}`}
                                               id={`year-exam-btn-${exam.id}`}
                                               onClick={async () => {
-                                                let examQuestions = getQuestionsForJobNode(exam.name, false);
+                                                let examQuestions = getQuestionsForYearExamDirect(exam.name);
                                                 if (onFetchQuestionsLazy) {
                                                   const fetched = await onFetchQuestionsLazy({ subcategory: exam.name });
                                                   if (fetched && fetched.length > 0) {
-                                                    const fetchedFiltered = fetched.filter(q =>
-                                                      q.subcategory === exam.name || (q.subcategories && q.subcategories.includes(exam.name))
-                                                    );
+                                                    const fetchedFiltered = fetched.filter(q => {
+                                                      const normName = exam.name.trim().toLowerCase();
+                                                      const qSub = (q.subcategory || '').trim().toLowerCase();
+                                                      const qExamSub = (q.examSubcategory || '').trim().toLowerCase();
+                                                      return qSub === normName || qExamSub === normName;
+                                                    });
                                                     if (fetchedFiltered.length > 0) {
                                                       const map = new Map<string, Question>();
                                                       examQuestions.forEach(q => map.set(String(q.id), q));
