@@ -6541,7 +6541,7 @@ export default function UserPortal({
                                         </span>
                                       ) : <span />}
                                       <span className="text-emerald-700 font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                                        খ্ল্ন <ChevronRight className="w-2.5 h-2.5" />
+                                        খুলুন <ChevronRight className="w-2.5 h-2.5" />
                                       </span>
                                     </div>
                                   </button>
@@ -6865,16 +6865,9 @@ export default function UserPortal({
                             }`}
                           >
                             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                              <span className="w-6 h-6 rounded-md bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0 transition-transform duration-200">
-                                {isYearExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-slate-950" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4 text-slate-950" />
-                                )}
-                              </span>
                               <div className="flex items-center gap-2 flex-wrap min-w-0">
                                 <span className="font-black text-[13px] sm:text-[14.5px] text-slate-900 leading-tight">
-                                  {!isYearExpanded && '▶ '}{yearGroup.yearLabel}
+                                  {yearGroup.yearLabel}
                                 </span>
                               </div>
                             </div>
@@ -6922,15 +6915,8 @@ export default function UserPortal({
                                       }`}
                                     >
                                       <div className="flex items-center gap-2 min-w-0">
-                                        <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center justify-center shrink-0">
-                                          {isMonthExpanded ? (
-                                            <ChevronDown className="w-3.5 h-3.5" />
-                                          ) : (
-                                            <ChevronRight className="w-3.5 h-3.5" />
-                                          )}
-                                        </span>
                                         <span className="font-extrabold text-[12.5px] sm:text-[13.5px] text-slate-800">
-                                          {isMonthExpanded ? 'â–¼ ' : '▶ '} {monthGroup.monthLabel}
+                                          {monthGroup.monthLabel}
                                         </span>
                                       </div>
 

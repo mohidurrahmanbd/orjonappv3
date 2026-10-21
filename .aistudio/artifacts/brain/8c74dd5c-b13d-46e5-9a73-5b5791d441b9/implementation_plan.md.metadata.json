@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan to remove the leaf icon ('🌿') from before 'বাংলা সাহিত্য' and other chapter headings, the reader header badge, and the breadcrumb trail in RoutineHierarchicalMCQModal, ensuring a clean flush layout across both Web and Android User APK targets.",
+  "updatedAt":  "2026-10-21T08:00:54.736420205Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

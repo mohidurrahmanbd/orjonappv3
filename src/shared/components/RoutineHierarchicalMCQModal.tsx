@@ -3,7 +3,7 @@ import { Question, Routine, CategoryItem, SubcategoryItem, Bookmark } from '../t
 import { 
   ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
-  Check, HelpCircle, Sparkles, ArrowLeft, ArrowRight,
+  Check, HelpCircle, Sparkles, ArrowLeft,
   BookMarked, CheckCircle, RotateCcw
 } from 'lucide-react';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
@@ -921,7 +921,7 @@ export default function RoutineHierarchicalMCQModal({
 
             <div className="flex items-center gap-2 flex-wrap">
               <span className="bg-emerald-500/30 text-emerald-100 border border-emerald-400/30 text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-                <span>🌿</span> পরিচ্ছেদ MCQ পাঠ
+                পরিচ্ছেদ MCQ পাঠ
               </span>
               {routine.courseName && (
                 <span className="bg-purple-500/30 text-purple-100 border border-purple-400/30 text-[11px] font-bold px-3 py-1 rounded-full">
@@ -939,7 +939,7 @@ export default function RoutineHierarchicalMCQModal({
             {!isSameFolderAndSubfolder(selectedLeafTopic.subName, selectedLeafTopic.leafName) && (
               <>
                 <span className="text-emerald-300">›</span>
-                <span className="text-amber-300 font-black">🌿 {selectedLeafTopic.leafName}</span>
+                <span className="text-amber-300 font-black">{selectedLeafTopic.leafName}</span>
               </>
             )}
           </div>
@@ -1384,19 +1384,7 @@ export default function RoutineHierarchicalMCQModal({
                                 </div>
                               </div>
 
-                              {canDirectOpen ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openLeafTopic(catNode.name, subNode.name, directTargetLeafName, directTargetQuestions);
-                                  }}
-                                  className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-                                >
-                                  <span>MCQ পড়ুন</span>
-                                  <ArrowRight className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
+                              {!canDirectOpen && (
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-[10px] text-purple-700 font-bold hidden sm:inline">
                                     {isSubExpanded ? 'সংকুচিত করুন' : 'উপ-অধ্যায় দেখুন'}
@@ -1424,9 +1412,6 @@ export default function RoutineHierarchicalMCQModal({
                                     className="p-3 sm:p-3.5 bg-white hover:bg-emerald-50/60 active:scale-[0.99] border border-emerald-100/90 hover:border-emerald-300 rounded-xl shadow-2xs flex items-center justify-between gap-3 cursor-pointer transition select-none group"
                                   >
                                     <div className="flex items-center gap-2.5 min-w-0">
-                                      <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white flex items-center justify-center font-bold text-xs shrink-0 transition">
-                                        🌿
-                                      </span>
                                       <div>
                                         <h5 className="text-xs sm:text-[13px] font-bold text-slate-900 group-hover:text-emerald-950 flex items-center gap-2 flex-wrap transition">
                                           <span>{leafNode.name.replace(/^(?:পরিচ্ছেদ\s*[:ঃ-]?\s*)/iu, '')}</span>
@@ -1456,18 +1441,6 @@ export default function RoutineHierarchicalMCQModal({
                                           </span>
                                         </div>
                                       </div>
-
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          openLeafTopic(catNode.name, subNode.name, leafNode.name, leafNode.questions);
-                                        }}
-                                        className="bg-emerald-600 group-hover:bg-emerald-700 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-                                      >
-                                        <span>MCQ পড়ুন</span>
-                                        <ArrowRight className="w-3.5 h-3.5" />
-                                      </button>
                                     </div>
                                   </div>
                                 );
