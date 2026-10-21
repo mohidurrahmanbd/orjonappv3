@@ -94,8 +94,9 @@ export default function RoutineHierarchicalMCQModal({
   onToggleBookmark
 }: RoutineHierarchicalMCQModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAllAnswers, setShowAllAnswers] = useState(true);
+  const [showAllAnswers, setShowAllAnswers] = useState(false);
   const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
+  const [revealedExplanations, setRevealedExplanations] = useState<Record<string, boolean>>({});
   const [selectedUserOptions, setSelectedUserOptions] = useState<Record<string, number>>({});
   
   // Reading Progress State (Persistent in localStorage)
@@ -660,6 +661,7 @@ export default function RoutineHierarchicalMCQModal({
           {visibleQuestions.map((q, localIdx) => {
             const absoluteQIndex = startIdx + localIdx + startIndexOffset;
             const isRevealed = showAllAnswers || !!revealedAnswers[q.id];
+            const isExplanationRevealed = showAllAnswers || !!revealedExplanations[q.id];
             const bookmarked = isBookmarked(q.id);
             const isRead = readQuestionIds.includes(q.id);
             const options = [q.optionA, q.optionB, q.optionC, q.optionD];
@@ -715,22 +717,6 @@ export default function RoutineHierarchicalMCQModal({
                         title={bookmarked ? 'বুকমার্ক সরানো' : 'বুকমার্কে যোগ করুন'}
                       >
                         <BookmarkIcon className={`w-3.5 h-3.5 ${bookmarked ? 'fill-amber-500 text-amber-500' : ''}`} />
-                      </button>
-                    )}
-
-                    {!showAllAnswers && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRevealedAnswers(prev => ({
-                            ...prev,
-                            [q.id]: !prev[q.id]
-                          }));
-                          handleInteractionRead(q.id, questionList);
-                        }}
-                        className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition cursor-pointer shadow-2xs"
-                      >
-                        {isRevealed ? 'উত্তর লুকান' : 'উত্তর দেখুন'}
                       </button>
                     )}
                   </div>
@@ -789,8 +775,59 @@ export default function RoutineHierarchicalMCQModal({
                   })}
                 </div>
 
+                {/* Action Buttons: সঠিক উত্তর & ব্যাখ্যা */}
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRevealedAnswers(prev => ({
+                        ...prev,
+                        [q.id]: !prev[q.id]
+                      }));
+                      handleInteractionRead(q.id, questionList);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs border ${
+                      isRevealed
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                        : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                    }`}
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{isRevealed ? 'সঠিক উত্তর লুকান' : 'সঠিক উত্তর'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRevealedExplanations(prev => ({
+                        ...prev,
+                        [q.id]: !prev[q.id]
+                      }));
+                      handleInteractionRead(q.id, questionList);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs border ${
+                      isExplanationRevealed
+                        ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                    <span>{isExplanationRevealed ? 'ব্যাখ্যা লুকান' : 'ব্যাখ্যা'}</span>
+                  </button>
+                </div>
+
+                {/* Inline Correct Answer Banner (when correct answer is revealed but explanation is not expanded) */}
+                {isRevealed && !isExplanationRevealed && (
+                  <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-2.5 text-xs text-emerald-950 font-bold flex items-center gap-2 animate-fade-in shadow-2xs">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      সঠিক উত্তর: <span className="font-black text-emerald-900">({getOptionLetter(correctIdx)}) {options[correctIdx]}</span>
+                    </span>
+                  </div>
+                )}
+
                 {/* Explanation Box */}
-                {isRevealed && (
+                {isExplanationRevealed && (
                   <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 text-xs text-amber-950 space-y-1.5 animate-fade-in shadow-2xs">
                     <div className="flex items-center justify-between font-extrabold text-[11px] text-amber-900 border-b border-amber-200/70 pb-1">
                       <span className="flex items-center gap-1.5">
@@ -1392,7 +1429,7 @@ export default function RoutineHierarchicalMCQModal({
                                       </span>
                                       <div>
                                         <h5 className="text-xs sm:text-[13px] font-bold text-slate-900 group-hover:text-emerald-950 flex items-center gap-2 flex-wrap transition">
-                                          <span>পরিচ্ছেদ: {leafNode.name}</span>
+                                          <span>{leafNode.name.replace(/^(?:পরিচ্ছেদ\s*[:ঃ-]?\s*)/iu, '')}</span>
                                           <span className="bg-emerald-50 group-hover:bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md border border-emerald-200">
                                             {toBengaliDigits(leafNode.questions.length)} টি MCQ
                                           </span>

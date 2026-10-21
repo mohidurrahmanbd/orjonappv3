@@ -13,6 +13,14 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     base: isStandalone ? './' : '/',
+    optimizeDeps: {
+      entries: [
+        'index.html',
+        'index-admin.html',
+        'index-user.html',
+        'index-mobile.html',
+      ],
+    },
     build: {
       outDir,
       emptyOutDir: true,

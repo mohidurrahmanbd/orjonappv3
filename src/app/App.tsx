@@ -3254,7 +3254,7 @@ export default function App() {
                   alt="ORJON MCQ Logo" 
                   className="mx-auto object-contain w-[100px] sm:w-[140px] max-w-[160px] h-auto"
                 />
-                <h1 className="text-base font-bold text-gray-900 tracking-tight">Quiz & Exam Portal</h1>
+                <h1 className="text-base font-bold text-gray-900 tracking-tight">অর্জন MCQ</h1>
               </div>
 
               {/* View Switchers: Login | Register */}

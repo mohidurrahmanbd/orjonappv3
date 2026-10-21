@@ -5698,7 +5698,7 @@ export default function UserPortal({
                 {/* Bottom: MCQ Count & Direct Actions */}
                 <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
                   {showMcqCount ? (
-                    <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded text-[9.5px]">
+                    <span className="bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-1.5 py-0.5 rounded text-[9.5px]">
                       {exam.qCount.toLocaleString('bn-BD')} MCQ
                     </span>
                   ) : <span />}
@@ -5990,7 +5990,7 @@ export default function UserPortal({
                               <div className="pt-2 border-t border-slate-100/90 flex items-center justify-between text-[10px]">
                                 <div className="flex items-center gap-1.5">
                                   {showMcqCount && (
-                                    <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded text-[9px]">
+                                    <span className="bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-1.5 py-0.5 rounded text-[9px]">
                                       {group.totalQuestions.toLocaleString('bn-BD')} MCQ
                                     </span>
                                   )}
@@ -6224,7 +6224,7 @@ export default function UserPortal({
 
                                     <div className="pt-1.5 border-t border-slate-100/90 flex items-center justify-between text-[9px] sm:text-[9.5px]">
                                       {showMcqCount ? (
-                                        <span className="text-slate-700 font-extrabold px-0.5 py-0.5">
+                                        <span className="bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-1.5 py-0.5 rounded">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       ) : <span />}
@@ -6328,7 +6328,7 @@ export default function UserPortal({
                                         </div>
                                       </div>
                                       {showMcqCount && (
-                                        <span className="text-[10px] text-slate-700 font-black px-1 py-0.5 shrink-0">
+                                        <span className="text-[9.5px] bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-2 py-1 rounded-md shrink-0">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       )}
@@ -6536,7 +6536,7 @@ export default function UserPortal({
 
                                     <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[8.5px]">
                                       {showMcqCount ? (
-                                        <span className="bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
+                                        <span className="bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-1.5 py-0.5 rounded">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       ) : <span />}
@@ -6635,7 +6635,7 @@ export default function UserPortal({
                                         </div>
                                       </div>
                                       {showMcqCount && (
-                                        <span className="text-[9.5px] bg-slate-800 text-white font-extrabold px-2 py-1 rounded-md shrink-0">
+                                        <span className="text-[9.5px] bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-2 py-1 rounded-md shrink-0">
                                           {qCount.toLocaleString('bn-BD')} MCQ
                                         </span>
                                       )}
@@ -6827,7 +6827,7 @@ export default function UserPortal({
                     📍 {toBengaliDigits(totalExamsCount)} টি পরীক্ষা
                   </span>
                   {showMcqCount && (
-                    <span className="bg-slate-900 text-white px-2 py-0.5 rounded-md">
+                    <span className="bg-[#ecfdf5] text-[#007a55] border border-[#007a55] px-2 py-0.5 rounded-md font-extrabold">
                       🎯 {totalQuestionsCount.toLocaleString('bn-BD')} MCQ
                     </span>
                   )}
@@ -6874,7 +6874,7 @@ export default function UserPortal({
                               </span>
                               <div className="flex items-center gap-2 flex-wrap min-w-0">
                                 <span className="font-black text-[13px] sm:text-[14.5px] text-slate-900 leading-tight">
-                                  {isYearExpanded ? 'â–¼ ' : '▶ '} {yearGroup.yearLabel}
+                                  {!isYearExpanded && '▶ '}{yearGroup.yearLabel}
                                 </span>
                               </div>
                             </div>
@@ -7034,7 +7034,7 @@ export default function UserPortal({
                                                 </div>
 
                                                 {showMcqCount && (
-                                                  <span className="text-[9px] bg-slate-800 text-white font-extrabold px-1.5 py-0.5 rounded">
+                                                  <span className="text-[9px] bg-[#ecfdf5] text-[#007a55] border border-[#007a55] font-extrabold px-1.5 py-0.5 rounded">
                                                     {exam.qCount.toLocaleString('bn-BD')} MCQ
                                                   </span>
                                                 )}
