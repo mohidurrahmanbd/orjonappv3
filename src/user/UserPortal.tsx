@@ -3,7 +3,7 @@ import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryI
 import { syncUserEnrollmentsOnDemand, getStoredEnrolledCourseIds, setStoredEnrolledCourseIds } from '../shared/lib/sync/versionSyncService';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
-  FileText, Clock, ArrowLeft, CheckCircle2, XCircle, Compass, 
+  FileText, Clock, ArrowLeft, ArrowRight, CheckCircle2, XCircle, Compass, 
   ChevronRight, Sparkles, TrendingUp, AlertCircle, Calendar, 
   HelpCircle, Maximize2, FolderHeart, RefreshCw, Layers, Settings,
   Folder, FolderOpen, Home, Menu, X, Filter,
@@ -3892,7 +3892,7 @@ export default function UserPortal({
                       const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                       if (parts.length === 0) return;
                       const root = parts[0];
-                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
+                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
                       if (!rootMap.has(root)) {
                         rootMap.set(root, []);
                       }
@@ -3918,7 +3918,7 @@ export default function UserPortal({
                             {subList.length > 0 ? (
                               <div className="space-y-1.5 pl-1.5">
                                 {subList.map((sub, sIdx) => {
-                                  const subParts = sub.split(/\s*Ã¢â‚¬Âº\s*/);
+                                  const subParts = sub.split(/\s*›\s*/);
                                   return (
                                     <div 
                                       key={`sub-${sIdx}`}
@@ -3929,7 +3929,7 @@ export default function UserPortal({
                                           <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
                                             {seg}
                                           </span>
-                                          {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">Ã¢â‚¬Âº</span>}
+                                          {segIdx < arr.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
                                         </React.Fragment>
                                       ))}
                                     </div>
@@ -7299,9 +7299,10 @@ export default function UserPortal({
                               <button
                                 disabled={bCurrentPage === bTotalPages}
                                 onClick={() => setBookmarkViewPage(prev => Math.min(bTotalPages, prev + 1))}
-                                className="px-3 py-1.5 rounded-xl border text-[11px] font-bold bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
+                                className="px-3 py-1.5 rounded-xl border text-[11px] font-bold bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition inline-flex items-center gap-1"
                               >
-                                পরবর্তী â†’
+                                <span>পরবর্তী</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           )}
@@ -8174,7 +8175,7 @@ export default function UserPortal({
                                       const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                                       if (parts.length === 0) return;
                                       const root = parts[0];
-                                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
+                                      const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
                                       if (!rootMap.has(root)) {
                                         rootMap.set(root, []);
                                       }
@@ -8197,7 +8198,7 @@ export default function UserPortal({
                                       subList.forEach((sub, sIdx) => {
                                         displayLines.push(
                                           <div key={`${root}-sub-${sIdx}`} className="text-black font-normal text-xs pl-2.5 flex items-start gap-1 leading-snug">
-                                            <span className="text-black font-bold select-none">Ã¢â‚¬Âº</span>
+                                            <ChevronRight className="w-3.5 h-3.5 text-black shrink-0 mt-0.5" />
                                             <span className="text-black">{sub}</span>
                                           </div>
                                         );
@@ -9024,7 +9025,7 @@ export default function UserPortal({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1 text-[10.5px] text-slate-400 font-bold truncate">
                             <span>{item.courseName || targetCourse?.title || 'কোর্স রুটিন'}</span>
-                            <span>Ã¢â‚¬Âº</span>
+                            <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
                             <span className="text-indigo-950 font-black truncate">{item.title}</span>
                           </div>
                         </div>
@@ -9167,7 +9168,7 @@ export default function UserPortal({
                           const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
                           if (parts.length === 0) return;
                           const root = parts[0];
-                          const subHierarchy = parts.length > 1 ? parts.slice(1).join(" Ã¢â‚¬Âº ") : "";
+                          const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
                           if (!rootMap.has(root)) {
                             rootMap.set(root, []);
                           }
@@ -9193,7 +9194,7 @@ export default function UserPortal({
                                 {subList.length > 0 ? (
                                   <div className="space-y-1 pl-1">
                                     {subList.map((sub, sIdx) => {
-                                      const subParts = sub.split(/\s*Ã¢â‚¬Âº\s*/);
+                                      const subParts = sub.split(/\s*›\s*/);
                                       return (
                                         <div
                                           key={`sub-${sIdx}`}
@@ -9204,7 +9205,7 @@ export default function UserPortal({
                                               <span className={segIdx === arr.length - 1 ? "font-black text-indigo-950" : "font-semibold text-indigo-700"}>
                                                 {seg}
                                               </span>
-                                              {segIdx < arr.length - 1 && <span className="text-indigo-400 font-bold">Ã¢â‚¬Âº</span>}
+                                              {segIdx < arr.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
                                             </React.Fragment>
                                           ))}
                                         </div>

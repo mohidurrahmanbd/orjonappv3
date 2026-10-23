@@ -6,6 +6,49 @@ import { FileSharer } from '@capgo/capacitor-file-sharer';
 import { Toast } from '@capacitor/toast';
 import { Routine, Question, CategoryItem, SubcategoryItem, formatBengaliDateTime } from '../types';
 import { formatRoutineSyllabusPaths } from './routineUtils';
+import orjonLogo from '../../assets/orjon-logo.png';
+
+let cachedLogoDataUrl: string | null = null;
+
+/**
+ * Preloads the official Orjon MCQ application logo into an offscreen canvas and returns a base64 Data URL.
+ * Using a synchronous data URL in the HTML template guarantees instant rendering in html2canvas with zero CORS,
+ * network timing race conditions, or offline Android WebView asset loading issues.
+ */
+const getLogoDataUrl = async (): Promise<string> => {
+  if (cachedLogoDataUrl) return cachedLogoDataUrl;
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 1024;
+          canvas.height = img.naturalHeight || 1024;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            cachedLogoDataUrl = canvas.toDataURL('image/png');
+            resolve(cachedLogoDataUrl);
+            return;
+          }
+        } catch (e) {
+          console.warn('[PDF] Failed to convert logo to data URL, using asset URL fallback:', e);
+        }
+        resolve(orjonLogo);
+      };
+      img.onerror = (e) => {
+        console.warn('[PDF] Failed to load logo into Image object, using asset URL fallback:', e);
+        resolve(orjonLogo);
+      };
+      img.src = orjonLogo;
+    } catch (err) {
+      console.warn('[PDF] Unexpected error in getLogoDataUrl:', err);
+      resolve(orjonLogo);
+    }
+  });
+};
 
 /**
  * Displays a Toast notification across both Android native and web environments.
@@ -217,6 +260,7 @@ export const downloadCourseRoutinePDF = async (
   container.style.padding = '40px';
   container.style.boxSizing = 'border-box';
 
+  const logoSrc = await getLogoDataUrl();
   const dateNowStr = formatBengaliDateTime(new Date().toISOString());
 
   // Build HTML Content
@@ -224,15 +268,22 @@ export const downloadCourseRoutinePDF = async (
     <div style="font-family: sans-serif; color: #1e293b; line-height: 1.5;">
       <!-- Header Banner -->
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #3730a3; padding-bottom: 16px; margin-bottom: 24px;">
-        <div>
-          <h1 style="font-size: 24px; font-weight: 900; color: #312e81; margin: 0; padding: 0;">
-            🎓 অর্জন অ্যাডমিশন ও জব সলিউশন
-          </h1>
-          <p style="font-size: 13px; font-weight: 700; color: #4338ca; margin: 4px 0 0 0;">
-            অফিশিয়াল একাডেমিক ও এক্সাম কোর্স রুটিন
-          </p>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <img 
+            src="${logoSrc}" 
+            alt="Orjon MCQ" 
+            style="width: 44px; height: 44px; object-fit: contain; flex-shrink: 0;"
+          />
+          <div>
+            <h1 style="font-size: 24px; font-weight: 900; color: #312e81; margin: 0; padding: 0; line-height: 1.2;">
+              অর্জন MCQ
+            </h1>
+            <p style="font-size: 13px; font-weight: 700; color: #4338ca; margin: 3px 0 0 0;">
+              অফিশিয়াল একাডেমিক ও এক্সাম কোর্স রুটিন
+            </p>
+          </div>
         </div>
-        <div style="text-align: right;">
+        <div style="text-align: right; flex-shrink: 0;">
           <span style="font-size: 11px; font-weight: 700; background-color: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 8px; display: inline-block;">
             ডাউনলোডের তারিখ: ${dateNowStr}
           </span>
@@ -309,12 +360,25 @@ export const downloadCourseRoutinePDF = async (
 
       <!-- Footer Branding -->
       <div style="margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: center; font-size: 11px; color: #64748b; font-weight: 600;">
-        প্রস্তুত করেছে: অর্জনের ডিজিটাল লার্নিং প্ল্যাটফর্ম • বিসিএস, এনটিআরসিএ, প্রাইমারি ও ব্যাংকিং জব সলিউশন
+        ©Orjon MCQ
       </div>
     </div>
   `;
 
   document.body.appendChild(container);
+
+  // Ensure all embedded images (including logo) are fully loaded before capturing canvas
+  const images = Array.from(container.querySelectorAll('img'));
+  await Promise.all(
+    images.map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        setTimeout(resolve, 1500);
+      });
+    })
+  );
 
   try {
     const canvas = await html2canvas(container, {
