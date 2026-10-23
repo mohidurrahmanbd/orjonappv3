@@ -6877,7 +6877,7 @@ export default function UserPortal({
                                 {toBengaliDigits(yearGroup.totalExams)} টি পরীক্ষা
                               </span>
                               <div 
-                                className="hidden sm:flex items-center gap-1.5 bg-white border border-slate-200/80 px-2 py-0.5 rounded-lg shadow-2xs"
+                                className="hidden sm:flex items-center justify-center bg-white border border-slate-200/80 p-0.5 rounded-lg shadow-2xs"
                                 title={`পড়ার অগ্রগতি: ${toBengaliDigits(yearGroup.progress.readCount)}/${toBengaliDigits(yearGroup.progress.totalCount)} (${toBengaliDigits(yearGroup.progress.percentage)}%)`}
                               >
                                 <CircularProgressBar
@@ -6886,9 +6886,6 @@ export default function UserPortal({
                                   strokeWidth={2.2}
                                   textSizeClass="text-[5.5px]"
                                 />
-                                <span className="text-[9px] font-black text-slate-800">
-                                  {toBengaliDigits(yearGroup.progress.percentage)}%
-                                </span>
                               </div>
                             </div>
                           </button>
@@ -6925,7 +6922,7 @@ export default function UserPortal({
                                           {toBengaliDigits(monthGroup.totalExams)} টি পরীক্ষা
                                         </span>
                                         <div 
-                                          className="flex items-center gap-1 bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs"
+                                          className="flex items-center justify-center bg-white border border-slate-200 p-0.5 rounded shadow-2xs"
                                           title={`পড়ার অগ্রগতি: ${toBengaliDigits(monthGroup.progress.percentage)}%`}
                                         >
                                           <CircularProgressBar
@@ -6934,9 +6931,6 @@ export default function UserPortal({
                                             strokeWidth={2}
                                             textSizeClass="text-[5px]"
                                           />
-                                          <span className="text-[8.5px] font-extrabold text-slate-700">
-                                            {toBengaliDigits(monthGroup.progress.percentage)}%
-                                          </span>
                                         </div>
                                       </div>
                                     </button>
@@ -7005,7 +6999,7 @@ export default function UserPortal({
 
                                               <div className="flex items-center gap-1.5 shrink-0">
                                                 <div 
-                                                  className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs"
+                                                  className="flex items-center justify-center bg-slate-50 border border-slate-200 p-0.5 rounded shadow-2xs"
                                                   title={`পড়ার অগ্রগতি: ${toBengaliDigits(exam.progress.readCount)}/${toBengaliDigits(exam.progress.totalCount)} (${toBengaliDigits(exam.progress.percentage)}%)`}
                                                 >
                                                   <CircularProgressBar
@@ -7014,9 +7008,6 @@ export default function UserPortal({
                                                     strokeWidth={2}
                                                     textSizeClass="text-[5.5px]"
                                                   />
-                                                  <span className="text-[8.5px] font-extrabold text-slate-700">
-                                                    {toBengaliDigits(exam.progress.percentage)}%
-                                                  </span>
                                                 </div>
 
                                                 {showMcqCount && (

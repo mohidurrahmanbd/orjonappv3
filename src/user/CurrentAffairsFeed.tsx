@@ -4,7 +4,7 @@ import { isCurrentAffairVariation } from '../shared/lib/routineUtils';
 import CurrentAffairsMCQModal from '../shared/components/CurrentAffairsMCQModal';
 import { 
   Globe, Calendar, ChevronRight, ChevronDown, ChevronUp, 
-  Search, Folder, FolderOpen 
+  Search, Folder 
 } from 'lucide-react';
 
 interface CurrentAffairsFeedProps {
@@ -426,19 +426,10 @@ export default function CurrentAffairsFeed({
                           className="w-full p-3.5 sm:p-4 bg-gradient-to-r from-amber-50/80 via-white to-slate-50 hover:bg-amber-100/40 transition flex items-center justify-between gap-3 text-left cursor-pointer border-b border-transparent data-[open=true]:border-slate-200"
                           data-open={isOpen}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-amber-100/80 border border-amber-200/90 flex items-center justify-center text-amber-800 shrink-0">
-                              {isOpen ? (
-                                <FolderOpen className="w-5 h-5 text-amber-600" />
-                              ) : (
-                                <Folder className="w-5 h-5 text-amber-600" />
-                              )}
-                            </div>
-                            <div>
-                              <h4 className="text-xs sm:text-sm font-black text-slate-900">
-                                {group.monthLabel} ফোল্ডার
-                              </h4>
-                            </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                              {group.monthLabel} ফোল্ডার
+                            </h4>
                           </div>
 
                           <div className="flex items-center gap-2 text-slate-400">
