@@ -25,7 +25,7 @@ import UserGrowthChart from '../admin/UserGrowthChart';
 import { downloadCourseRoutinePDF } from '../shared/lib/pdfGenerator';
 import { getLocalSyncVersions } from '../shared/lib/sync/versionSyncService';
 import RoutineHierarchicalMCQModal from '../shared/components/RoutineHierarchicalMCQModal';
-import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../shared/lib/routineUtils';
+import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions, resolveQuestionSubject } from '../shared/lib/routineUtils';
 import CurrentAffairsAdmin from '../admin/CurrentAffairsAdmin';
 
 interface VirtualListProps {
@@ -1459,6 +1459,14 @@ export default function AdminPanel({
   const [routineExamQuestionSelection, setRoutineExamQuestionSelection] = useState<'auto' | 'manual'>('auto');
   const [routineExamManualQuestionIds, setRoutineExamManualQuestionIds] = useState<string[]>([]);
   const [routineManualQuestionSearch, setRoutineManualQuestionSearch] = useState('');
+  const [routineManualSelectionStatus, setRoutineManualSelectionStatus] = useState<'ALL' | 'SELECTED' | 'UNSELECTED'>('ALL');
+  const [routineManualPoolScope, setRoutineManualPoolScope] = useState<'SYLLABUS' | 'ALL_DATABASE'>('SYLLABUS');
+  const [routineManualExpandedExplanationIds, setRoutineManualExpandedExplanationIds] = useState<Record<string, boolean>>({});
+  const [routineManualFilterCategory, setRoutineManualFilterCategory] = useState<string>('ALL');
+  const [routineManualFilterSubcategory, setRoutineManualFilterSubcategory] = useState<string>('ALL');
+  const [routineManualFilterLeaf, setRoutineManualFilterLeaf] = useState<string>('ALL');
+  const [routineManualGlobalReview, setRoutineManualGlobalReview] = useState<boolean>(false);
+  const [routineManualRenderLimit, setRoutineManualRenderLimit] = useState<number>(50);
 
   // Selected exam for results viewing
   const [selectedExamIdForResults, setSelectedExamIdForResults] = useState('');
@@ -2112,6 +2120,693 @@ export default function AdminPanel({
 
     return getRoutineMatchingQuestions(dummyRoutine, questions, subcategories);
   }, [questions, routineTitle, routineDetails, routineSelectedRootCategory, routineSelectedCategories, routineSelectedSubcategories, routineSelectedLeafCategories, subcategories]);
+
+  // Active Question Pool for Routine Preset Exam Manual Picker
+  const activeRoutineQuestionPool = useMemo(() => {
+    return routineManualPoolScope === 'ALL_DATABASE' ? questions : routineMatchingQuestions;
+  }, [routineManualPoolScope, questions, routineMatchingQuestions]);
+
+  // Canonical root context detection for Routine Management & Manual MCQ Picker
+  const routineNormRoot = useMemo(() => {
+    return normalizeName(routineSelectedRootCategory || 'বিষয়ভিত্তিক প্রস্তুতি');
+  }, [routineSelectedRootCategory]);
+
+  const routineIsSubjectPrep = useMemo(() => {
+    return routineNormRoot === normalizeName('বিষয়ভিত্তিক প্রস্তুতি') || routineNormRoot === normalizeName('বিষয় ভিক্তিক প্রস্তুতি');
+  }, [routineNormRoot]);
+
+  const routineIsJobSolution = useMemo(() => {
+    return routineNormRoot === normalizeName('জব সলিউশন পরীক্ষা') || isJobSolutionVariation(routineSelectedRootCategory);
+  }, [routineNormRoot, routineSelectedRootCategory]);
+
+  const routineIsYearJobSolution = useMemo(() => {
+    return routineNormRoot === normalizeName('সাল ভিত্তিক জব সলিউশন') || isYearJobSolutionVariation(routineSelectedRootCategory);
+  }, [routineNormRoot, routineSelectedRootCategory]);
+
+  // Helper to match a question to Level 1 (Category / Subject / Exam Org / Year)
+  const matchQuestionLevel1 = (q: Question, catName: string): boolean => {
+    if (catName === 'ALL') return true;
+    const catNorm = normalizeName(catName);
+
+    if (routineIsSubjectPrep) {
+      const qCat = normalizeName(q.category || '');
+      const qCats = (q.categories || []).map(normalizeName);
+      const qSubj = normalizeName((q as any).subject || '');
+      const resolvedSubj = normalizeName(resolveQuestionSubject(q) || '');
+      const descendants = subcategoryDescendantsMap.get(catNorm);
+
+      return (
+        qCat === catNorm ||
+        qCats.includes(catNorm) ||
+        qSubj === catNorm ||
+        resolvedSubj === catNorm ||
+        (descendants ? (descendants.has(normalizeName(q.subcategory || '')) || descendants.has(qCat)) : false)
+      );
+    }
+
+    if (routineIsJobSolution) {
+      // For Job Solution: Match organization/exam category (e.g. বিসিএস প্রিলিমিনারি, ব্যাংক). Do NOT use resolveQuestionSubject(q)!
+      const qCat = normalizeName(q.category || '');
+      const qCats = (q.categories || []).map(normalizeName);
+      const qSub = normalizeName(q.subcategory || '');
+      const descendants = subcategoryDescendantsMap.get(catNorm);
+
+      return (
+        qCat === catNorm ||
+        qCats.includes(catNorm) ||
+        (descendants ? (descendants.has(qSub) || descendants.has(qCat)) : false)
+      );
+    }
+
+    if (routineIsYearJobSolution) {
+      // For Year Job Solution: Match Year (e.g. ২০২৪, ২০২৩)
+      const qCat = normalizeName(q.category || '');
+      const qCats = (q.categories || []).map(normalizeName);
+      const qSub = normalizeName(q.subcategory || '');
+      const descendants = subcategoryDescendantsMap.get(catNorm);
+
+      return (
+        qCat === catNorm ||
+        qCats.includes(catNorm) ||
+        qCat.includes(catNorm) ||
+        qSub.includes(catNorm) ||
+        (descendants ? (descendants.has(qSub) || descendants.has(qCat)) : false)
+      );
+    }
+
+    // Default / Custom root category
+    const qCat = normalizeName(q.category || '');
+    const qCats = (q.categories || []).map(normalizeName);
+    const qSub = normalizeName(q.subcategory || '');
+    const descendants = subcategoryDescendantsMap.get(catNorm);
+    return (
+      qCat === catNorm ||
+      qCats.includes(catNorm) ||
+      (descendants ? (descendants.has(qSub) || descendants.has(qCat)) : false)
+    );
+  };
+
+  // Helper to match a question to Level 2 (Subcategory / Specific Exam / Chapter)
+  // Strictly requires question to match Level 1 parent
+  const matchQuestionLevel2 = (q: Question, subName: string, catName: string): boolean => {
+    if (subName === 'ALL') return true;
+    if (!matchQuestionLevel1(q, catName)) return false;
+
+    const subNorm = normalizeName(subName);
+    const qSub = normalizeName(q.subcategory || '');
+    const qSubs = (q.subcategories || []).map(normalizeName);
+    const descendants = subcategoryDescendantsMap.get(subNorm);
+
+    return (
+      qSub === subNorm ||
+      qSubs.includes(subNorm) ||
+      (descendants ? descendants.has(qSub) : false)
+    );
+  };
+
+  // Helper to match a question to Level 3 (Leaf / Chapter / Topic / Section)
+  // Strictly requires question to match Level 1 AND Level 2 parents
+  const matchQuestionLevel3 = (q: Question, leafName: string, subName: string, catName: string): boolean => {
+    if (leafName === 'ALL') return true;
+    if (!matchQuestionLevel2(q, subName, catName)) return false;
+
+    const leafNorm = normalizeName(leafName);
+    const qCsv = normalizeName(q.csvCategory || '');
+    const qSub = normalizeName(q.subcategory || '');
+    const resolvedSubj = normalizeName(resolveQuestionSubject(q) || '');
+
+    if (routineIsJobSolution || routineIsYearJobSolution) {
+      return qCsv === leafNorm || qSub === leafNorm || resolvedSubj === leafNorm;
+    }
+
+    return qCsv === leafNorm || qSub === leafNorm;
+  };
+
+  // Computed Available Categories for Routine Manual Question Picker
+  const routineManualAvailableCategories = useMemo(() => {
+    const catMap = new Map<string, number>();
+
+    if (routineIsSubjectPrep) {
+      if (routineManualPoolScope === 'SYLLABUS') {
+        // In SYLLABUS mode: authoritative source of allowed subjects is routineSelectedCategories
+        if (routineSelectedCategories.length > 0) {
+          routineSelectedCategories.forEach(catName => {
+            const trimmed = catName.trim();
+            if (!trimmed) return;
+            let count = 0;
+            activeRoutineQuestionPool.forEach(q => {
+              if (matchQuestionLevel1(q, trimmed)) {
+                count++;
+              }
+            });
+            catMap.set(trimmed, count);
+          });
+        }
+      } else {
+        // ALL_DATABASE mode for Subject Preparation
+        const knownSubjects = new Set<string>(STANDARD_SUBJECT_CATEGORIES);
+        subcategories.forEach(s => {
+          if (s.parentCategory === 'বিষয়ভিত্তিক প্রস্তুতি' || s.parentCategory === 'বিষয় ভিক্তিক প্রস্তুতি' || (!s.parentCategory && !isJobSolutionVariation(s.name) && !isYearJobSolutionVariation(s.name))) {
+            knownSubjects.add(s.name.trim());
+          }
+        });
+        categories.forEach(c => {
+          if (!isJobSolutionVariation(c.name) && !isYearJobSolutionVariation(c.name) && c.name !== 'বিষয়ভিত্তিক প্রস্তুতি' && c.name !== 'বিষয় ভিক্তিক প্রস্তুতি') {
+            knownSubjects.add(c.name.trim());
+          }
+        });
+
+        knownSubjects.forEach(subjectName => {
+          if (!subjectName || isJobSolutionVariation(subjectName) || isYearJobSolutionVariation(subjectName)) return;
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, subjectName)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            catMap.set(subjectName, count);
+          }
+        });
+      }
+    } else if (routineIsJobSolution) {
+      // In Job Solution context: Level 1 represents organizations / exam categories (e.g. বিসিএস প্রিলিমিনারি, ব্যাংক)
+      if (routineManualPoolScope === 'SYLLABUS' && routineSelectedCategories.length > 0) {
+        routineSelectedCategories.forEach(catName => {
+          const trimmed = catName.trim();
+          if (!trimmed) return;
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, trimmed)) {
+              count++;
+            }
+          });
+          catMap.set(trimmed, count);
+        });
+      } else {
+        const jobCats = new Set<string>();
+        routineAvailableCategories.forEach(c => jobCats.add(c.name));
+        activeRoutineQuestionPool.forEach(q => {
+          const qCat = (q.category || '').trim();
+          if (qCat && !STANDARD_SUBJECT_CATEGORIES.includes(qCat as any)) {
+            jobCats.add(qCat);
+          }
+        });
+
+        jobCats.forEach(catName => {
+          if (!catName || STANDARD_SUBJECT_CATEGORIES.includes(catName as any)) return;
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, catName)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            catMap.set(catName, count);
+          }
+        });
+      }
+    } else if (routineIsYearJobSolution) {
+      // In Year-based Job Solution context: Level 1 represents exam years
+      if (routineManualPoolScope === 'SYLLABUS' && routineSelectedCategories.length > 0) {
+        routineSelectedCategories.forEach(catName => {
+          const trimmed = catName.trim();
+          if (!trimmed) return;
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, trimmed)) {
+              count++;
+            }
+          });
+          catMap.set(trimmed, count);
+        });
+      } else {
+        const yearCats = new Set<string>();
+        routineAvailableCategories.forEach(c => yearCats.add(c.name));
+        activeRoutineQuestionPool.forEach(q => {
+          const qCat = (q.category || '').trim();
+          if (/^\d{4}$/.test(qCat) || ['২০২৪', '২০২৩', '২০২২', '২০২১', '২০২০', '২০১৯', '২০১৮', '২০১৭', '২০১৬', '২০১৫'].includes(qCat)) {
+            yearCats.add(qCat);
+          }
+        });
+
+        yearCats.forEach(catName => {
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, catName)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            catMap.set(catName, count);
+          }
+        });
+      }
+    } else {
+      // Custom Root Category
+      if (routineManualPoolScope === 'SYLLABUS' && routineSelectedCategories.length > 0) {
+        routineSelectedCategories.forEach(catName => {
+          const trimmed = catName.trim();
+          if (!trimmed) return;
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, trimmed)) {
+              count++;
+            }
+          });
+          catMap.set(trimmed, count);
+        });
+      } else {
+        routineAvailableCategories.forEach(c => {
+          let count = 0;
+          activeRoutineQuestionPool.forEach(q => {
+            if (matchQuestionLevel1(q, c.name)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            catMap.set(c.name, count);
+          }
+        });
+      }
+    }
+
+    return Array.from(catMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [
+    routineIsSubjectPrep,
+    routineIsJobSolution,
+    routineIsYearJobSolution,
+    routineManualPoolScope,
+    routineSelectedCategories,
+    routineAvailableCategories,
+    activeRoutineQuestionPool,
+    subcategories,
+    categories,
+    subcategoryDescendantsMap
+  ]);
+
+  // Computed Available Subcategories for Routine Manual Question Picker
+  const routineManualAvailableSubcategories = useMemo(() => {
+    if (routineManualFilterCategory === 'ALL') {
+      return [];
+    }
+
+    const catNorm = normalizeName(routineManualFilterCategory);
+    const subMap = new Map<string, number>();
+
+    // Questions in active pool strictly matching Level 1
+    const level1Questions = activeRoutineQuestionPool.filter(q => matchQuestionLevel1(q, routineManualFilterCategory));
+
+    // 1. Direct subcategories from subcategories list whose parent is catNorm
+    subcategories.forEach(s => {
+      const parentNorm = normalizeName(s.parentCategory || '');
+      if (parentNorm === catNorm) {
+        const sName = s.name.trim();
+        let count = 0;
+        level1Questions.forEach(q => {
+          if (matchQuestionLevel2(q, sName, routineManualFilterCategory)) {
+            count++;
+          }
+        });
+        if (count > 0) {
+          subMap.set(sName, count);
+        }
+      }
+    });
+
+    // 2. Direct subcategories from questions matching Level 1
+    level1Questions.forEach(q => {
+      if (q.subcategory) {
+        const subName = q.subcategory.trim();
+        const subNorm = normalizeName(subName);
+        if (subName && subNorm !== catNorm && !subMap.has(subName)) {
+          let count = 0;
+          level1Questions.forEach(otherQ => {
+            if (matchQuestionLevel2(otherQ, subName, routineManualFilterCategory)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            subMap.set(subName, count);
+          }
+        }
+      }
+    });
+
+    return Array.from(subMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [routineManualFilterCategory, activeRoutineQuestionPool, subcategories, subcategoryDescendantsMap, routineIsSubjectPrep, routineIsJobSolution, routineIsYearJobSolution]);
+
+  // Computed Available Leaf Categories / Chapters / Topics for Routine Manual Question Picker
+  const routineManualAvailableLeafCategories = useMemo(() => {
+    if (routineManualFilterSubcategory === 'ALL' || routineManualFilterCategory === 'ALL') {
+      return [];
+    }
+
+    const subNorm = normalizeName(routineManualFilterSubcategory);
+    const leafMap = new Map<string, number>();
+
+    // Questions in active pool strictly matching BOTH Level 1 AND Level 2
+    const level2Questions = activeRoutineQuestionPool.filter(q => 
+      matchQuestionLevel2(q, routineManualFilterSubcategory, routineManualFilterCategory)
+    );
+
+    // 1. Direct leaf subcategories from subcategories list whose parent is subNorm
+    subcategories.forEach(s => {
+      const parentNorm = normalizeName(s.parentCategory || '');
+      if (parentNorm === subNorm) {
+        const sName = s.name.trim();
+        let count = 0;
+        level2Questions.forEach(q => {
+          if (matchQuestionLevel3(q, sName, routineManualFilterSubcategory, routineManualFilterCategory)) {
+            count++;
+          }
+        });
+        if (count > 0) {
+          leafMap.set(sName, count);
+        }
+      }
+    });
+
+    // 2. Collect distinct csvCategory values from level2Questions
+    level2Questions.forEach(q => {
+      if (q.csvCategory) {
+        const leaf = q.csvCategory.trim();
+        const leafNorm = normalizeName(leaf);
+        if (leaf && leafNorm !== subNorm && !leafMap.has(leaf)) {
+          let count = 0;
+          level2Questions.forEach(otherQ => {
+            if (matchQuestionLevel3(otherQ, leaf, routineManualFilterSubcategory, routineManualFilterCategory)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            leafMap.set(leaf, count);
+          }
+        }
+      }
+
+      // In Job Solution or Year Solution, subjects within that exam can also serve as section/topic
+      if ((routineIsJobSolution || routineIsYearJobSolution) && (q as any).subject) {
+        const subj = String((q as any).subject).trim();
+        const subjNorm = normalizeName(subj);
+        if (subj && subjNorm !== subNorm && !leafMap.has(subj)) {
+          let count = 0;
+          level2Questions.forEach(otherQ => {
+            if (matchQuestionLevel3(otherQ, subj, routineManualFilterSubcategory, routineManualFilterCategory)) {
+              count++;
+            }
+          });
+          if (count > 0) {
+            leafMap.set(subj, count);
+          }
+        }
+      }
+    });
+
+    return Array.from(leafMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [
+    routineManualFilterCategory, 
+    routineManualFilterSubcategory, 
+    activeRoutineQuestionPool, 
+    subcategories, 
+    subcategoryDescendantsMap,
+    routineIsSubjectPrep, 
+    routineIsJobSolution, 
+    routineIsYearJobSolution
+  ]);
+
+  // Reset browsing filters whenever root category changes in Routine Syllabus Builder
+  useEffect(() => {
+    setRoutineManualFilterCategory('ALL');
+    setRoutineManualFilterSubcategory('ALL');
+    setRoutineManualFilterLeaf('ALL');
+    setRoutineManualRenderLimit(50);
+  }, [routineSelectedRootCategory]);
+
+  // If active filter category is not ALL and not available in current available categories, reset
+  useEffect(() => {
+    if (routineManualFilterCategory !== 'ALL' && routineManualAvailableCategories.length > 0) {
+      const exists = routineManualAvailableCategories.some(c => c.name === routineManualFilterCategory);
+      if (!exists) {
+        setRoutineManualFilterCategory('ALL');
+        setRoutineManualFilterSubcategory('ALL');
+        setRoutineManualFilterLeaf('ALL');
+      }
+    }
+  }, [routineManualAvailableCategories, routineManualFilterCategory]);
+
+  // If active filter subcategory is not ALL and not available in available subcategories, reset
+  useEffect(() => {
+    if (routineManualFilterSubcategory !== 'ALL' && routineManualAvailableSubcategories.length > 0) {
+      const exists = routineManualAvailableSubcategories.some(s => s.name === routineManualFilterSubcategory);
+      if (!exists) {
+        setRoutineManualFilterSubcategory('ALL');
+        setRoutineManualFilterLeaf('ALL');
+      }
+    }
+  }, [routineManualAvailableSubcategories, routineManualFilterSubcategory]);
+
+  // If active filter leaf is not ALL and not available in available leaf categories, reset
+  useEffect(() => {
+    if (routineManualFilterLeaf !== 'ALL' && routineManualAvailableLeafCategories.length > 0) {
+      const exists = routineManualAvailableLeafCategories.some(l => l.name === routineManualFilterLeaf);
+      if (!exists) {
+        setRoutineManualFilterLeaf('ALL');
+      }
+    }
+  }, [routineManualAvailableLeafCategories, routineManualFilterLeaf]);
+
+  // Filtered Questions for Routine Preset Exam Manual Picker
+  const filteredRoutineQuestions = useMemo(() => {
+    // 1. Global Review override for SELECTED mode
+    if (routineManualSelectionStatus === 'SELECTED' && routineManualGlobalReview) {
+      const selectedSet = new Set(routineExamManualQuestionIds);
+      let selectedList = questions.filter(q => selectedSet.has(q.id));
+      selectedList.sort((a, b) => routineExamManualQuestionIds.indexOf(a.id) - routineExamManualQuestionIds.indexOf(b.id));
+
+      if (routineManualQuestionSearch.trim()) {
+        const qLower = routineManualQuestionSearch.trim().toLowerCase();
+        selectedList = selectedList.filter(item => {
+          const text = (item.text || '').toLowerCase();
+          const expl = (item.explanation || '').toLowerCase();
+          const opA = (item.optionA || '').toLowerCase();
+          const opB = (item.optionB || '').toLowerCase();
+          const opC = (item.optionC || '').toLowerCase();
+          const opD = (item.optionD || '').toLowerCase();
+          const cat = (item.category || '').toLowerCase();
+          const sub = (item.subcategory || '').toLowerCase();
+          const csvCat = (item.csvCategory || '').toLowerCase();
+          return (
+            text.includes(qLower) ||
+            expl.includes(qLower) ||
+            opA.includes(qLower) ||
+            opB.includes(qLower) ||
+            opC.includes(qLower) ||
+            opD.includes(qLower) ||
+            cat.includes(qLower) ||
+            sub.includes(qLower) ||
+            csvCat.includes(qLower)
+          );
+        });
+      }
+
+      return selectedList;
+    }
+
+    let pool = activeRoutineQuestionPool;
+
+    // 2. Cascading Hierarchy Filters (Conjoint Level 1, Level 2, Level 3)
+    if (routineManualFilterCategory !== 'ALL') {
+      pool = pool.filter(q => matchQuestionLevel1(q, routineManualFilterCategory));
+    }
+
+    if (routineManualFilterSubcategory !== 'ALL') {
+      pool = pool.filter(q => matchQuestionLevel2(q, routineManualFilterSubcategory, routineManualFilterCategory));
+    }
+
+    if (routineManualFilterLeaf !== 'ALL') {
+      pool = pool.filter(q => matchQuestionLevel3(q, routineManualFilterLeaf, routineManualFilterSubcategory, routineManualFilterCategory));
+    }
+
+    // 3. Selection Status Filter
+    if (routineManualSelectionStatus === 'SELECTED') {
+      const selectedSet = new Set(routineExamManualQuestionIds);
+      pool = pool.filter(q => selectedSet.has(q.id));
+    } else if (routineManualSelectionStatus === 'UNSELECTED') {
+      const selectedSet = new Set(routineExamManualQuestionIds);
+      pool = pool.filter(q => !selectedSet.has(q.id));
+    }
+
+    // 4. Search Query across Question text, Explanation, Options A-D, Category, Subcategory, and CSV Category
+    if (routineManualQuestionSearch.trim()) {
+      const qLower = routineManualQuestionSearch.trim().toLowerCase();
+      pool = pool.filter(item => {
+        const text = (item.text || '').toLowerCase();
+        const expl = (item.explanation || '').toLowerCase();
+        const opA = (item.optionA || '').toLowerCase();
+        const opB = (item.optionB || '').toLowerCase();
+        const opC = (item.optionC || '').toLowerCase();
+        const opD = (item.optionD || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        const sub = (item.subcategory || '').toLowerCase();
+        const csvCat = (item.csvCategory || '').toLowerCase();
+        return (
+          text.includes(qLower) ||
+          expl.includes(qLower) ||
+          opA.includes(qLower) ||
+          opB.includes(qLower) ||
+          opC.includes(qLower) ||
+          opD.includes(qLower) ||
+          cat.includes(qLower) ||
+          sub.includes(qLower) ||
+          csvCat.includes(qLower)
+        );
+      });
+    }
+
+    return pool;
+  }, [
+    activeRoutineQuestionPool,
+    questions,
+    routineManualSelectionStatus,
+    routineManualGlobalReview,
+    routineExamManualQuestionIds,
+    routineManualFilterCategory,
+    routineManualFilterSubcategory,
+    routineManualFilterLeaf,
+    routineManualQuestionSearch,
+    routineIsSubjectPrep,
+    routineIsJobSolution,
+    routineIsYearJobSolution,
+    subcategoryDescendantsMap
+  ]);
+
+  // Handlers for Routine Manual Cascading Filters
+  const handleRoutineManualCategoryChange = (catName: string) => {
+    setRoutineManualFilterCategory(catName);
+    setRoutineManualFilterSubcategory('ALL');
+    setRoutineManualFilterLeaf('ALL');
+    setRoutineManualRenderLimit(50);
+  };
+
+  const handleRoutineManualSubcategoryChange = (subName: string) => {
+    setRoutineManualFilterSubcategory(subName);
+    setRoutineManualFilterLeaf('ALL');
+    setRoutineManualRenderLimit(50);
+  };
+
+  const handleRoutineManualLeafChange = (leafName: string) => {
+    setRoutineManualFilterLeaf(leafName);
+    setRoutineManualRenderLimit(50);
+  };
+
+  const handleRoutineResetBrowsingFilters = () => {
+    setRoutineManualFilterCategory('ALL');
+    setRoutineManualFilterSubcategory('ALL');
+    setRoutineManualFilterLeaf('ALL');
+    setRoutineManualQuestionSearch('');
+    setRoutineManualGlobalReview(false);
+    setRoutineManualRenderLimit(50);
+  };
+
+  // Toggle single question selection for routine exam
+  const toggleRoutineQuestionSelection = (qId: string) => {
+    setRoutineExamManualQuestionIds(prev => {
+      if (prev.includes(qId)) {
+        return prev.filter(id => id !== qId);
+      } else {
+        return [...prev, qId];
+      }
+    });
+  };
+
+  // Toggle explanation preview for a question in routine picker
+  const toggleRoutineExplanation = (qId: string) => {
+    setRoutineManualExpandedExplanationIds(prev => ({
+      ...prev,
+      [qId]: !prev[qId]
+    }));
+  };
+
+  // Bulk action: Random Auto-Fill from current filtered pool up to target limit
+  const handleRoutineAutoFillRandom = () => {
+    const target = Number(routineExamQLimit) || 20;
+    const currentCount = routineExamManualQuestionIds.length;
+    const needed = target - currentCount;
+
+    if (needed <= 0) {
+      showCustomAlert(
+        'কোটা ইতিমধ্যে পূর্ণ!',
+        `ইতিমধ্যে ${currentCount}টি প্রশ্ন নির্বাচন করা হয়েছে (টার্গেট: ${target}টি)।`,
+        'info'
+      );
+      return;
+    }
+
+    const selectedSet = new Set(routineExamManualQuestionIds);
+    const unselectedFromFiltered = filteredRoutineQuestions.filter(q => !selectedSet.has(q.id));
+
+    if (unselectedFromFiltered.length === 0) {
+      showCustomAlert(
+        'কোনো প্রশ্ন নেই!',
+        'বর্তমান ফিল্টার ও পুলের আওতায় কোনো অব্যবহৃত প্রশ্ন পাওয়া যায়নি!',
+        'warning'
+      );
+      return;
+    }
+
+    const shuffled = [...unselectedFromFiltered].sort(() => 0.5 - Math.random());
+    const toAdd = shuffled.slice(0, needed).map(q => q.id);
+
+    setRoutineExamManualQuestionIds(prev => Array.from(new Set([...prev, ...toAdd])));
+    showCustomAlert('সফল!', `🎲 ${toAdd.length}টি প্রশ্ন সফলভাবে স্বয়ংক্রিয়ভাবে নির্বাচিত করা হয়েছে!`, 'success');
+  };
+
+  // Bulk action: Select all questions matching current filter
+  const handleRoutineSelectAllMatching = () => {
+    const selectedSet = new Set(routineExamManualQuestionIds);
+    const unselected = filteredRoutineQuestions.filter(q => !selectedSet.has(q.id));
+
+    if (unselected.length === 0) {
+      showCustomAlert('কোনো নতুন প্রশ্ন নেই!', 'ফিল্টারের সকল প্রশ্ন ইতিমধ্যে নির্বাচিত রয়েছে।', 'info');
+      return;
+    }
+
+    const toAdd = unselected.map(q => q.id);
+    const updated = Array.from(new Set([...routineExamManualQuestionIds, ...toAdd]));
+    setRoutineExamManualQuestionIds(updated);
+
+    const target = Number(routineExamQLimit) || 20;
+    if (updated.length > target) {
+      showCustomAlert(
+        'সিলেক্ট করা হয়েছে!',
+        `✓ ${toAdd.length}টি প্রশ্ন যুক্ত করা হয়েছে (মোট: ${updated.length}টি)। লক্ষ্য করুন: এটি নির্ধারিত টার্গেট (${target}টি) ছাড়িয়ে গেছে।`,
+        'warning'
+      );
+    } else {
+      showCustomAlert('সফল!', `✓ ফিল্টার করা ${toAdd.length}টি প্রশ্ন একসাথে যুক্ত করা হয়েছে!`, 'success');
+    }
+  };
+
+  // Bulk action: Reset all routine question selections
+  const handleRoutineResetSelections = () => {
+    if (routineExamManualQuestionIds.length === 0) return;
+    showCustomConfirm(
+      'সিলেকশন রিসেট নিশ্চিতকরণ',
+      `আপনি কি নিশ্চিতভাবে নির্বাচিত সকল (${routineExamManualQuestionIds.length}টি) প্রশ্নের নির্বাচন বাতিল করতে চান?`,
+      () => {
+        setRoutineExamManualQuestionIds([]);
+        showCustomAlert('রিসেট সম্পন্ন', 'সকল প্রশ্নের নির্বাচন বাতিল করা হয়েছে।', 'success');
+      },
+      'warning'
+    );
+  };
 
   // Populate form for editing
   const handleStartEdit = (q: Question) => {
@@ -4440,6 +5135,15 @@ export default function AdminPanel({
     setRoutineExamPassMarks(8);
     setRoutineExamQuestionSelection('auto');
     setRoutineExamManualQuestionIds([]);
+    setRoutineManualQuestionSearch('');
+    setRoutineManualSelectionStatus('ALL');
+    setRoutineManualPoolScope('SYLLABUS');
+    setRoutineManualExpandedExplanationIds({});
+    setRoutineManualFilterCategory('ALL');
+    setRoutineManualFilterSubcategory('ALL');
+    setRoutineManualFilterLeaf('ALL');
+    setRoutineManualGlobalReview(false);
+    setRoutineManualRenderLimit(50);
   };
 
   const classifyQuestion = (q: Question): string => {
@@ -10683,14 +11387,15 @@ export default function AdminPanel({
                         />
                       </div>
                       <div>
-                        <label className="block text-gray-700 mb-1 font-bold">এমসিকিউ সংখ্যা:</label>
+                        <label className="block text-gray-700 mb-1 font-bold">
+                          এমসিকিউ সংখ্যা {routineExamQuestionSelection === 'manual' ? '(টার্গেট কোটা)' : ''}:
+                        </label>
                         <input
                           type="number"
                           min="1"
                           value={routineExamQLimit}
                           onChange={e => setRoutineExamQLimit(Number(e.target.value))}
-                          disabled={routineExamQuestionSelection === 'manual'}
-                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white disabled:bg-gray-100"
+                          className="w-full px-3 py-1.5 border rounded-xl text-gray-800 font-bold bg-white"
                         />
                       </div>
                       <div>
@@ -10740,50 +11445,558 @@ export default function AdminPanel({
                       </div>
                     </div>
 
-                    {/* Manual Question Picker */}
+                    {/* Enhanced Manual Question Picker */}
                     {routineExamQuestionSelection === 'manual' && (
-                      <div className="bg-white p-3 rounded-2xl border border-indigo-200 space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="font-extrabold text-indigo-950 text-[11px]">
-                            নির্ধারিত সিলেবাসের প্রশ্ন থেকে নির্বাচন করুন (নির্বাচিত: {routineExamManualQuestionIds.length} টি)
-                          </span>
-                          <input
-                            type="text"
-                            placeholder="প্রশ্ন খুঁজুন..."
-                            value={routineManualQuestionSearch}
-                            onChange={e => setRoutineManualQuestionSearch(e.target.value)}
-                            className="px-2.5 py-1 border rounded-lg text-[10px] w-40"
-                          />
-                        </div>
-                        <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-gray-100 pr-1">
-                          {routineMatchingQuestions
-                            .filter(q => !routineManualQuestionSearch || q.text.toLowerCase().includes(routineManualQuestionSearch.toLowerCase()))
-                            .map((q, idx) => {
-                              const isChecked = routineExamManualQuestionIds.includes(q.id);
+                      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-indigo-200/90 space-y-3.5 shadow-2xs">
+                        {/* Live Counter & Quota Status Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-indigo-950 text-xs">
+                              🎯 নির্ধারিত প্রশ্ন নির্বাচন:
+                            </span>
+                            <span className="text-xs font-black px-2 py-0.5 rounded-lg bg-indigo-600 text-white shadow-2xs">
+                              {routineExamManualQuestionIds.length} / {routineExamQLimit} টি
+                            </span>
+                          </div>
+
+                          {/* 4 Mismatch / Quota Status States */}
+                          {(() => {
+                            const count = routineExamManualQuestionIds.length;
+                            const target = Number(routineExamQLimit) || 0;
+                            if (count === 0) {
                               return (
-                                <label key={q.id || idx} className="flex items-start gap-2 pt-1.5 cursor-pointer hover:bg-gray-50 p-1 rounded-lg">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      if (isChecked) {
-                                        setRoutineExamManualQuestionIds(prev => prev.filter(id => id !== q.id));
-                                      } else {
-                                        setRoutineExamManualQuestionIds(prev => [...prev, q.id]);
-                                      }
-                                    }}
-                                    className="mt-0.5"
-                                  />
-                                  <div className="text-[11px]">
-                                    <p className="font-bold text-gray-800 line-clamp-1">{q.text}</p>
-                                    <span className="text-[9px] text-gray-400 font-medium">
-                                      {q.category} • {q.subcategory} {q.csvCategory ? `• ${q.csvCategory}` : ''}
-                                    </span>
-                                  </div>
-                                </label>
+                                <span className="font-extrabold text-[10.5px] px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                  <span>কোনো প্রশ্ন নির্বাচন করা হয়নি</span>
+                                </span>
                               );
-                            })}
+                            }
+                            if (count < target) {
+                              return (
+                                <span className="font-extrabold text-[10.5px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                                  <span>⏳ আরও {target - count}টি প্রশ্ন প্রয়োজন</span>
+                                </span>
+                              );
+                            }
+                            if (count === target) {
+                              return (
+                                <span className="font-extrabold text-[10.5px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>✓ নির্ধারিত কোটা পূর্ণ হয়েছে ({target}টি)</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="font-extrabold text-[10.5px] px-2.5 py-1 rounded-full bg-purple-50 text-purple-800 border border-purple-200 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-purple-600" />
+                                <span>⚠️ টার্গেটের চেয়ে {count - target}টি বেশি নির্বাচিত</span>
+                              </span>
+                            );
+                          })()}
                         </div>
+
+                        {/* Controls: Pool Scope & Cascading Filters & Search & Selection Status */}
+                        <div className="space-y-3 bg-slate-50/70 p-3 sm:p-3.5 rounded-xl border border-slate-200/70">
+                          {/* Pool Scope Selector */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-2.5">
+                            <span className="font-extrabold text-gray-700 text-[11px] flex items-center gap-1">
+                              <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                              প্রশ্নের সোর্স পুল (Question Scope):
+                            </span>
+                            <div className="inline-flex rounded-lg bg-slate-200/80 p-0.5 text-[10px] font-bold">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualPoolScope('SYLLABUS');
+                                  handleRoutineResetBrowsingFilters();
+                                }}
+                                className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                  routineManualPoolScope === 'SYLLABUS'
+                                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                🎯 নির্ধারিত সিলেবাসের প্রশ্ন ({routineMatchingQuestions.length}টি)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualPoolScope('ALL_DATABASE');
+                                  handleRoutineResetBrowsingFilters();
+                                }}
+                                className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                  routineManualPoolScope === 'ALL_DATABASE'
+                                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                🌐 সম্পূর্ণ প্রশ্নভাণ্ডার ({questions.length}টি)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Full Database Guidance Notice */}
+                          {routineManualPoolScope === 'ALL_DATABASE' && (
+                            <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-[10.5px] font-medium flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                              <div>
+                                <p className="font-bold">সম্পূর্ণ প্রশ্নভাণ্ডার মোড সক্রিয়:</p>
+                                <p className="text-[10px] text-amber-800">
+                                  নির্দিষ্ট প্রশ্ন সহজে খুঁজে পেতে নিচের ড্রপডাউন থেকে বিষয়, সাব-ক্যাটাগরি বা অধ্যায় ফিল্টার করুন অথবা সার্চ বক্স ব্যবহার করুন।
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3 Cascading Filter Dropdowns */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            {/* Filter 1: Category / Subject / Exam / Year */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-extrabold text-gray-700 flex items-center justify-between">
+                                <span>
+                                  {routineIsJobSolution 
+                                    ? 'ধাপ ১: পরীক্ষার ক্যাটাগরি' 
+                                    : routineIsYearJobSolution 
+                                    ? 'ধাপ ১: পরীক্ষার সাল' 
+                                    : 'ধাপ ১: বিষয় নির্বাচন'}
+                                </span>
+                                {routineManualFilterCategory !== 'ALL' && (
+                                  <span className="text-indigo-600 font-bold">✓ সক্রিয়</span>
+                                )}
+                              </label>
+                              <select
+                                value={routineManualFilterCategory}
+                                onChange={e => handleRoutineManualCategoryChange(e.target.value)}
+                                className="px-2.5 py-1.5 border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-bold text-gray-800 transition"
+                              >
+                                <option value="ALL">
+                                  {routineIsJobSolution
+                                    ? '--- সকল পরীক্ষা ক্যাটাগরি ---'
+                                    : routineIsYearJobSolution
+                                    ? '--- সকল সাল ---'
+                                    : (routineManualPoolScope === 'SYLLABUS' && routineSelectedCategories.length === 0)
+                                    ? '--- (সিলেবাসে কোনো বিষয় নির্বাচন করা হয়নি) ---'
+                                    : '--- সকল বিষয় / ক্যাটাগরি ---'}
+                                </option>
+                                {routineManualAvailableCategories.map(cat => (
+                                  <option key={cat.name} value={cat.name}>
+                                    {cat.name} ({cat.count.toLocaleString('bn-BD')}টি)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Filter 2: Subcategory / Specific Exam / Chapter */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-extrabold text-gray-700 flex items-center justify-between">
+                                <span>
+                                  {routineIsJobSolution 
+                                    ? 'ধাপ ২: নির্দিষ্ট পরীক্ষা' 
+                                    : routineIsYearJobSolution 
+                                    ? 'ধাপ ২: নির্দিষ্ট পরীক্ষা' 
+                                    : 'ধাপ ২: অধ্যায় / সাব-ক্যাটাগরি'}
+                                </span>
+                                {routineManualFilterSubcategory !== 'ALL' && (
+                                  <span className="text-purple-600 font-bold">✓ সক্রিয়</span>
+                                )}
+                              </label>
+                              <select
+                                value={routineManualFilterSubcategory}
+                                disabled={routineManualFilterCategory === 'ALL' || routineManualAvailableSubcategories.length === 0}
+                                onChange={e => handleRoutineManualSubcategoryChange(e.target.value)}
+                                className={`px-2.5 py-1.5 border border-slate-200 rounded-xl text-[11px] font-bold transition ${
+                                  routineManualFilterCategory === 'ALL' || routineManualAvailableSubcategories.length === 0
+                                    ? 'bg-slate-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-purple-500'
+                                }`}
+                              >
+                                <option value="ALL">
+                                  {routineManualFilterCategory === 'ALL' 
+                                    ? (routineIsJobSolution ? '--- প্রথমে ক্যাটাগরি নির্বাচন করুন ---' : routineIsYearJobSolution ? '--- প্রথমে সাল নির্বাচন করুন ---' : '--- প্রথমে বিষয় নির্বাচন করুন ---')
+                                    : routineManualAvailableSubcategories.length === 0 
+                                    ? (routineIsJobSolution ? '--- কোনো নির্দিষ্ট পরীক্ষা নেই ---' : '--- কোনো সাব-ক্যাটাগরি নেই ---')
+                                    : (routineIsJobSolution ? '--- সকল নির্দিষ্ট পরীক্ষা ---' : '--- সকল সাব-ক্যাটাগরি ---')}
+                                </option>
+                                {routineManualAvailableSubcategories.map(sub => (
+                                  <option key={sub.name} value={sub.name}>
+                                    {sub.name} ({sub.count.toLocaleString('bn-BD')}টি)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Filter 3: Leaf Chapter / Topic / Section */}
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[10px] font-extrabold text-gray-700 flex items-center justify-between">
+                                <span>
+                                  {routineIsJobSolution || routineIsYearJobSolution 
+                                    ? 'ধাপ ৩: বিষয় / সেকশন (ঐচ্ছিক)' 
+                                    : 'ধাপ ৩: অধ্যায় / টপিক (ঐচ্ছিক)'}
+                                </span>
+                                {routineManualFilterLeaf !== 'ALL' && (
+                                  <span className="text-emerald-600 font-bold">✓ সক্রিয়</span>
+                                )}
+                              </label>
+                              <select
+                                value={routineManualFilterLeaf}
+                                disabled={routineManualFilterSubcategory === 'ALL' || routineManualAvailableLeafCategories.length === 0}
+                                onChange={e => handleRoutineManualLeafChange(e.target.value)}
+                                className={`px-2.5 py-1.5 border border-slate-200 rounded-xl text-[11px] font-bold transition ${
+                                  routineManualFilterSubcategory === 'ALL' || routineManualAvailableLeafCategories.length === 0
+                                    ? 'bg-slate-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500'
+                                }`}
+                              >
+                                <option value="ALL">
+                                  {routineManualFilterSubcategory === 'ALL'
+                                    ? (routineIsJobSolution || routineIsYearJobSolution ? '--- প্রথমে পরীক্ষা নির্বাচন করুন ---' : '--- প্রথমে সাব-ক্যাটাগরি নির্বাচন করুন ---')
+                                    : routineManualAvailableLeafCategories.length === 0
+                                    ? '--- (কোনো পৃথক অধ্যায় / টপিক নেই) ---'
+                                    : (routineIsJobSolution || routineIsYearJobSolution ? '--- সকল বিষয় / সেকশন ---' : '--- সকল অধ্যায় / টপিক ---')}
+                                </option>
+                                {routineManualAvailableLeafCategories.map(leaf => (
+                                  <option key={leaf.name} value={leaf.name}>
+                                    {leaf.name} ({leaf.count.toLocaleString('bn-BD')}টি)
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Active Hierarchy Breadcrumb & Filter Reset Button */}
+                          {(routineManualFilterCategory !== 'ALL' || routineManualFilterSubcategory !== 'ALL' || routineManualFilterLeaf !== 'ALL') && (
+                            <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-gray-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
+                              <span className="font-bold text-gray-400">সক্রিয় ফিল্টার:</span>
+                              <span className="font-extrabold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                {routineManualFilterCategory === 'ALL' 
+                                  ? (routineIsJobSolution ? 'সকল পরীক্ষা ক্যাটাগরি' : routineIsYearJobSolution ? 'সকল সাল' : 'সকল বিষয়') 
+                                  : routineManualFilterCategory}
+                              </span>
+                              {routineManualFilterSubcategory !== 'ALL' && (
+                                <>
+                                  <span className="text-gray-300">›</span>
+                                  <span className="font-extrabold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">
+                                    {routineManualFilterSubcategory}
+                                  </span>
+                                </>
+                              )}
+                              {routineManualFilterLeaf !== 'ALL' && (
+                                <>
+                                  <span className="text-gray-300">›</span>
+                                  <span className="font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                    {routineManualFilterLeaf}
+                                  </span>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={handleRoutineResetBrowsingFilters}
+                                className="ml-auto text-[9.5px] font-bold text-rose-600 hover:text-rose-700 underline cursor-pointer"
+                              >
+                                ফিল্টার মুছুন
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Search & Status Filter */}
+                          <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between pt-1">
+                            {/* Search Box */}
+                            <div className="relative flex-1">
+                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                placeholder="প্রশ্ন, অপশন, ব্যাখ্যা বা ক্যাটাগরি খুঁজুন..."
+                                value={routineManualQuestionSearch}
+                                onChange={e => {
+                                  setRoutineManualQuestionSearch(e.target.value);
+                                  setRoutineManualRenderLimit(50);
+                                }}
+                                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[11px] text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+
+                            {/* Status Filter Tabs (ALL / SELECTED / UNSELECTED) */}
+                            <div className="inline-flex rounded-lg bg-slate-200/80 p-0.5 text-[10px] font-bold self-start sm:self-auto shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualSelectionStatus('ALL');
+                                  setRoutineManualGlobalReview(false);
+                                  setRoutineManualRenderLimit(50);
+                                }}
+                                className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                  routineManualSelectionStatus === 'ALL'
+                                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                সব প্রশ্ন
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualSelectionStatus('SELECTED');
+                                  setRoutineManualRenderLimit(50);
+                                }}
+                                className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                  routineManualSelectionStatus === 'SELECTED'
+                                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                নির্বাচিত ({routineExamManualQuestionIds.length})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualSelectionStatus('UNSELECTED');
+                                  setRoutineManualGlobalReview(false);
+                                  setRoutineManualRenderLimit(50);
+                                }}
+                                className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                  routineManualSelectionStatus === 'UNSELECTED'
+                                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                অনির্বাচিত
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Global Review Control when in SELECTED status */}
+                          {routineManualSelectionStatus === 'SELECTED' && (
+                            <div className="p-2 bg-indigo-50/90 border border-indigo-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[10.5px]">
+                              <div className="flex items-center gap-1.5 font-bold text-indigo-900">
+                                <span>📋</span>
+                                <span>
+                                  {routineManualGlobalReview
+                                    ? `🌐 সব ক্যাটাগরি মিলিয়ে মোট ${routineExamManualQuestionIds.length}টি নির্বাচিত প্রশ্ন দেখা হচ্ছে`
+                                    : `🔍 বর্তমান ফিল্টারে নির্বাচিত: ${filteredRoutineQuestions.length}টি | মোট নির্বাচিত: ${routineExamManualQuestionIds.length}টি`}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRoutineManualGlobalReview(prev => !prev);
+                                  setRoutineManualRenderLimit(50);
+                                }}
+                                className="px-2.5 py-1 bg-white hover:bg-indigo-100 text-indigo-700 font-extrabold rounded-lg border border-indigo-300 shadow-2xs transition cursor-pointer text-[10px]"
+                              >
+                                {routineManualGlobalReview
+                                  ? '🔍 বর্তমান ফিল্টারের প্রশ্ন দেখুন'
+                                  : '🌐 সব ক্যাটাগরির নির্বাচিত প্রশ্ন দেখুন'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bulk Action Buttons */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-indigo-50/30 border border-indigo-100/60 rounded-xl text-[10px]">
+                          <span className="font-extrabold text-indigo-950/80 flex items-center gap-1">
+                            ⚡ কুইক সিলেকশন টুলস:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleRoutineAutoFillRandom}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                              title="টার্গেট কোটা পূরণ করতে ফিল্টার করা তালিকা থেকে র্যান্ডম প্রশ্ন যুক্ত করুন"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>র্যান্ডম অটো-ফিল</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRoutineSelectAllMatching}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                              title="বর্তমান ফিল্টারের সকল প্রশ্ন একসাথে নির্বাচন করুন"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>ফিল্টার করা প্রশ্ন নির্বাচন</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRoutineResetSelections}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold rounded-lg border border-rose-200 transition flex items-center gap-1 cursor-pointer"
+                              title="সকল নির্বাচিত প্রশ্ন বাতিল করুন"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>সিলেকশন রিসেট</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Question Count Summary Banner & Pagination */}
+                        {(() => {
+                          const renderedRoutineQuestions = filteredRoutineQuestions.slice(0, routineManualRenderLimit);
+                          return (
+                            <>
+                              <div className="flex items-center justify-between text-[10px] text-gray-500 font-bold px-1">
+                                <span>
+                                  তালিকায় দৃশ্যমান: <b className="text-gray-800">{renderedRoutineQuestions.length}</b> টি প্রশ্ন 
+                                  {filteredRoutineQuestions.length !== renderedRoutineQuestions.length && (
+                                    <span> (ফিল্টারে মোট: <b className="text-indigo-700">{filteredRoutineQuestions.length}</b> টি)</span>
+                                  )}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {routineManualQuestionSearch && (
+                                    <span className="text-indigo-600">সার্চ ফিল্টার সক্রিয়</span>
+                                  )}
+                                  <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    মোট নির্বাচিত: <b>{routineExamManualQuestionIds.length}</b>টি
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Scrollable MCQ Cards List */}
+                              <div className="max-h-[380px] overflow-y-auto space-y-2 pr-1 divide-y divide-gray-100">
+                                {filteredRoutineQuestions.length === 0 ? (
+                                  <div className="py-8 text-center text-gray-400 font-bold space-y-2">
+                                    <p className="text-gray-600 font-extrabold text-xs">কোনো মিল থাকা প্রশ্ন পাওয়া যায়নি।</p>
+                                    {routineManualSelectionStatus === 'SELECTED' ? (
+                                      <p className="text-[10px] text-gray-400 font-normal">
+                                        বর্তমান ফিল্টারে কোনো নির্বাচিত প্রশ্ন নেই। {routineExamManualQuestionIds.length > 0 && 'উপরে "সব ক্যাটাগরির নির্বাচিত প্রশ্ন দেখুন" বাটনে ক্লিক করে সব নির্বাচিত প্রশ্ন রিভিউ করুন।'}
+                                      </p>
+                                    ) : (
+                                      <p className="text-[10px] text-gray-400 font-normal">
+                                        ক্যাটাগরি বা সার্চ টেক্সট পরিবর্তন করুন অথবা ফিল্টার রিসেট করুন।
+                                      </p>
+                                    )}
+                                    {(routineManualFilterCategory !== 'ALL' || routineManualQuestionSearch) && (
+                                      <button
+                                        type="button"
+                                        onClick={handleRoutineResetBrowsingFilters}
+                                        className="px-3 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-[10px] rounded-lg border border-indigo-200 transition cursor-pointer"
+                                      >
+                                        ফিল্টার মুছুন
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  renderedRoutineQuestions.map((q, idx) => {
+                                    const isChecked = routineExamManualQuestionIds.includes(q.id);
+                                    const isExpanded = Boolean(routineManualExpandedExplanationIds[q.id]);
+                                    const correctOptionKey = (q.correct || '').trim();
+
+                                    return (
+                                      <div
+                                        key={q.id || `rq-${idx}`}
+                                        className={`p-3 rounded-xl border transition space-y-2 ${
+                                          isChecked
+                                            ? 'bg-indigo-50/40 border-indigo-300 shadow-2xs'
+                                            : 'bg-white hover:bg-gray-50/80 border-gray-200/80'
+                                        }`}
+                                      >
+                                        {/* Header: Checkbox + Question Text */}
+                                        <div className="flex items-start gap-2.5 cursor-pointer" onClick={() => toggleRoutineQuestionSelection(q.id)}>
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => toggleRoutineQuestionSelection(q.id)}
+                                            onClick={e => e.stopPropagation()}
+                                            className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer shrink-0"
+                                          />
+                                          <div className="flex-1">
+                                            <p className="font-extrabold text-gray-900 text-xs leading-relaxed">
+                                              {q.text}
+                                            </p>
+                                            {/* Breadcrumbs / Subject Tags */}
+                                            <div className="flex items-center gap-1.5 flex-wrap mt-1 text-[9px] text-gray-500 font-semibold">
+                                              <span className="px-1.5 py-0.2 bg-gray-100 rounded text-gray-700">{q.category}</span>
+                                              {q.subcategory && (
+                                                <>
+                                                  <span className="text-gray-400">›</span>
+                                                  <span className="px-1.5 py-0.2 bg-indigo-50 text-indigo-700 rounded">{q.subcategory}</span>
+                                                </>
+                                              )}
+                                              {q.csvCategory && (
+                                                <>
+                                                  <span className="text-gray-400">›</span>
+                                                  <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 rounded">{q.csvCategory}</span>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Options Grid (ক, খ, গ, ঘ) */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-6 text-[10.5px]">
+                                          {[
+                                            { key: 'Option A', label: 'ক', text: q.optionA },
+                                            { key: 'Option B', label: 'খ', text: q.optionB },
+                                            { key: 'Option C', label: 'গ', text: q.optionC },
+                                            { key: 'Option D', label: 'ঘ', text: q.optionD },
+                                          ].map(opt => {
+                                            const isCorrect = correctOptionKey === opt.key || correctOptionKey === opt.text;
+                                            return (
+                                              <div
+                                                key={opt.key}
+                                                className={`px-2 py-1 rounded-lg border font-medium flex items-start gap-1.5 ${
+                                                  isCorrect
+                                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                                                    : 'bg-gray-50/60 border-gray-100 text-gray-700'
+                                                }`}
+                                              >
+                                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
+                                                  isCorrect ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                                                }`}>
+                                                  {opt.label}
+                                                </span>
+                                                <span className="leading-snug">{opt.text}</span>
+                                                {isCorrect && (
+                                                  <span className="ml-auto text-[8.5px] font-black text-emerald-700 bg-emerald-100 px-1 rounded shrink-0">
+                                                    সঠিক
+                                                  </span>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+
+                                        {/* Explanation Toggle & Content */}
+                                        {q.explanation && (
+                                          <div className="pl-6 pt-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleRoutineExplanation(q.id)}
+                                              className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition cursor-pointer"
+                                            >
+                                              <Eye className="w-3 h-3" />
+                                              <span>{isExpanded ? 'ব্যাখ্যা লুকান' : 'ব্যাখ্যা দেখুন'}</span>
+                                            </button>
+                                            {isExpanded && (
+                                              <div className="mt-1 p-2 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[10px] text-amber-950 leading-relaxed font-normal animate-fade-in">
+                                                <b className="font-bold text-amber-900">💡 ব্যাখ্যা: </b>
+                                                {q.explanation}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+
+                              {/* Load More Pagination Button */}
+                              {filteredRoutineQuestions.length > routineManualRenderLimit && (
+                                <div className="p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2 text-[10.5px]">
+                                  <span className="text-gray-600 font-bold">
+                                    তালিকায় আরও <b className="text-indigo-900">{filteredRoutineQuestions.length - renderedRoutineQuestions.length}</b>টি প্রশ্ন রয়েছে (মোট {filteredRoutineQuestions.length}টির মধ্যে {renderedRoutineQuestions.length}টি দৃশ্যমান)।
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRoutineManualRenderLimit(prev => prev + 50)}
+                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-lg shadow-2xs transition cursor-pointer"
+                                  >
+                                    + আরও ৫০টি প্রশ্ন দেখুন
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
