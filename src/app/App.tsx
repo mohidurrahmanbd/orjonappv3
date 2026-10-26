@@ -30,6 +30,7 @@ import {
   syncRoutinesMetadataFirst,
   syncCouponsMetadataFirst,
   syncPaymentSettingsMetadataFirst,
+  syncNoticesMetadataFirst,
   getLocalSyncVersions,
   saveLocalSyncVersions
 } from '../shared/lib/sync/versionSyncService';
@@ -904,6 +905,26 @@ export default function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  // Synchronize notices on web login with version checks (Runs once per login session)
+  const hasSyncedNoticesOnWebRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser) {
+      hasSyncedNoticesOnWebRef.current = false;
+      return;
+    }
+    if (hasSyncedNoticesOnWebRef.current) return;
+    hasSyncedNoticesOnWebRef.current = true;
+
+    syncNoticesMetadataFirst((updatedNotices) => {
+      if (updatedNotices && Array.isArray(updatedNotices)) {
+        setNotices(updatedNotices);
+      }
+    }).catch(err => {
+      console.warn('[App] Web notice sync notice:', err);
+    });
+  }, [currentUser]);
 
   // Helper functions to update state and persistence together
   const updateCategoriesDB = (newC: CategoryItem[]) => {

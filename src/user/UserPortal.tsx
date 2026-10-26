@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate } from '../shared/types';
+import { Question, LiveExam, Notice, Routine, User, Attempt, Bookmark, CategoryItem, SubcategoryItem, Course, Coupon, CourseEnrollment, PaymentSettings, formatBengaliDate, formatBengaliDateTime } from '../shared/types';
 import { syncUserEnrollmentsOnDemand, getStoredEnrolledCourseIds, setStoredEnrolledCourseIds } from '../shared/lib/sync/versionSyncService';
 import { 
   User as UserIcon, BookOpen, Award, Bookmark as BookmarkIcon, 
@@ -11,8 +11,27 @@ import {
   Landmark, Flag, Globe2, BrainCircuit, Scale, ShieldCheck, Lightbulb, GraduationCap,
   Building2, Coins, School, Globe, History, BookMarked,
   Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree,
-  ChevronDown, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign
+  ChevronDown, ChevronUp, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign,
+  Heart, Bell
 } from 'lucide-react';
+import {
+  FavoriteMCQRecord,
+  getCleanUserKey,
+  loadLocalFavorites,
+  toggleLocalFavorite,
+  isQuestionFavorited,
+  groupFavoritesByDateAndSubject,
+  DateGroupedFavorites,
+  snapshotToQuestion
+} from '../shared/lib/favoriteService';
+import {
+  getReadNoticeIds,
+  isNoticeRead,
+  markNoticeAsRead,
+  markAllNoticesAsRead,
+  getUnreadNoticeCount,
+  subscribeToNoticeReadChanges
+} from '../shared/lib/noticeReadService';
 import { motion } from 'motion/react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -544,7 +563,7 @@ export default function UserPortal({
   onLoadPaymentSettingsOnDemand
 }: UserPortalProps) {
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'favorites' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs' | 'notices'>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recentExamSearchQuery, setRecentExamSearchQuery] = useState('');
   const [selectedRecentJobMonth, setSelectedRecentJobMonth] = useState<string | null>(null);
@@ -553,6 +572,62 @@ export default function UserPortal({
   const [prepCategory, setPrepCategory] = useState('সাধারণ জ্ঞান');
   const [prepMode, setPrepMode] = useState<'verify' | 'read' | 'exam'>('verify');
   const [prepExamLimit, setPrepExamLimit] = useState(10);
+
+  // Notice Read State & Reactivity
+  const userKey = useMemo(() => getCleanUserKey(user), [user]);
+  const [readNoticeIds, setReadNoticeIds] = useState<Set<string>>(() => getReadNoticeIds(userKey));
+  const [expandedNoticeIds, setExpandedNoticeIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setReadNoticeIds(getReadNoticeIds(userKey));
+    const unsubscribe = subscribeToNoticeReadChanges(() => {
+      setReadNoticeIds(getReadNoticeIds(getCleanUserKey(user)));
+    });
+    return unsubscribe;
+  }, [userKey, user]);
+
+  const unreadNoticeCount = useMemo(() => {
+    return getUnreadNoticeCount(userKey, notices, readNoticeIds);
+  }, [userKey, notices, readNoticeIds]);
+
+  const sortedNotices = useMemo(() => {
+    const eligible = (notices || []).filter(n => n && n.id && !n.isDeleted && !(n as any).deletedAt);
+    return [...eligible].sort((a, b) => {
+      const timeA = new Date(a.createdAt || (a as any).updatedAt || 0).getTime() || 0;
+      const timeB = new Date(b.createdAt || (b as any).updatedAt || 0).getTime() || 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return String(b.id).localeCompare(String(a.id));
+    });
+  }, [notices]);
+
+  const handleMarkNoticeAsRead = useCallback((noticeId: string) => {
+    if (!noticeId) return;
+    const success = markNoticeAsRead(userKey, noticeId);
+    if (success) {
+      setReadNoticeIds(prev => {
+        const next = new Set(prev);
+        next.add(String(noticeId));
+        return next;
+      });
+    }
+  }, [userKey]);
+
+  const handleMarkAllNoticesAsRead = useCallback(() => {
+    const eligibleIds = sortedNotices.map(n => String(n.id));
+    const success = markAllNoticesAsRead(userKey, eligibleIds);
+    if (success) {
+      setReadNoticeIds(new Set(eligibleIds));
+    }
+  }, [userKey, sortedNotices]);
+
+  const toggleExpandNotice = useCallback((id: string) => {
+    setExpandedNoticeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Routine MCQ Reading Progress local storage sync state
   const [readingProgressVersion, setReadingProgressVersion] = useState(0);
@@ -1305,7 +1380,33 @@ export default function UserPortal({
   const [includeMarkTableInPDF, setIncludeMarkTableInPDF] = useState(true);
   const [resultFilterMode, setResultFilterMode] = useState<'user' | 'admin'>('user');
 
-  const handleTabSelect = (tab: 'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs') => {
+  // Local-only Favorite MCQ state (isolated per user key without network calls)
+  const [favoritesMap, setFavoritesMap] = useState<Record<string, FavoriteMCQRecord>>(() => loadLocalFavorites(userKey));
+
+  // Reload favorites whenever user identity changes
+  useEffect(() => {
+    setFavoritesMap(loadLocalFavorites(userKey));
+  }, [userKey]);
+
+  // Fast, instant favorite toggle with zero popups, zero network calls, and instant state update
+  const handleToggleFavorite = useCallback((targetQuestion: Question, fallbackSubject?: string) => {
+    setFavoritesMap(prevMap => toggleLocalFavorite(userKey, targetQuestion, fallbackSubject, prevMap));
+  }, [userKey]);
+
+  // Active exam condition for guarding study actions (Favorite button strictly disabled during running exams)
+  const isExamActive = quizActive === true && selectedAttemptForView === null;
+
+  // Favorite Folder Explorer navigation states
+  const [selectedFavoriteDate, setSelectedFavoriteDate] = useState<string | null>(null);
+  const [selectedFavoriteSubject, setSelectedFavoriteSubject] = useState<string | null>(null);
+  const [favoriteSelectedAnswers, setFavoriteSelectedAnswers] = useState<Record<string, string>>({});
+  const [showFavoriteExplanation, setShowFavoriteExplanation] = useState<Record<string, boolean>>({});
+
+  const handleTabSelect = (tab: 'dashboard' | 'recentJob' | 'preparation' | 'job' | 'yearJob' | 'bookmarks' | 'favorites' | 'exams' | 'results' | 'courses' | 'routines' | 'profile' | 'currentAffairs' | 'notices') => {
+    if (tab === 'favorites') {
+      setSelectedFavoriteDate(null);
+      setSelectedFavoriteSubject(null);
+    }
     if (tab === 'recentJob') {
       setSelectedRecentJobMonth(null);
       setRecentExamSearchQuery('');
@@ -4484,6 +4585,28 @@ export default function UserPortal({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Notification Bell Button */}
+            <button 
+              type="button"
+              id="header-notification-bell-btn"
+              onClick={() => handleTabSelect('notices')}
+              className={`p-1.5 sm:p-2 rounded-xl border transition-all duration-150 relative flex items-center justify-center shrink-0 cursor-pointer ${
+                activeTab === 'notices' 
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                  : 'bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-100 shadow-2xs hover:border-indigo-200'
+              }`}
+              title="একাডেমিক নোটিশ বোর্ড"
+              aria-label={`একাডেমিক নোটিশ বোর্ড, ${unreadNoticeCount > 0 ? `${unreadNoticeCount}টি অপঠিত নোটিশ` : 'কোনো অপঠিত নোটিশ নেই'}`}
+            >
+              <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+              {unreadNoticeCount > 0 && (
+                <span 
+                  className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-white pointer-events-none"
+                  aria-label="নতুন নোটিশ আছে"
+                />
+              )}
+            </button>
+
             <button 
               onClick={() => setActiveTab('profile')}
               className={`text-[11px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl transition shrink-0 whitespace-nowrap ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white hover:bg-gray-100 text-indigo-700'}`}
@@ -4581,6 +4704,7 @@ export default function UserPortal({
                 <div className="flex flex-col gap-1.5">
                   {[
                     { id: 'dashboard', label: '📊 ড্যাশবোর্ড', icon: Home },
+                    { id: 'notices', label: unreadNoticeCount > 0 ? `📢 নোটিশ বোর্ড (${unreadNoticeCount})` : '📢 নোটিশ বোর্ড', icon: Bell },
                     { id: 'recentJob', label: '⚡ রিসেন্ট জব সলিউশন', icon: Sparkles },
                     { id: 'currentAffairs', label: '🌍 সাম্প্রতিক বিষয়াবলী', icon: Globe },
                     { id: 'preparation', label: '📚 বিষয়ভিত্তিক প্রস্তুতি', icon: BookOpen },
@@ -5293,9 +5417,40 @@ export default function UserPortal({
                       const masterQ = questions.find(mq => mq.id === q.id) || q;
                       const hasPendingReport = !!masterQ?.comments?.some(c => !c.pointsApproved);
                       const hasPendingExplanation = !!masterQ?.userExplanations?.some(e => !e.approved);
+                      const isFav = isQuestionFavorited(favoritesMap, q.id);
 
                       return (
                         <div className="flex flex-row flex-wrap gap-2 items-center mt-3 pt-2.5 border-t border-gray-100/50">
+                          {/* Device-Local Favorite Button (Excluded during active exam) */}
+                          {!isExamActive && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFavorite(
+                                  masterQ,
+                                  readerCategoryFilter !== 'সব প্রশ্ন' ? readerCategoryFilter : undefined
+                                );
+                              }}
+                              aria-label={isFav ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                              title={isFav ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                              className={`px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer flex items-center gap-1.5 min-h-[32px] sm:min-h-[30px] select-none ${
+                                isFav
+                                  ? 'bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 shadow-2xs'
+                                  : 'bg-white hover:bg-rose-50/60 border border-rose-100 text-rose-400 hover:text-rose-600'
+                              }`}
+                            >
+                              <Heart
+                                className={`w-3.5 h-3.5 transition-transform active:scale-125 ${
+                                  isFav
+                                    ? 'fill-rose-500 text-rose-500'
+                                    : 'text-rose-400 fill-none stroke-[2]'
+                                }`}
+                              />
+                              <span>ফেভারিট</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => {
@@ -5420,6 +5575,10 @@ export default function UserPortal({
                 handleOpenBookmarkDialog(qId);
               }
             }}
+            onToggleFavorite={(targetQ: Question) => {
+              handleToggleFavorite(targetQ, viewingHierarchyRoutine.title);
+            }}
+            isQuestionFavorited={(qId: string) => isQuestionFavorited(favoritesMap, qId)}
           />
         ) : (
         <div className="flex-grow flex flex-col gap-3 animate-fade-in">
@@ -5428,14 +5587,30 @@ export default function UserPortal({
           {activeTab === 'dashboard' && (
             <div className="flex flex-col gap-3">
               
-              {/* Main Notice Banner */}
-              {notices.length > 0 && notices[0]?.text && (
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 p-2.5 rounded-r-2xl shadow-sm text-xs leading-relaxed animate-pulse">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-950 mb-0.5">
-                    <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span>সর্বশেষ একাডেমিক নোটিশ</span>
+              {/* Unread Notice Discovery Card (Links to Notice Center; disappears when all notices are read) */}
+              {unreadNoticeCount > 0 && (
+                <div 
+                  id="dashboard-unread-notice-banner"
+                  onClick={() => handleTabSelect('notices')}
+                  className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200 p-2.5 rounded-2xl shadow-2xs cursor-pointer hover:border-emerald-300 transition-all flex items-center justify-between gap-3 group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Bell className="w-3.5 h-3.5 animate-bounce" />
+                    </span>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
+                        <span>{unreadNoticeCount}টি নতুন একাডেমিক নোটিশ রয়েছে</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      </h4>
+                      <p className="text-[10px] text-gray-600 truncate">
+                        নোটিশ বোর্ডে গিয়ে বিস্তারিত দেখতে এখানে ট্যাপ করুন
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-gray-700 font-medium whitespace-pre-line">{notices[0].text}</p>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-white/90 px-2 py-1 rounded-xl border border-emerald-200 shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition">
+                    দেখুন ➔
+                  </span>
                 </div>
               )}
 
@@ -5535,6 +5710,25 @@ export default function UserPortal({
                     <div>
                       <h4 className="text-xs font-bold text-rose-950">বুকমার্ক</h4>
                       <p className="text-[9px] text-rose-700/80 mt-0.5">নিজের সংরক্ষিত প্রশ্ন সমূহ</p>
+                    </div>
+                  </div>
+
+                  <div 
+                    id="grid-card-favorites"
+                    onClick={() => handleTabSelect('favorites')}
+                    className="cursor-pointer p-2.5 rounded-xl border bg-gradient-to-br from-rose-50/60 to-red-100/40 border-rose-200/90 hover:border-rose-300 hover:shadow transition flex flex-col justify-between min-h-[85px] group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <Heart className="w-5 h-5 text-rose-500 fill-rose-500 group-hover:scale-110 transition-transform" />
+                      {Object.keys(favoritesMap).length > 0 && (
+                        <span className="text-[9px] font-black bg-rose-500 text-white px-1.5 py-0.2 rounded-full shadow-2xs">
+                          {toBengaliDigits(Object.keys(favoritesMap).length)}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-rose-950 group-hover:text-rose-700 transition-colors">ফেবারিট প্রশ্নসমূহ</h4>
+                      <p className="text-[9px] text-rose-700/80 mt-0.5">তারিখ অনুযায়ী সাজানো</p>
                     </div>
                   </div>
                 </div>
@@ -7315,6 +7509,393 @@ export default function UserPortal({
             );
           })()}
 
+          {/* VIEW: FAVORITE EXPLORER (LOCAL-ONLY DATE & SUBJECT HIERARCHY) */}
+          {activeTab === 'favorites' && (() => {
+            const dateGroups: DateGroupedFavorites[] = groupFavoritesByDateAndSubject(favoritesMap);
+            const totalFavCount = Object.keys(favoritesMap).length;
+
+            // 1. EMPTY STATE
+            if (totalFavCount === 0 || dateGroups.length === 0) {
+              return (
+                <div className="bg-white border border-gray-150 p-6 sm:p-10 rounded-3xl shadow-sm text-center flex flex-col items-center justify-center gap-3 animate-fade-in my-2">
+                  <div className="w-16 h-16 rounded-3xl bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center shadow-inner">
+                    <Heart className="w-8 h-8 text-rose-400 stroke-[1.75]" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-gray-900 mt-1">
+                    এখনও কোনো প্রশ্ন ফেভারিট করা হয়নি।
+                  </h3>
+                  <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed font-medium">
+                    পড়া বা যাচাই করার সময় যেকোনো প্রশ্নের নিচে থাকা হার্ট (❤️) আইকনে ক্লিক করে প্রশ্ন ফেভারিট তালিকায় যোগ করতে পারেন। সংরক্ষিত প্রশ্নসমূহ এখানে তারিখ ও বিষয় অনুযায়ী সাজানো থাকবে।
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleTabSelect('dashboard')}
+                    className="mt-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-5 py-2.5 rounded-xl transition shadow text-xs inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>← ড্যাশবোর্ডে ফিরে যান</span>
+                  </button>
+                </div>
+              );
+            }
+
+            // Find current selected date group if any
+            const activeDateGroup = selectedFavoriteDate 
+              ? dateGroups.find(dg => dg.dateKey === selectedFavoriteDate)
+              : null;
+
+            // Find current selected subject if any
+            const activeSubjectGroup = (activeDateGroup && selectedFavoriteSubject)
+              ? activeDateGroup.subjects.find(s => s.subjectName === selectedFavoriteSubject)
+              : null;
+
+            // If selected date or subject has no questions left (e.g. all were unfavorited), safely fall back
+            const isViewingQuestions = Boolean(activeDateGroup && activeSubjectGroup && activeSubjectGroup.records.length > 0);
+            const isViewingSubjects = Boolean(activeDateGroup && !isViewingQuestions);
+
+            return (
+              <div className="bg-white border border-gray-150 p-3 sm:p-5 rounded-3xl shadow-sm flex flex-col gap-3.5 text-xs animate-fade-in">
+                {/* Header & Interactive Breadcrumbs */}
+                <div className="flex flex-col gap-2 pb-3 border-b border-gray-100">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                        <Heart className="w-4 h-4 fill-rose-500 text-rose-500" />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-sm sm:text-base text-gray-900 leading-snug">
+                          ফেভারিট প্রশ্নভাণ্ডার
+                        </h3>
+                        <p className="text-[10.5px] text-gray-500 font-medium">
+                          ডিভাইসে অফলাইনে সংরক্ষিত প্রিয় প্রশ্নসমূহ
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="bg-rose-50 border border-rose-200 text-rose-700 font-extrabold px-3 py-1 rounded-xl text-[11px] shadow-2xs">
+                        মোট ফেভারিট: {toBengaliDigits(totalFavCount)}টি
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Interactive Breadcrumb Navigation Bar */}
+                  <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFavoriteDate(null);
+                        setSelectedFavoriteSubject(null);
+                      }}
+                      className="text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      <span>সকল তারিখ</span>
+                    </button>
+
+                    {activeDateGroup && (
+                      <>
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        {isViewingQuestions ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFavoriteSubject(null)}
+                            className="text-rose-600 hover:text-rose-800 font-bold transition cursor-pointer"
+                          >
+                            📅 {formatBengaliDate(activeDateGroup.dateKey)}
+                          </button>
+                        ) : (
+                          <span className="text-gray-800 font-black">
+                            📅 {formatBengaliDate(activeDateGroup.dateKey)}
+                          </span>
+                        )}
+                      </>
+                    )}
+
+                    {isViewingQuestions && activeSubjectGroup && (
+                      <>
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span className="text-gray-800 font-black truncate max-w-[180px] sm:max-w-none">
+                          📂 {activeSubjectGroup.subjectName}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* LEVEL 1: DATE FOLDER EXPLORER */}
+                {!activeDateGroup && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        📁 তারিখভিত্তিক ফোল্ডারসমূহ (নতুন তারিখ প্রথমে)
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-medium">
+                        মোট {toBengaliDigits(dateGroups.length)}টি তারিখ
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {dateGroups.map((dGroup) => (
+                        <div
+                          key={dGroup.dateKey}
+                          onClick={() => {
+                            setSelectedFavoriteDate(dGroup.dateKey);
+                            setSelectedFavoriteSubject(null);
+                          }}
+                          className="group cursor-pointer bg-gradient-to-br from-rose-50/40 via-white to-red-50/20 hover:to-rose-50/60 border border-slate-200/90 hover:border-rose-300 rounded-2xl p-3.5 flex flex-col justify-between gap-3 shadow-2xs hover:shadow-xs transition-all duration-150 active:scale-[0.99]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-red-600 text-white flex items-center justify-center shadow-2xs shrink-0 group-hover:scale-105 transition-transform">
+                                <Calendar className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-rose-700 transition truncate">
+                                  {formatBengaliDate(dGroup.dateKey)}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 font-mono block">
+                                  {dGroup.dateKey}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span className="bg-rose-100 text-rose-800 font-black text-[10px] px-2.5 py-1 rounded-xl border border-rose-200 shrink-0">
+                              {toBengaliDigits(dGroup.totalCount)}টি প্রশ্ন
+                            </span>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10.5px]">
+                            <span className="text-slate-500 font-bold flex items-center gap-1">
+                              <Folder className="w-3.5 h-3.5 text-rose-500" />
+                              {toBengaliDigits(dGroup.subjects.length)}টি বিষয় অন্তর্ভুক্ত
+                            </span>
+                            <span className="text-rose-600 font-extrabold group-hover:translate-x-0.5 transition-transform">
+                              ফোল্ডার খুলুন ➔
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* LEVEL 2: SUBJECT FOLDER EXPLORER (INSIDE SELECTED DATE) */}
+                {isViewingSubjects && activeDateGroup && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between px-0.5">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFavoriteDate(null)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold px-2.5 py-1 rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>পেছনে যান</span>
+                        </button>
+                        <span className="text-[11px] font-bold text-slate-600">
+                          {formatBengaliDate(activeDateGroup.dateKey)}-এর বিষয়ভিত্তিক ফোল্ডারসমূহ
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {activeDateGroup.subjects.map((sGroup) => (
+                        <div
+                          key={sGroup.subjectName}
+                          onClick={() => setSelectedFavoriteSubject(sGroup.subjectName)}
+                          className="group cursor-pointer bg-white hover:bg-rose-50/30 border border-slate-200/90 hover:border-rose-300 rounded-2xl p-3.5 flex flex-col justify-between gap-3 shadow-2xs hover:shadow-xs transition-all duration-150 active:scale-[0.99]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                                {renderSubjectIcon(sGroup.subjectName, "w-4 h-4")}
+                              </div>
+                              <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 group-hover:text-rose-700 transition truncate">
+                                {sGroup.subjectName}
+                              </h4>
+                            </div>
+
+                            <span className="bg-rose-50 text-rose-700 font-extrabold text-[10px] px-2 py-0.5 rounded-lg border border-rose-150 shrink-0">
+                              {toBengaliDigits(sGroup.totalCount)}টি প্রশ্ন
+                            </span>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10.5px]">
+                            <span className="text-slate-400 font-medium">
+                              ক্লিক করে প্রশ্ন দেখুন
+                            </span>
+                            <span className="text-rose-600 font-extrabold group-hover:translate-x-0.5 transition-transform">
+                              প্রশ্ন দেখুন ➔
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* LEVEL 3: MCQ LIST & READING VIEW */}
+                {isViewingQuestions && activeDateGroup && activeSubjectGroup && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-0.5 pb-1 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFavoriteSubject(null)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold px-2.5 py-1 rounded-lg text-xs transition cursor-pointer flex items-center gap-1"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>বিষয় তালিকায় যান</span>
+                        </button>
+                        <span className="text-xs font-bold text-gray-800">
+                          {activeSubjectGroup.subjectName} ({toBengaliDigits(activeSubjectGroup.records.length)}টি প্রশ্ন)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {activeSubjectGroup.records.map((rec, qIdx) => {
+                        const q = snapshotToQuestion(rec);
+                        const selectedOpt = favoriteSelectedAnswers[q.id];
+                        const hasSelected = !!selectedOpt;
+                        const isExplanationShown = !!showFavoriteExplanation[q.id];
+
+                        return (
+                          <div 
+                            key={rec.questionId || qIdx} 
+                            className="p-3 sm:p-4 bg-slate-50/60 rounded-2xl border border-slate-200/80 text-xs shadow-2xs space-y-2.5 transition hover:border-slate-300"
+                          >
+                            {/* Question Title & Unfavorite Button */}
+                            <div className="flex items-start justify-between gap-2.5">
+                              <h5 className="font-extrabold text-gray-900 leading-relaxed text-xs sm:text-[13px] flex-1">
+                                {(qIdx + 1).toLocaleString('bn-BD')}. {q.text}
+                                {rec.chapterName && (
+                                  <span className="inline-block ml-2 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-md align-middle">
+                                    🏷︍ {rec.chapterName}
+                                  </span>
+                                )}
+                              </h5>
+
+                              {/* Unfavorite Button */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleToggleFavorite(q, activeSubjectGroup.subjectName);
+                                }}
+                                className="px-2 py-1 rounded-lg font-bold text-[10px] bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
+                                title="ফেভারিট থেকে সরান"
+                                aria-label="ফেভারিট থেকে সরান"
+                              >
+                                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+                                <span>ফেভারিট</span>
+                              </button>
+                            </div>
+
+                            {/* 4 Options Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-gray-700 font-semibold text-[11px]">
+                              {['Option A', 'Option B', 'Option C', 'Option D'].map((optKey) => {
+                                const optText = optKey === 'Option A' ? q.optionA : optKey === 'Option B' ? q.optionB : optKey === 'Option C' ? q.optionC : q.optionD;
+                                const label = optKey === 'Option A' ? 'ক) ' : optKey === 'Option B' ? 'খ) ' : optKey === 'Option C' ? 'গ) ' : 'ঘ) ';
+                                const isSelected = selectedOpt === optKey;
+                                const isCorrect = q.correct === optKey;
+
+                                let btnStyle = 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-slate-50';
+                                if (isSelected) {
+                                  btnStyle = isCorrect
+                                    ? 'bg-green-50 border-green-300 text-green-800 font-extrabold shadow-2xs'
+                                    : 'bg-rose-50 border-rose-300 text-rose-800 font-extrabold shadow-2xs';
+                                } else if (hasSelected && isCorrect) {
+                                  btnStyle = 'bg-green-50 border-green-200 text-green-700 font-bold';
+                                }
+
+                                return (
+                                  <button
+                                    key={optKey}
+                                    type="button"
+                                    onClick={() => {
+                                      setFavoriteSelectedAnswers(prev => ({
+                                        ...prev,
+                                        [q.id]: optKey
+                                      }));
+                                    }}
+                                    className={`w-full text-left p-2.5 rounded-xl border transition ${btnStyle}`}
+                                  >
+                                    {label}{optText}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Correct Answer & Explanation Action Row */}
+                            <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFavoriteSelectedAnswers(prev => ({
+                                      ...prev,
+                                      [q.id]: q.correct
+                                    }));
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] transition cursor-pointer flex items-center gap-1 border border-indigo-100"
+                                >
+                                  🔑 সঠিক উত্তর
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowFavoriteExplanation(prev => ({
+                                      ...prev,
+                                      [q.id]: !prev[q.id]
+                                    }));
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg font-bold text-[10px] transition cursor-pointer flex items-center gap-1 border ${
+                                    isExplanationShown
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                                  }`}
+                                >
+                                  💡 {isExplanationShown ? 'ব্যাখ্যা লুকান' : 'ব্যাখ্যা দেখুন'}
+                                </button>
+                              </div>
+
+                              <span className="text-[10px] text-gray-400 font-mono">
+                                সেভ: {new Date(rec.favoritedAt).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+
+                            {/* Answer Feedback Box (when answered) */}
+                            {hasSelected && (
+                              <div className="bg-green-50/70 p-2.5 rounded-xl border border-green-200 text-green-900 font-semibold text-[10.5px]">
+                                <span>
+                                  {selectedOpt === q.correct ? '🎉 আপনার উত্তর সঠিক হয়েছে! ' : '⍌ উত্তর সঠিক হয়নি। '}
+                                  <b>সঠিক উত্তর:</b> {q.correct === 'Option A' ? q.optionA : q.correct === 'Option B' ? q.optionB : q.correct === 'Option C' ? q.optionC : q.optionD}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Expandable Explanation Block */}
+                            {isExplanationShown && (
+                              <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 text-amber-950 text-[11px] leading-relaxed animate-fade-in space-y-1">
+                                <span className="font-bold flex items-center gap-1 text-amber-900">
+                                  💡 বিস্তারিত সমাধান ও ব্যাখ্যা:
+                                </span>
+                                <p className="font-medium text-slate-800 whitespace-pre-line">
+                                  {q.explanation || 'এই প্রশ্নের জন্য কোনো লিখিত ব্যাখ্যা যুক্ত করা হয়নি।'}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* VIEW: EXAM ZONE */}
           {activeTab === 'exams' && (
             <div className="flex flex-col gap-4 text-xs">
@@ -7792,12 +8373,31 @@ export default function UserPortal({
                           : (selectedAnsKey === 'Skipped' ? 'স্কিপড' : 'উত্তর দেওয়া হয়নি');
 
                         const masterQ = questions.find(mq => mq.id === q.id) || q;
+                        const isFav = isQuestionFavorited(favoritesMap, q.id || masterQ.id);
 
                         return (
                           <div key={q.id || i} className="pt-3 text-xs flex flex-col gap-2">
-                            <h5 className="font-bold text-gray-900 leading-snug">
-                              {(i + 1).toLocaleString('bn-BD')}. {q.text}
-                            </h5>
+                            <div className="flex items-start justify-between gap-2">
+                              <h5 className="font-bold text-gray-900 leading-snug flex-1">
+                                {(i + 1).toLocaleString('bn-BD')}. {q.text}
+                              </h5>
+                              {!isExamActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleFavorite(masterQ, selectedAttemptForView.examTitle)}
+                                  className={`p-1.5 px-2.5 rounded-lg border text-[10px] font-bold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+                                    isFav
+                                      ? 'bg-rose-50 text-rose-600 border-rose-300 hover:bg-rose-100 shadow-2xs'
+                                      : 'bg-white text-rose-400 border-slate-200 hover:text-rose-600 hover:bg-rose-50/50'
+                                  }`}
+                                  title={isFav ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                                  aria-label={isFav ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                                >
+                                  <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-rose-400 fill-none stroke-[2]'}`} />
+                                  <span>ফেভারিট</span>
+                                </button>
+                              )}
+                            </div>
 
                             <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] text-gray-600 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
                               <div className={q.correct === 'Option A' ? 'font-bold text-green-700' : ''}>ক) {q.optionA}</div>
@@ -9462,6 +10062,176 @@ export default function UserPortal({
               </div>
             );
           })()}
+
+          {/* VIEW: NOTICE CENTER */}
+          {activeTab === 'notices' && (
+            <div className="flex flex-col gap-3 animate-fade-in text-xs">
+              {/* Notice Center Header Card */}
+              <div className="bg-white border border-gray-150 p-4 rounded-3xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-150 text-indigo-700 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Bell className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm sm:text-base text-indigo-950 flex items-center gap-2">
+                      <span>একাডেমিক নোটিশ বোর্ড</span>
+                      {unreadNoticeCount > 0 && (
+                        <span className="bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {unreadNoticeCount}টি নতুন
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-gray-500 font-medium">
+                      সকল প্রাতিষ্ঠানিক ঘোষণা, পরীক্ষার আপডেট ও জরুরি নির্দেশনাবলী
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                  {unreadNoticeCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllNoticesAsRead}
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-200 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>সব পঠিত চিহ্নিত করুন</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>ফিরে যান</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Notice List Feed */}
+              {sortedNotices.length === 0 ? (
+                <div className="bg-white border border-gray-150 p-8 rounded-3xl text-center shadow-xs flex flex-col items-center gap-3 my-4">
+                  <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center text-2xl border border-indigo-100">
+                    📭
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-gray-800 text-sm">কোনো একাডেমিক নোটিশ নেই</h4>
+                    <p className="text-[11px] text-gray-500 font-medium mt-1 max-w-sm mx-auto">
+                      বর্তমানে কোনো নতুন বা সক্রিয় নোটিশ প্রকাশিত নেই। কর্তৃপক্ষ নতুন নোটিশ দিলে আপনি এখানে দেখতে পাবেন।
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {sortedNotices.map((notice, idx) => {
+                    const isRead = readNoticeIds.has(String(notice.id));
+                    const isExpanded = expandedNoticeIds.has(String(notice.id));
+                    const isLongText = (notice.text || '').length > 180;
+                    const dateDisplay = formatBengaliDateTime(notice.createdAt || (notice as any).updatedAt);
+
+                    return (
+                      <div
+                        key={notice.id || `notice-${idx}`}
+                        onClick={() => {
+                          if (!isRead) {
+                            handleMarkNoticeAsRead(notice.id);
+                          }
+                        }}
+                        className={`p-4 rounded-2xl transition-all duration-200 flex flex-col gap-2.5 relative border cursor-pointer ${
+                          !isRead
+                            ? 'bg-emerald-50/80 border-emerald-300 shadow-xs hover:border-emerald-400'
+                            : 'bg-white border-slate-200 shadow-xs hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Notice Card Header */}
+                        <div className="flex items-center justify-between gap-2 border-b pb-2 border-inherit">
+                          <div className="flex items-center gap-2">
+                            {!isRead ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white shadow-2xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                নতুন নোটিশ
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                পঠিত
+                              </span>
+                            )}
+                            <span className="text-[11px] font-bold text-gray-400 font-mono">
+                              #{idx + 1}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {dateDisplay && (
+                              <span className="text-[10px] sm:text-[11px] text-gray-500 font-medium flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-gray-400 shrink-0" />
+                                <span>{dateDisplay}</span>
+                              </span>
+                            )}
+                            {!isRead && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkNoticeAsRead(notice.id);
+                                }}
+                                className="text-[10px] font-bold text-emerald-700 bg-white hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 transition cursor-pointer"
+                                title="পঠিত হিসেবে চিহ্নিত করুন"
+                              >
+                                পঠিত করুন
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Notice Body */}
+                        <div className="text-gray-800 text-xs sm:text-[13px] leading-relaxed whitespace-pre-line font-medium">
+                          {isLongText && !isExpanded ? (
+                            <>
+                              <p className="line-clamp-3">{notice.text}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isRead) {
+                                    handleMarkNoticeAsRead(notice.id);
+                                  }
+                                  toggleExpandNotice(notice.id);
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800 font-extrabold text-[11px] mt-1.5 inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>সম্পূর্ণ নোটিশ পড়ুন</span>
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <p>{notice.text}</p>
+                              {isLongText && isExpanded && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleExpandNotice(notice.id);
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-800 font-extrabold text-[11px] mt-1.5 inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <span>সংক্ষেপ করুন</span>
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
         )

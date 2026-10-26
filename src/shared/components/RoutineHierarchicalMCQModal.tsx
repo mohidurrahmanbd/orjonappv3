@@ -4,7 +4,8 @@ import {
   ChevronDown, ChevronRight, Search, 
   Eye, EyeOff, Bookmark as BookmarkIcon, 
   Check, HelpCircle, Sparkles, ArrowLeft,
-  BookMarked, CheckCircle, RotateCcw
+  BookMarked, CheckCircle, RotateCcw,
+  Heart
 } from 'lucide-react';
 import { formatRoutineSyllabusPaths, getRoutineMatchingQuestions } from '../lib/routineUtils';
 import CircularProgressBar from './CircularProgressBar';
@@ -26,6 +27,8 @@ interface RoutineHierarchicalMCQModalProps {
   onClose: () => void;
   onStartPractice?: (routine: Routine) => void;
   onToggleBookmark?: (qId: string) => void;
+  onToggleFavorite?: (question: Question) => void;
+  isQuestionFavorited?: (qId: string) => boolean;
 }
 
 interface HierarchicalLeafNode {
@@ -91,7 +94,9 @@ export default function RoutineHierarchicalMCQModal({
   userPhone,
   onClose,
   onStartPractice,
-  onToggleBookmark
+  onToggleBookmark,
+  onToggleFavorite,
+  isQuestionFavorited
 }: RoutineHierarchicalMCQModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllAnswers, setShowAllAnswers] = useState(false);
@@ -717,6 +722,22 @@ export default function RoutineHierarchicalMCQModal({
                         title={bookmarked ? 'বুকমার্ক সরানো' : 'বুকমার্কে যোগ করুন'}
                       >
                         <BookmarkIcon className={`w-3.5 h-3.5 ${bookmarked ? 'fill-amber-500 text-amber-500' : ''}`} />
+                      </button>
+                    )}
+
+                    {onToggleFavorite && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleFavorite(q)}
+                        className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-center ${
+                          isQuestionFavorited && isQuestionFavorited(q.id)
+                            ? 'bg-rose-50 text-rose-600 border-rose-300 hover:bg-rose-100 shadow-2xs'
+                            : 'bg-white text-rose-400 border-slate-200 hover:text-rose-600 hover:bg-rose-50/50'
+                        }`}
+                        title={isQuestionFavorited && isQuestionFavorited(q.id) ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                        aria-label={isQuestionFavorited && isQuestionFavorited(q.id) ? 'ফেভারিট থেকে সরান' : 'ফেভারিটে যোগ করুন'}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${isQuestionFavorited && isQuestionFavorited(q.id) ? 'fill-rose-500 text-rose-500' : 'text-rose-400 fill-none stroke-[2]'}`} />
                       </button>
                     )}
                   </div>
