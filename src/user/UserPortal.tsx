@@ -12,7 +12,7 @@ import {
   Building2, Coins, School, Globe, History, BookMarked,
   Camera, Eye, EyeOff, KeyRound, Upload, Phone, Download, FolderTree,
   ChevronDown, ChevronUp, ChevronLeft, Lock, Unlock, Search, Check, Tag, Percent, DollarSign,
-  Heart, Bell
+  Heart, Bell, Archive, Play
 } from 'lucide-react';
 import {
   FavoriteMCQRecord,
@@ -529,6 +529,306 @@ const isOfficialExamFinished = (
   return true;
 };
 
+// ==========================================
+// COURSE-WISE ARCHIVED EXAMS DATA STRUCTURES & SELECTORS
+// ==========================================
+export interface CourseArchivedExamItem {
+  id: string; // Stable exam ID or routine ID
+  title: string;
+  courseId?: string;
+  courseName?: string;
+  startTime: string;
+  expiryTime: string;
+  expiryTimestamp: number;
+  timeLimit?: number;
+  qLimit?: number;
+  totalMarks?: number;
+  passMarks?: number;
+  sourceType: 'live_exam' | 'routine_preset';
+  liveExamRef?: LiveExam;
+  routineRef?: Routine;
+  attempt?: Attempt;
+}
+
+/**
+ * Pure timestamp parsing helper that safely returns epoch millis or null.
+ * Prevents throwing RangeError: Invalid time value when handling malformed dates.
+ */
+export const parseSafeTimestamp = (dateStr?: string | null): number | null => {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed).getTime();
+  return isNaN(parsed) ? null : parsed;
+};
+
+/**
+ * Robust course association checker adhering strictly to Phase 0B/0C precedence:
+ * 1. Exact courseId match
+ * 2. Parent Routine ancestry through routineId
+ * 3. Controlled legacy fallback: courseName matching only when identity is not ambiguous
+ */
+export const isExamAssociatedWithCourse = (
+  exam: { courseId?: string; courseName?: string; routineId?: string },
+  course: Course,
+  routines: Routine[]
+): boolean => {
+  if (!course || !course.id) return false;
+
+  // 1. Exact courseId match
+  if (exam.courseId && exam.courseId === course.id) {
+    return true;
+  }
+
+  // 2. Parent Routine ancestry through routineId
+  if (exam.routineId) {
+    const parentRoutine = routines.find(r => r.id === exam.routineId);
+    if (parentRoutine) {
+      if (parentRoutine.courseId && parentRoutine.courseId === course.id) {
+        return true;
+      }
+      if (
+        !parentRoutine.courseId &&
+        parentRoutine.courseName &&
+        course.title &&
+        parentRoutine.courseName.trim().toLowerCase() === course.title.trim().toLowerCase()
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Controlled legacy fallback: courseName match ONLY IF exam.courseId is not conflicting
+  if (
+    !exam.courseId &&
+    exam.courseName &&
+    course.title &&
+    exam.courseName.trim().toLowerCase() === course.title.trim().toLowerCase()
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Matches an authenticated student's previous Attempt using stable identity:
+ * 1. attempt.examId === canonicalLiveExam.id
+ * 2. attempt.examId === routine.id
+ * 3. Bidirectional mapping between liveExam and routine IDs
+ * 4. Strictly controlled title fallback: restricted ONLY to legacy routine presets,
+ *    never applied to modern LiveExams, and only when the attempt belongs to this routine's title.
+ */
+export const findArchivedExamAttempt = (
+  item: { id: string; routineId?: string; liveExamRef?: LiveExam; title: string; sourceType?: 'live_exam' | 'routine_preset' },
+  attempts: Attempt[]
+): Attempt | undefined => {
+  if (!attempts || attempts.length === 0) return undefined;
+
+  const targetRoutineId = item.routineId || item.liveExamRef?.routineId;
+  const targetLiveExamId = item.liveExamRef?.id;
+
+  // 1. Exact identity matching (primary and highest priority)
+  const exactMatch = attempts.find(a => 
+    a.examId === item.id ||
+    (targetRoutineId && a.examId === targetRoutineId) ||
+    (targetLiveExamId && a.examId === targetLiveExamId)
+  );
+
+  if (exactMatch) return exactMatch;
+
+  // 2. Controlled title fallback: NEVER use for modern LiveExams to prevent cross-exam collisions.
+  // Allowed strictly for legacy Routine-only presets where the attempt might have been stored under the title.
+  if (item.sourceType === 'routine_preset' && item.title) {
+    const normTitle = item.title.trim().toLowerCase();
+    const titleMatch = attempts.find(a => 
+      a.examTitle && a.examTitle.trim().toLowerCase() === normTitle
+    );
+    if (titleMatch) return titleMatch;
+  }
+
+  return undefined;
+};
+
+/**
+ * Canonical selector for Course Archived Exams:
+ * Resolves both canonical LiveExams and legacy Routine-only presets,
+ * enforces strict expiry (< Date.now()), dedupes records, and sorts newest-first.
+ */
+export const getCourseArchivedExams = (
+  course: Course,
+  liveExams: LiveExam[],
+  routines: Routine[],
+  attempts: Attempt[]
+): CourseArchivedExamItem[] => {
+  if (!course || !course.id) return [];
+  const now = Date.now();
+  const results: CourseArchivedExamItem[] = [];
+
+  const coveredRoutineIds = new Set<string>();
+
+  // SOURCE A: Canonical official LiveExams
+  const eligibleLiveExams = (liveExams || []).filter(e => {
+    if (!e || !e.id) return false;
+
+    // Exclude non-official practice categories
+    if (
+      e.id.startsWith('demo_') ||
+      e.id.startsWith('custom_') ||
+      e.id.startsWith('prep_') ||
+      e.id.startsWith('job_')
+    ) {
+      return false;
+    }
+
+    // Must be associated with this course
+    if (!isExamAssociatedWithCourse(e, course, routines)) {
+      return false;
+    }
+
+    // Must have valid expiry strictly earlier than now
+    const expiryTs = parseSafeTimestamp(e.expiryTime);
+    if (expiryTs === null || expiryTs >= now) {
+      return false;
+    }
+
+    return true;
+  });
+
+  // Deduplicate multiple LiveExams sharing the same routineId:
+  // - If multiple records in the duplicate group have historical attempts, keep ALL attempted records
+  //   so no distinct student result becomes inaccessible (Mandatory Rule 7).
+  // - If exactly one has a historical attempt, select that attempted record (Mandatory Rule 5).
+  // - If none have attempts, select the newest deterministically (by updatedAt, createdAt, then stable ID) (Mandatory Rule 8).
+  const dedupedLiveExams: LiveExam[] = [];
+  const routineExamGroups = new Map<string, LiveExam[]>();
+
+  for (const exam of eligibleLiveExams) {
+    if (exam.routineId) {
+      const list = routineExamGroups.get(exam.routineId) || [];
+      list.push(exam);
+      routineExamGroups.set(exam.routineId, list);
+    } else {
+      dedupedLiveExams.push(exam);
+    }
+  }
+
+  routineExamGroups.forEach((groupExams, routineId) => {
+    const attemptedExams = groupExams.filter(e => attempts.some(a => a.examId === e.id));
+
+    if (attemptedExams.length > 1) {
+      // Multiple records have distinct attempts: preserve access to all of them!
+      attemptedExams.forEach(e => {
+        dedupedLiveExams.push(e);
+      });
+      coveredRoutineIds.add(routineId);
+    } else if (attemptedExams.length === 1) {
+      // Exactly one attempted record: choose it so the student's result is preserved
+      dedupedLiveExams.push(attemptedExams[0]);
+      coveredRoutineIds.add(routineId);
+    } else {
+      // None attempted: deterministic sort by updatedAt, createdAt, then tie-break by stable id
+      groupExams.sort((a, b) => {
+        const timeB = parseSafeTimestamp(b.updatedAt) || parseSafeTimestamp(b.createdAt) || 0;
+        const timeA = parseSafeTimestamp(a.updatedAt) || parseSafeTimestamp(a.createdAt) || 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return b.id.localeCompare(a.id);
+      });
+      dedupedLiveExams.push(groupExams[0]);
+      coveredRoutineIds.add(routineId);
+    }
+  });
+
+  for (const exam of dedupedLiveExams) {
+    const expiryTs = parseSafeTimestamp(exam.expiryTime)!;
+    const parentRoutine = exam.routineId ? routines.find(r => r.id === exam.routineId) : undefined;
+    const userAttempt = findArchivedExamAttempt({
+      id: exam.id,
+      routineId: exam.routineId,
+      liveExamRef: exam,
+      title: exam.title,
+      sourceType: 'live_exam'
+    }, attempts);
+
+    results.push({
+      id: exam.id,
+      title: exam.title,
+      courseId: exam.courseId || parentRoutine?.courseId || course.id,
+      courseName: exam.courseName || parentRoutine?.courseName || course.title,
+      startTime: exam.startTime,
+      expiryTime: exam.expiryTime,
+      expiryTimestamp: expiryTs,
+      timeLimit: exam.timeLimit,
+      qLimit: exam.qLimit || (exam.questionIds ? exam.questionIds.length : undefined),
+      totalMarks: exam.totalMarks,
+      passMarks: exam.passMarks,
+      sourceType: 'live_exam',
+      liveExamRef: exam,
+      routineRef: parentRoutine,
+      attempt: userAttempt
+    });
+  }
+
+  // SOURCE B: Legacy Routine-only preset exams
+  const courseRoutines = (routines || []).filter(r => {
+    if (!r || !r.id) return false;
+    if (r.courseId && r.courseId === course.id) return true;
+    if (!r.courseId && r.courseName && course.title && r.courseName.trim().toLowerCase() === course.title.trim().toLowerCase()) return true;
+    return false;
+  });
+
+  for (const r of courseRoutines) {
+    if (coveredRoutineIds.has(r.id)) continue;
+    const hasAnyLiveExam = (liveExams || []).some(e => e && e.routineId === r.id);
+    if (hasAnyLiveExam) continue;
+
+    if (!r.examConfig || !r.examConfig.enabled || !r.examConfig.startTime) continue;
+
+    const startTs = parseSafeTimestamp(r.examConfig.startTime);
+    if (startTs === null) continue;
+
+    let expiryTs = parseSafeTimestamp(r.examConfig.expiryTime);
+    let resolvedExpiryStr = r.examConfig.expiryTime;
+
+    // Established creation-time default: startTime + 24 hours
+    if (expiryTs === null) {
+      expiryTs = startTs + 24 * 60 * 60 * 1000;
+      resolvedExpiryStr = new Date(expiryTs).toISOString();
+    }
+
+    if (expiryTs >= now) continue;
+
+    const userAttempt = findArchivedExamAttempt({
+      id: r.id,
+      routineId: r.id,
+      title: r.title,
+      sourceType: 'routine_preset'
+    }, attempts);
+
+    results.push({
+      id: r.id,
+      title: r.title,
+      courseId: r.courseId || course.id,
+      courseName: r.courseName || course.title,
+      startTime: r.examConfig.startTime,
+      expiryTime: resolvedExpiryStr || new Date(expiryTs).toISOString(),
+      expiryTimestamp: expiryTs,
+      timeLimit: r.examConfig.timeLimit,
+      qLimit: r.examConfig.qLimit || (r.examConfig.questionIds ? r.examConfig.questionIds.length : undefined),
+      totalMarks: r.examConfig.totalMarks,
+      passMarks: r.examConfig.passMarks,
+      sourceType: 'routine_preset',
+      routineRef: r,
+      attempt: userAttempt
+    });
+  }
+
+  // Newest expired first
+  results.sort((a, b) => b.expiryTimestamp - a.expiryTimestamp);
+
+  return results;
+};
+
 export default function UserPortal({
   user,
   questions = [],
@@ -842,6 +1142,8 @@ export default function UserPortal({
   const [viewingHierarchyRoutine, setViewingHierarchyRoutine] = useState<Routine | null>(null);
   // Routine Syllabus Pop-up Modal State
   const [syllabusModalRoutine, setSyllabusModalRoutine] = useState<Routine | null>(null);
+  // Course Archived Exams Modal State
+  const [archiveModalCourse, setArchiveModalCourse] = useState<Course | null>(null);
 
   const handleOpenRoutinePreparation = (routine: Routine) => {
     if (!checkCourseEnrollmentAccess(routine, 'পরীক্ষার প্রস্তুতি (Chapter MCQ)')) {
@@ -1509,6 +1811,10 @@ export default function UserPortal({
     }
     if (selectedRecentJobMonth) {
       setSelectedRecentJobMonth(null);
+      return true;
+    }
+    if (archiveModalCourse) {
+      setArchiveModalCourse(null);
       return true;
     }
 
@@ -3620,6 +3926,62 @@ export default function UserPortal({
     startOfficialLiveExam(liveExamObj);
   };
 
+  const handleStartArchivedExam = (item: CourseArchivedExamItem, course: Course) => {
+    // 1. Revalidate eligibility: must be strictly expired
+    const expiryTs = parseSafeTimestamp(item.expiryTime);
+    if (expiryTs === null || expiryTs >= Date.now()) {
+      showCustomAlert('এই পরীক্ষাটি বর্তমানে আর্কাইভ পরীক্ষার জন্য উপলব্ধ নয়।');
+      return;
+    }
+
+    // 2. Revalidate course association
+    if (!isExamAssociatedWithCourse(item, course, routines)) {
+      showCustomAlert('নির্বাচিত পরীক্ষাটি এই কোর্সের সাথে সম্পর্কিত নয়।');
+      return;
+    }
+
+    // 3. Authoritative Course Enrollment & Payment Enforcement
+    const isCourseEnrolled = enrolledCourseIds.includes(course.id);
+    if (!isCourseEnrolled) {
+      showCustomAlert(
+        `🔒 কোর্সে এনরোল প্রয়োজন!\n\n"${course.title}" কোর্সের আর্কাইভ পরীক্ষায় অংশগ্রহণ করতে অনুগ্রহ করে প্রথমে কোর্সে এনরোল করুন।`,
+        () => {
+          setSelectedCourseForEnrollment(course);
+        },
+        '🔒 কোর্সটি লক করা আছে',
+        true,
+        'এনরোল করুন',
+        'বন্ধ করুন'
+      );
+      return;
+    }
+
+    // 4. Duplicate Attempt Prevention
+    const alreadyTaken = attempts.some(a => 
+      a.examId === item.id || 
+      (item.routineRef && a.examId === item.routineRef.id) ||
+      (item.liveExamRef && a.examId === item.liveExamRef.id)
+    );
+    if (alreadyTaken) {
+      showCustomAlert('আপনি ইতিপূর্বে এই অফিশিয়াল পরীক্ষায় অংশগ্রহণ করেছেন!');
+      return;
+    }
+
+    // 5. Close archive modal safely before initiating quiz
+    setArchiveModalCourse(null);
+
+    // 6. Launch via appropriate existing official handler
+    if (item.sourceType === 'live_exam' && item.liveExamRef) {
+      startOfficialLiveExam(item.liveExamRef);
+    } else if (item.sourceType === 'routine_preset' && item.routineRef) {
+      handleStartLiveExamForRoutine(item.routineRef);
+    } else if (item.liveExamRef) {
+      startOfficialLiveExam(item.liveExamRef);
+    } else if (item.routineRef) {
+      handleStartLiveExamForRoutine(item.routineRef);
+    }
+  };
+
   const handleSelectOptionForIndex = (qIdx: number, key: string) => {
     // If user clicks on answer, they cannot change it (permanent selection)
     if (userSelectedAnswers.hasOwnProperty(qIdx)) {
@@ -4539,6 +4901,179 @@ export default function UserPortal({
             </div>
           </div>
         )}
+
+        {/* Course-Wise Archived Exams Modal */}
+        {archiveModalCourse && (() => {
+          const course = archiveModalCourse;
+          const archivedExams = getCourseArchivedExams(course, liveExams, routines, attempts);
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in"
+              onClick={() => setArchiveModalCourse(null)}
+            >
+              <div 
+                className="bg-white rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto relative animate-scale-up"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs">
+                      <Archive className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 uppercase tracking-wider">
+                          আর্কাইভ পরীক্ষা
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          ({toBengaliDigits(archivedExams.length)}টি পরীক্ষা)
+                        </span>
+                      </div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate mt-0.5" title={course.title}>
+                        {course.title}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <button 
+                    type="button"
+                    onClick={() => setArchiveModalCourse(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition shrink-0 cursor-pointer"
+                    aria-label="বন্ধ করুন"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Body Content */}
+                {archivedExams.length === 0 ? (
+                  <div className="p-8 text-center space-y-2 bg-slate-50/70 border border-slate-200/80 rounded-2xl">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+                      <Archive className="w-6 h-6" />
+                    </div>
+                    <h4 className="font-extrabold text-slate-800 text-sm">কোনো আর্কাইভ পরীক্ষা নেই</h4>
+                    <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">
+                      এই কোর্সের জন্য বর্তমানে কোনো আর্কাইভ (মেয়াদোত্তীর্ণ অফিশিয়াল বা রুটিন) পরীক্ষা পাওয়া যায়নি।
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+                    {archivedExams.map((item, idx) => {
+                      const hasAttempted = Boolean(item.attempt);
+                      const expiryFormatted = formatBengaliDateTime(item.expiryTime);
+
+                      return (
+                        <div
+                          key={`archived-${item.id}-${idx}`}
+                          className="p-3.5 sm:p-4 bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl shadow-2xs space-y-3 transition"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200/80 uppercase">
+                                  আর্কাইভ
+                                </span>
+                                {item.sourceType === 'routine_preset' && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                    রুটিন সিলেবাস
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-snug">
+                                {item.title}
+                              </h4>
+                            </div>
+
+                            {/* Status Badge */}
+                            <div className="shrink-0">
+                              {hasAttempted ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] sm:text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>অংশগ্রহণ সম্পন্ন</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] sm:text-xs font-black bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                                  <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                  <span>অংশগ্রহণ করা হয়নি</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Metrics / Metadata Chips */}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[9.5px] sm:text-[10.5px] font-bold text-slate-600 bg-slate-50/70 p-2 rounded-xl border border-slate-100">
+                            {expiryFormatted && (
+                              <span className="inline-flex items-center gap-1 text-slate-700">
+                                <Calendar className="w-3 h-3 text-slate-500" />
+                                <span>মেয়াদ শেষ: {expiryFormatted}</span>
+                              </span>
+                            )}
+                            {item.qLimit !== undefined && item.qLimit > 0 && (
+                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                <span>এমসিকিউ: {toBengaliDigits(item.qLimit)}টি</span>
+                              </span>
+                            )}
+                            {item.timeLimit !== undefined && item.timeLimit > 0 && (
+                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                <span>সময়: {toBengaliDigits(item.timeLimit)} মিনিট</span>
+                              </span>
+                            )}
+                            {item.totalMarks !== undefined && item.totalMarks > 0 && (
+                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                <span>পূর্ণমান: {toBengaliDigits(item.totalMarks)}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Action Area: Phase 1 shows Result button if attempted; unattempted shows status note only */}
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            {hasAttempted && item.attempt ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedAttemptForView(item.attempt!);
+                                  setArchiveModalCourse(null);
+                                  setActiveTab('results');
+                                }}
+                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                              >
+                                <Award className="w-3.5 h-3.5 text-amber-300" />
+                                <span>ফলাফল ও সমাধান</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleStartArchivedExam(item, course)}
+                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5 text-emerald-100 fill-emerald-100" />
+                                <span>পরীক্ষা দিন</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="pt-2 border-t border-slate-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setArchiveModalCourse(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    বন্ধ করুন
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </>
     );
   };
@@ -8591,14 +9126,24 @@ export default function UserPortal({
 
                   return (
                     <div className="space-y-5 animate-fade-in">
-                      {/* Top Bar with Left Upper Corner Back Arrow */}
-                      <div className="flex items-center justify-between gap-3">
+                      {/* Top Bar with Left Upper Corner Back Arrow & Archive Button */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
                         <button
                           onClick={() => setExpandedCourseId(null)}
-                          className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-indigo-950 font-bold px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs transition text-xs"
+                          className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-indigo-950 font-bold px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs transition text-xs cursor-pointer"
                         >
                           <ArrowLeft className="w-4 h-4 text-indigo-600 stroke-[2.5]" />
                           কোর্স তালিকায় ফিরে যান
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setArchiveModalCourse(selectedCourse)}
+                          className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-3.5 py-2 rounded-2xl shadow-2xs transition text-xs cursor-pointer"
+                          title="এই কোর্সের আর্কাইভ ও অতীত পরীক্ষাগুলো দেখুন"
+                        >
+                          <Archive className="w-4 h-4 text-amber-700" />
+                          <span>আর্কাইভ পরীক্ষা</span>
                         </button>
                       </div>
 
@@ -9115,6 +9660,16 @@ export default function UserPortal({
                                 >
                                   <Download className="w-3.5 h-3.5 text-indigo-600" />
                                   Routine (PDF)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setArchiveModalCourse(course)}
+                                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 border border-amber-300 shadow-2xs cursor-pointer"
+                                  title="এই কোর্সের আর্কাইভ ও অতীত পরীক্ষাগুলো দেখুন"
+                                >
+                                  <Archive className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>আর্কাইভ পরীক্ষা</span>
                                 </button>
 
                                 {isEnrolled ? (
