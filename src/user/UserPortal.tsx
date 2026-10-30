@@ -612,6 +612,67 @@ export const isExamAssociatedWithCourse = (
 };
 
 /**
+ * Evaluates whether a Routine's preset exam is currently active/live:
+ * 1. routine.examConfig.enabled must be true
+ * 2. If a linked LiveExam exists in liveExams, respects its authoritative start and expiry
+ * 3. Otherwise, parses routine.examConfig.startTime and expiryTime (defaulting to start + 24h)
+ * 4. Strictly returns false once expiry <= now
+ */
+export const isRoutineExamLive = (routine?: Routine | null, now: number = Date.now(), liveExams?: LiveExam[]): boolean => {
+  if (!routine?.examConfig?.enabled) return false;
+
+  if (liveExams && liveExams.length > 0) {
+    const linked = liveExams.find(e => 
+      (e.routineId && e.routineId === routine.id) || 
+      (routine.id && e.id === routine.id) ||
+      (routine.courseId && e.courseId === routine.courseId && e.title?.trim().toLowerCase() === routine.title?.trim().toLowerCase())
+    );
+    if (linked) {
+      const lStart = parseSafeTimestamp(linked.startTime);
+      const lExpiry = parseSafeTimestamp(linked.expiryTime);
+      if (lStart !== null && lExpiry !== null) {
+        return now >= lStart && now < lExpiry;
+      }
+    }
+  }
+
+  const startTs = parseSafeTimestamp(routine.examConfig.startTime);
+  if (startTs === null) return false;
+  const expiryTs = parseSafeTimestamp(routine.examConfig.expiryTime) ?? (startTs + 24 * 60 * 60 * 1000);
+  return now >= startTs && now < expiryTs;
+};
+
+/**
+ * Evaluates whether a Routine's preset exam has permanently expired:
+ * 1. routine.examConfig.enabled must be true
+ * 2. If a linked LiveExam exists in liveExams, checks its authoritative expiryTime
+ * 3. Otherwise, parses routine.examConfig.expiryTime (or start + 24h fallback)
+ * 4. Returns true strictly when expiry <= now
+ */
+export const isRoutineExamExpired = (routine?: Routine | null, now: number = Date.now(), liveExams?: LiveExam[]): boolean => {
+  if (!routine?.examConfig?.enabled) return false;
+
+  if (liveExams && liveExams.length > 0) {
+    const linked = liveExams.find(e => 
+      (e.routineId && e.routineId === routine.id) || 
+      (routine.id && e.id === routine.id) ||
+      (routine.courseId && e.courseId === routine.courseId && e.title?.trim().toLowerCase() === routine.title?.trim().toLowerCase())
+    );
+    if (linked) {
+      const lExpiry = parseSafeTimestamp(linked.expiryTime);
+      if (lExpiry !== null) {
+        return now >= lExpiry;
+      }
+    }
+  }
+
+  const startTs = parseSafeTimestamp(routine.examConfig.startTime);
+  const expiryTs = parseSafeTimestamp(routine.examConfig.expiryTime) ?? (startTs !== null ? startTs + 24 * 60 * 60 * 1000 : null);
+  if (expiryTs === null) return false;
+  return now >= expiryTs;
+};
+
+/**
  * Matches an authenticated student's previous Attempt using stable identity:
  * 1. attempt.examId === canonicalLiveExam.id
  * 2. attempt.examId === routine.id
@@ -944,6 +1005,25 @@ export default function UserPortal({
     };
   }, []);
 
+  // 15-second client heartbeat to re-evaluate time-sensitive boundaries (exam expiry, active status)
+  const [clockTick, setClockTick] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setClockTick(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Active (non-expired) official LiveExams for the regular Exam Zone
+  // Strict isolation: any LiveExam where expiryTs <= now is excluded from the regular list.
+  // Missing or unparseable expiryTime is preserved to prevent accidental omission.
+  const activeLiveExams = useMemo(() => {
+    const now = clockTick;
+    return (liveExams || []).filter(exam => {
+      if (!exam || !exam.id) return false;
+      const expiryTs = parseSafeTimestamp(exam.expiryTime);
+      return expiryTs === null || expiryTs > now;
+    });
+  }, [liveExams, clockTick]);
+
   // Custom Alert and Confirm Dialog States
   const [customAlert, setCustomAlert] = useState<{
     open: boolean;
@@ -1142,8 +1222,10 @@ export default function UserPortal({
   const [viewingHierarchyRoutine, setViewingHierarchyRoutine] = useState<Routine | null>(null);
   // Routine Syllabus Pop-up Modal State
   const [syllabusModalRoutine, setSyllabusModalRoutine] = useState<Routine | null>(null);
-  // Course Archived Exams Modal State
-  const [archiveModalCourse, setArchiveModalCourse] = useState<Course | null>(null);
+  // Dedicated Course Archived Exams Full-Page View State
+  const [archivePageCourse, setArchivePageCourse] = useState<Course | null>(null);
+  // Independent Syllabus Accordion Expansion Map for Archive Exams
+  const [expandedArchiveSyllabusMap, setExpandedArchiveSyllabusMap] = useState<Record<string, boolean>>({});
 
   const handleOpenRoutinePreparation = (routine: Routine) => {
     if (!checkCourseEnrollmentAccess(routine, 'পরীক্ষার প্রস্তুতি (Chapter MCQ)')) {
@@ -1813,8 +1895,8 @@ export default function UserPortal({
       setSelectedRecentJobMonth(null);
       return true;
     }
-    if (archiveModalCourse) {
-      setArchiveModalCourse(null);
+    if (archivePageCourse) {
+      setArchivePageCourse(null);
       return true;
     }
 
@@ -1874,6 +1956,11 @@ export default function UserPortal({
 
     if (activeTab === 'yearJob' && yearJobPath.length > 0) {
       setYearJobPath(prev => prev.slice(0, -1));
+      return true;
+    }
+
+    if (activeTab === 'courses' && expandedCourseId) {
+      setExpandedCourseId(null);
       return true;
     }
 
@@ -3967,8 +4054,8 @@ export default function UserPortal({
       return;
     }
 
-    // 5. Close archive modal safely before initiating quiz
-    setArchiveModalCourse(null);
+    // 5. Close archive view safely before initiating quiz
+    setArchivePageCourse(null);
 
     // 6. Launch via appropriate existing official handler
     if (item.sourceType === 'live_exam' && item.liveExamRef) {
@@ -4265,7 +4352,7 @@ export default function UserPortal({
           const targetCourse = courses ? courses.find(c => c.id === routine.courseId || c.title === routine.courseName) : undefined;
           const syllabusPaths = formatRoutineSyllabusPaths(routine, subcategories, categories, questions);
           const hasExam = routine.examConfig && routine.examConfig.enabled;
-          const isExamLive = hasExam && routine.examConfig?.startTime && new Date() >= new Date(routine.examConfig.startTime);
+          const isExamLive = isRoutineExamLive(routine, clockTick, liveExams);
           const examDateStr = routine.examConfig?.startTime
             ? formatExamScheduleWithTime(routine.examConfig.startTime)
             : routine.examDate
@@ -4901,179 +4988,6 @@ export default function UserPortal({
             </div>
           </div>
         )}
-
-        {/* Course-Wise Archived Exams Modal */}
-        {archiveModalCourse && (() => {
-          const course = archiveModalCourse;
-          const archivedExams = getCourseArchivedExams(course, liveExams, routines, attempts);
-
-          return (
-            <div 
-              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in"
-              onClick={() => setArchiveModalCourse(null)}
-            >
-              <div 
-                className="bg-white rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto relative animate-scale-up"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 shadow-2xs">
-                      <Archive className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200 uppercase tracking-wider">
-                          আর্কাইভ পরীক্ষা
-                        </span>
-                        <span className="text-xs font-bold text-slate-500">
-                          ({toBengaliDigits(archivedExams.length)}টি পরীক্ষা)
-                        </span>
-                      </div>
-                      <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate mt-0.5" title={course.title}>
-                        {course.title}
-                      </h3>
-                    </div>
-                  </div>
-
-                  <button 
-                    type="button"
-                    onClick={() => setArchiveModalCourse(null)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition shrink-0 cursor-pointer"
-                    aria-label="বন্ধ করুন"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Body Content */}
-                {archivedExams.length === 0 ? (
-                  <div className="p-8 text-center space-y-2 bg-slate-50/70 border border-slate-200/80 rounded-2xl">
-                    <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-                      <Archive className="w-6 h-6" />
-                    </div>
-                    <h4 className="font-extrabold text-slate-800 text-sm">কোনো আর্কাইভ পরীক্ষা নেই</h4>
-                    <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">
-                      এই কোর্সের জন্য বর্তমানে কোনো আর্কাইভ (মেয়াদোত্তীর্ণ অফিশিয়াল বা রুটিন) পরীক্ষা পাওয়া যায়নি।
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
-                    {archivedExams.map((item, idx) => {
-                      const hasAttempted = Boolean(item.attempt);
-                      const expiryFormatted = formatBengaliDateTime(item.expiryTime);
-
-                      return (
-                        <div
-                          key={`archived-${item.id}-${idx}`}
-                          className="p-3.5 sm:p-4 bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl shadow-2xs space-y-3 transition"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200/80 uppercase">
-                                  আর্কাইভ
-                                </span>
-                                {item.sourceType === 'routine_preset' && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                    রুটিন সিলেবাস
-                                  </span>
-                                )}
-                              </div>
-                              <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm leading-snug">
-                                {item.title}
-                              </h4>
-                            </div>
-
-                            {/* Status Badge */}
-                            <div className="shrink-0">
-                              {hasAttempted ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] sm:text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                  <span>অংশগ্রহণ সম্পন্ন</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] sm:text-xs font-black bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
-                                  <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                                  <span>অংশগ্রহণ করা হয়নি</span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Metrics / Metadata Chips */}
-                          <div className="flex flex-wrap items-center gap-1.5 text-[9.5px] sm:text-[10.5px] font-bold text-slate-600 bg-slate-50/70 p-2 rounded-xl border border-slate-100">
-                            {expiryFormatted && (
-                              <span className="inline-flex items-center gap-1 text-slate-700">
-                                <Calendar className="w-3 h-3 text-slate-500" />
-                                <span>মেয়াদ শেষ: {expiryFormatted}</span>
-                              </span>
-                            )}
-                            {item.qLimit !== undefined && item.qLimit > 0 && (
-                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
-                                <span>এমসিকিউ: {toBengaliDigits(item.qLimit)}টি</span>
-                              </span>
-                            )}
-                            {item.timeLimit !== undefined && item.timeLimit > 0 && (
-                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
-                                <Clock className="w-3 h-3 text-slate-500" />
-                                <span>সময়: {toBengaliDigits(item.timeLimit)} মিনিট</span>
-                              </span>
-                            )}
-                            {item.totalMarks !== undefined && item.totalMarks > 0 && (
-                              <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
-                                <span>পূর্ণমান: {toBengaliDigits(item.totalMarks)}</span>
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Action Area: Phase 1 shows Result button if attempted; unattempted shows status note only */}
-                          <div className="flex items-center justify-between gap-2 pt-1">
-                            {hasAttempted && item.attempt ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedAttemptForView(item.attempt!);
-                                  setArchiveModalCourse(null);
-                                  setActiveTab('results');
-                                }}
-                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                              >
-                                <Award className="w-3.5 h-3.5 text-amber-300" />
-                                <span>ফলাফল ও সমাধান</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleStartArchivedExam(item, course)}
-                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                              >
-                                <Play className="w-3.5 h-3.5 text-emerald-100 fill-emerald-100" />
-                                <span>পরীক্ষা দিন</span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="pt-2 border-t border-slate-100 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setArchiveModalCourse(null)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    বন্ধ করুন
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
       </>
     );
   };
@@ -8440,18 +8354,18 @@ export default function UserPortal({
                   <span>🎯</span> অফিশিয়াল লাইভ পরীক্ষা জোন
                 </h3>
                 <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl">
-                  মোট পরীক্ষা: {liveExams.length.toLocaleString('bn-BD')}টি
+                  মোট পরীক্ষা: {activeLiveExams.length.toLocaleString('bn-BD')}টি
                 </span>
               </div>
 
               {/* Grid cards for Live Exams */}
-              {liveExams.length === 0 ? (
+              {activeLiveExams.length === 0 ? (
                 <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-xs text-center text-gray-400">
                   <p className="font-bold">বর্তমানে কোনো সক্রিয় অফিশিয়াল লাইভ পরীক্ষা নেই।</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[...liveExams]
+                  {[...activeLiveExams]
                     .sort((a, b) => {
                       const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
                       const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
@@ -9119,6 +9033,317 @@ export default function UserPortal({
               {(() => {
                 const selectedCourse = courses.find(c => c.id === expandedCourseId);
 
+                // DEDICATED FULL-PAGE ARCHIVE EXAM VIEW WITH COURSE-LINKED SYLLABUS
+                if (archivePageCourse) {
+                  const course = archivePageCourse;
+                  const archivedExams = getCourseArchivedExams(course, liveExams, routines, attempts);
+                  const isEnrolled = enrolledCourseIds.includes(course.id);
+                  const isPaidCourse = (course.price || 0) > 0;
+                  const isCourseLocked = isPaidCourse && !isEnrolled;
+
+                  return (
+                    <div className="space-y-4 sm:space-y-5 animate-fade-in max-w-4xl mx-auto pb-16">
+                      {/* Top Bar with Left Upper Corner Back Arrow & Title */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setArchivePageCourse(null)}
+                          className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-indigo-950 font-bold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl border border-slate-200 shadow-2xs transition text-xs cursor-pointer"
+                        >
+                          <ArrowLeft className="w-4 h-4 text-indigo-600 stroke-[2.5]" />
+                          <span>কোর্স বিস্তারিততে ফিরে যান</span>
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider flex items-center gap-1.5 shadow-2xs">
+                            <Archive className="w-3.5 h-3.5 text-amber-700" />
+                            <span>আর্কাইভ পরীক্ষা ({toBengaliDigits(archivedExams.length)}টি)</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Course Header Banner */}
+                      <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white border border-amber-200/80 p-4 sm:p-5 rounded-2xl space-y-2 shadow-2xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-200 uppercase tracking-wider">
+                            {course.category || 'কোর্স'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-500">
+                            মোট সংরক্ষিত পরীক্ষা: {toBengaliDigits(archivedExams.length)}টি
+                          </span>
+                        </div>
+                        <h2 className="text-base sm:text-lg font-extrabold text-indigo-950">
+                          {course.title} — আর্কাইভ ও পূর্ববর্তী পরীক্ষা
+                        </h2>
+                        {course.description && (
+                          <p className="text-slate-600 text-xs font-medium leading-relaxed">
+                            {course.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Archived Exam Cards List */}
+                      {archivedExams.length === 0 ? (
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-8 sm:p-12 text-center space-y-3 shadow-2xs">
+                          <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 mx-auto">
+                            <Archive className="w-7 h-7" />
+                          </div>
+                          <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base">
+                            এই কোর্সের কোনো আর্কাইভ পরীক্ষা পাওয়া যায়নি।
+                          </h3>
+                          <p className="text-slate-500 text-xs max-w-sm mx-auto font-medium leading-relaxed">
+                            অফিশিয়াল লাইভ পরীক্ষা সম্পন্ন হওয়ার পর তা স্বয়ংক্রিয়ভাবে এই আর্কাইভে সংরক্ষিত হবে।
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setArchivePageCourse(null)}
+                            className="mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            <span>কোর্স বিস্তারিততে ফিরে যান</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 sm:space-y-3.5">
+                          {archivedExams.map((item, idx) => {
+                            const hasAttempted = Boolean(item.attempt);
+                            const expiryFormatted = formatBengaliDateTime(item.expiryTime);
+
+                            // Syllabus Resolution (Priority 1: Companion Routine, Priority 2: Standalone LiveExam Snapshot, Priority 3: Legacy Routine Preset, Priority 4: Missing)
+                            const targetRoutineId = item.liveExamRef?.routineId || (item.sourceType === 'routine_preset' ? item.routineRef?.id : undefined);
+                            const companionRoutine = targetRoutineId ? routines.find(r => r.id === targetRoutineId) : undefined;
+                            let targetRoutine: Routine | undefined = undefined;
+
+                            if (companionRoutine) {
+                              targetRoutine = companionRoutine;
+                            } else if (item.sourceType === 'routine_preset' && item.routineRef) {
+                              targetRoutine = item.routineRef;
+                            } else if (
+                              item.liveExamRef &&
+                              ((item.liveExamRef.selectedCategories && item.liveExamRef.selectedCategories.length > 0) ||
+                               (item.liveExamRef.selectedSubcategories && item.liveExamRef.selectedSubcategories.length > 0) ||
+                               (item.liveExamRef.selectedLeafCategories && item.liveExamRef.selectedLeafCategories.length > 0))
+                            ) {
+                              targetRoutine = {
+                                id: item.id,
+                                title: item.title,
+                                details: '',
+                                createdAt: item.startTime,
+                                selectedCategories: item.liveExamRef.selectedCategories || [],
+                                selectedSubcategories: item.liveExamRef.selectedSubcategories || [],
+                                selectedLeafCategories: item.liveExamRef.selectedLeafCategories || []
+                              };
+                            }
+
+                            const syllabusPaths = targetRoutine ? formatRoutineSyllabusPaths(targetRoutine, subcategories, categories, questions) : [];
+
+                            // Group paths by root category name (shown only once per root) - identical to Routine cards
+                            const rootMap = new Map<string, string[]>();
+                            if (syllabusPaths && syllabusPaths.length > 0) {
+                              syllabusPaths.forEach(path => {
+                                const parts = path.split(/\s*>\s*/).map(p => p.trim()).filter(Boolean);
+                                if (parts.length === 0) return;
+                                const root = parts[0];
+                                const subHierarchy = parts.length > 1 ? parts.slice(1).join(" › ") : "";
+                                if (!rootMap.has(root)) {
+                                  rootMap.set(root, []);
+                                }
+                                if (subHierarchy && !rootMap.get(root)!.includes(subHierarchy)) {
+                                  rootMap.get(root)!.push(subHierarchy);
+                                }
+                              });
+                            }
+
+                            // Build discrete lines: Root category name is a heading, hierarchy under it starts on a new line with ChevronRight
+                            const displayLines: React.ReactNode[] = [];
+                            rootMap.forEach((subList, root) => {
+                              displayLines.push(
+                                <div key={`${root}-head`} className="font-bold text-black text-xs leading-snug">
+                                  {root}
+                                </div>
+                              );
+                              subList.forEach((sub, sIdx) => {
+                                displayLines.push(
+                                  <div key={`${root}-sub-${sIdx}`} className="text-black font-normal text-xs pl-2.5 flex items-start gap-1 leading-snug">
+                                    <ChevronRight className="w-3.5 h-3.5 text-black shrink-0 mt-0.5" />
+                                    <span className="text-black">{sub}</span>
+                                  </div>
+                                );
+                              });
+                            });
+
+                            const examKey = item.id || `archived-exam-${idx}`;
+                            const isExpanded = !!expandedArchiveSyllabusMap[examKey];
+                            const hasMore = displayLines.length > 2;
+                            const visibleLines = (hasMore && !isExpanded) ? displayLines.slice(0, 2) : displayLines;
+
+                            return (
+                              <div
+                                key={`archived-page-item-${item.id || idx}`}
+                                className="p-3.5 sm:p-5 bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl shadow-2xs space-y-3.5 transition"
+                              >
+                                {/* Card Header */}
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200/80 uppercase">
+                                        আর্কাইভ পরীক্ষা
+                                      </span>
+                                      {item.sourceType === 'routine_preset' ? (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                          রুটিন সিলেবাস
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                          অফিশিয়াল লাইভ
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h3 className="font-extrabold text-indigo-950 text-sm sm:text-base leading-snug">
+                                      {item.title}
+                                    </h3>
+                                  </div>
+
+                                  {/* Participation Status Badge */}
+                                  <div className="shrink-0">
+                                    {hasAttempted ? (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                        <span>অংশগ্রহণ সম্পন্ন</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                                        <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                        <span>অংশগ্রহণ করা হয়নি</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Metadata Bar */}
+                                <div className="flex flex-wrap items-center gap-2 text-[10px] sm:text-[11px] font-bold text-slate-600 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100">
+                                  {expiryFormatted && (
+                                    <span className="inline-flex items-center gap-1 text-slate-700">
+                                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>সমাপ্তি: {expiryFormatted}</span>
+                                    </span>
+                                  )}
+                                  {item.qLimit !== undefined && item.qLimit > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                      <span>প্রশ্ন: {toBengaliDigits(item.qLimit)}টি</span>
+                                    </span>
+                                  )}
+                                  {item.timeLimit !== undefined && item.timeLimit > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>সময়: {toBengaliDigits(item.timeLimit)} মিনিট</span>
+                                    </span>
+                                  )}
+                                  {item.totalMarks !== undefined && item.totalMarks > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-slate-700 before:content-['•'] before:text-slate-300 before:mr-1">
+                                      <span>পূর্ণমান: {toBengaliDigits(item.totalMarks)}</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Syllabus Section (Identical to Routine cards) */}
+                                {displayLines.length > 0 ? (
+                                  <div className="space-y-1 pt-0.5 text-black bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                    <span className="text-[10.5px] font-black text-black flex items-center gap-1.5">
+                                      সিলেবাস (Selected Syllabus):
+                                    </span>
+                                    <div className="flex flex-col gap-1 pl-1 text-xs text-black font-medium leading-relaxed">
+                                      {visibleLines.map((lineNode, lIdx) => (
+                                        <div key={lIdx} className="text-black text-xs leading-snug">
+                                          {lineNode}
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {hasMore && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedArchiveSyllabusMap(prev => ({ ...prev, [examKey]: !prev[examKey] }))}
+                                        className="text-emerald-600 hover:text-emerald-700 font-bold text-xs inline-flex items-center gap-1 cursor-pointer mt-0.5"
+                                      >
+                                        {isExpanded ? "See less" : "See more"}
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1 pt-0.5 text-slate-500 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                                    <span className="text-[10.5px] font-black text-slate-700 flex items-center gap-1.5">
+                                      সিলেবাস:
+                                    </span>
+                                    <p className="text-xs text-slate-400 italic pl-1">
+                                      সিলেবাসের তথ্য পাওয়া যায়নি
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Action Footer */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-100">
+                                  {hasAttempted && item.attempt ? (
+                                    <>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-500">
+                                          প্রাপ্ত নম্বর:
+                                        </span>
+                                        <span className="text-emerald-700 font-black text-xs bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                          {toBengaliDigits(typeof item.attempt.score === 'number' ? item.attempt.score.toFixed(2) : item.attempt.score)}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedAttemptForView(item.attempt!);
+                                          setActiveTab('results');
+                                        }}
+                                        className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                      >
+                                        <Award className="w-3.5 h-3.5 text-amber-300" />
+                                        <span>ফলাফল ও সমাধান</span>
+                                      </button>
+                                    </>
+                                  ) : isCourseLocked ? (
+                                    <>
+                                      <span className="text-xs text-amber-800 font-semibold flex items-center gap-1">
+                                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                                        পরীক্ষা দিতে কোর্সে এনরোল প্রয়োজন
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleEnrollCourse(course.id, course.title)}
+                                        className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                      >
+                                        <GraduationCap className="w-3.5 h-3.5 text-amber-200" />
+                                        <span>কোর্সে এনরোল করুন {course.price ? `(৳${toBengaliDigits(course.price)})` : ''}</span>
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs text-slate-500 font-medium">
+                                        আপনি যেকোনো সময় পরীক্ষায় অংশ নিতে পারেন
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartArchivedExam(item, course)}
+                                        className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                      >
+                                        <Play className="w-3.5 h-3.5 text-emerald-100 fill-emerald-100" />
+                                        <span>পরীক্ষায় অংশ নিন</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 // SINGLE COURSE DETAIL VIEW
                 if (expandedCourseId && selectedCourse) {
                   const courseRoutines = routines.filter(r => r.courseId === selectedCourse.id || r.courseName === selectedCourse.title);
@@ -9138,7 +9363,7 @@ export default function UserPortal({
 
                         <button
                           type="button"
-                          onClick={() => setArchiveModalCourse(selectedCourse)}
+                          onClick={() => setArchivePageCourse(selectedCourse)}
                           className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-3.5 py-2 rounded-2xl shadow-2xs transition text-xs cursor-pointer"
                           title="এই কোর্সের আর্কাইভ ও অতীত পরীক্ষাগুলো দেখুন"
                         >
@@ -9267,7 +9492,7 @@ export default function UserPortal({
                           <div className="space-y-2.5">
                             {courseRoutines.map((r, rIdx) => {
                               const hasExam = r.examConfig && r.examConfig.enabled;
-                              const isExamLive = hasExam && r.examConfig?.startTime && new Date() >= new Date(r.examConfig.startTime);
+                              const isExamLive = isRoutineExamLive(r, clockTick, liveExams);
                               const readingProgress = calculateRoutineReadingProgress(
                                 user.phone,
                                 r.id || r.title,
@@ -9391,7 +9616,8 @@ export default function UserPortal({
                                     {(() => {
                                       const isCourseLocked = !enrolledCourseIds.includes(selectedCourse.id);
                                       const hasExam = r.examConfig && r.examConfig.enabled;
-                                      const isExamLive = hasExam && r.examConfig?.startTime && new Date() >= new Date(r.examConfig.startTime);
+                                      const isExamLive = isRoutineExamLive(r, clockTick, liveExams);
+                                      const isExamExpired = isRoutineExamExpired(r, clockTick, liveExams);
                                       const routineAttempt = findRoutineAttempt(r);
 
                                       return (
@@ -9438,7 +9664,7 @@ export default function UserPortal({
                                                   <span className="sm:hidden truncate">লাইভ পরীক্ষা</span>
                                                   <span className="hidden sm:inline truncate">লাইভ পরীক্ষা দিন</span>
                                                 </button>
-                                              ) : (
+                                              ) : isExamExpired ? null : (
                                                 <span className="flex-1 min-w-0 bg-amber-100 text-amber-900 border border-amber-200 px-1 sm:px-3 py-2 rounded-xl text-[10px] sm:text-xs font-extrabold whitespace-nowrap text-center flex items-center justify-center">
                                                   <span className="truncate">পরীক্ষা শুরু হয়নি</span>
                                                 </span>
@@ -9662,15 +9888,6 @@ export default function UserPortal({
                                   Routine (PDF)
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => setArchiveModalCourse(course)}
-                                  className="bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold py-2 px-3 rounded-xl transition text-xs flex items-center justify-center gap-1 border border-amber-300 shadow-2xs cursor-pointer"
-                                  title="এই কোর্সের আর্কাইভ ও অতীত পরীক্ষাগুলো দেখুন"
-                                >
-                                  <Archive className="w-3.5 h-3.5 text-amber-700" />
-                                  <span>আর্কাইভ পরীক্ষা</span>
-                                </button>
 
                                 {isEnrolled ? (
                                   <div className="flex items-center gap-2 flex-1 justify-end">
@@ -9970,7 +10187,8 @@ export default function UserPortal({
                     <div className="space-y-2.5">
                       {currentGroup.routines.map((routine, rIdx) => {
                         const hasExam = routine.examConfig && routine.examConfig.enabled;
-                        const isExamLive = hasExam && routine.examConfig?.startTime && new Date() >= new Date(routine.examConfig.startTime);
+                        const isExamLive = isRoutineExamLive(routine, clockTick, liveExams);
+                        const isExamExpired = isRoutineExamExpired(routine, clockTick, liveExams);
                         const examDateStr = routine.examConfig?.startTime
                           ? formatExamScheduleWithTime(routine.examConfig.startTime)
                           : routine.examDate
@@ -10098,20 +10316,24 @@ export default function UserPortal({
                                   );
                                 }
 
-                                return (
-                                  <button
-                                    type="button"
-                                    id={`btn-live-exam-${routine.id || rIdx}`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleStartLiveExamForRoutine(routine);
-                                    }}
-                                    className={`flex-1 min-w-0 ${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap`}
-                                  >
-                                    {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white/90 shrink-0" />}
-                                    <span className="truncate">Live exam</span>
-                                  </button>
-                                );
+                                if (isExamLive) {
+                                  return (
+                                    <button
+                                      type="button"
+                                      id={`btn-live-exam-${routine.id || rIdx}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStartLiveExamForRoutine(routine);
+                                      }}
+                                      className={`flex-1 min-w-0 ${isCardLocked ? 'bg-emerald-700/90 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold py-1.5 px-1 sm:px-2.5 rounded-xl text-[10px] sm:text-[11px] shadow-2xs transition cursor-pointer flex items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap animate-pulse`}
+                                    >
+                                      {isCardLocked && <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white/90 shrink-0" />}
+                                      <span className="truncate">Live exam</span>
+                                    </button>
+                                  );
+                                }
+
+                                return null;
                               })()}
 
                               <button
@@ -10142,7 +10364,8 @@ export default function UserPortal({
                 const targetCourse = courses ? courses.find(c => c.id === item.courseId || c.title === item.courseName) : undefined;
                 const syllabusPaths = formatRoutineSyllabusPaths(item, subcategories, categories, questions);
                 const hasExam = item.examConfig && item.examConfig.enabled;
-                const isExamLive = hasExam && item.examConfig?.startTime && new Date() >= new Date(item.examConfig.startTime);
+                const isExamLive = isRoutineExamLive(item, clockTick, liveExams);
+                const isExamExpired = isRoutineExamExpired(item, clockTick, liveExams);
                 const examDateStr = item.examConfig?.startTime
                   ? formatExamScheduleWithTime(item.examConfig.startTime)
                   : item.examDate
