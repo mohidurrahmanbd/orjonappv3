@@ -552,14 +552,70 @@ export interface CourseArchivedExamItem {
 
 /**
  * Pure timestamp parsing helper that safely returns epoch millis or null.
+ * Accepts strings (ISO/date strings or numeric strings), numbers (epoch ms or s),
+ * Date objects, and Firestore Timestamp objects ({ toDate(): Date } or { seconds, nanoseconds }).
  * Prevents throwing RangeError: Invalid time value when handling malformed dates.
  */
-export const parseSafeTimestamp = (dateStr?: string | null): number | null => {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const trimmed = dateStr.trim();
-  if (!trimmed) return null;
-  const parsed = new Date(trimmed).getTime();
-  return isNaN(parsed) ? null : parsed;
+export const parseSafeTimestamp = (dateVal?: unknown): number | null => {
+  if (dateVal === null || dateVal === undefined) return null;
+
+  // Handle number (epoch ms or epoch seconds)
+  if (typeof dateVal === 'number') {
+    if (!Number.isFinite(dateVal) || isNaN(dateVal) || dateVal <= 0) return null;
+    // Epoch seconds (e.g. 1.7e9) vs milliseconds (e.g. 1.7e12)
+    if (dateVal > 1e8 && dateVal < 1e11) {
+      return Math.round(dateVal * 1000);
+    }
+    return Math.round(dateVal);
+  }
+
+  // Handle Date instance
+  if (dateVal instanceof Date) {
+    const time = dateVal.getTime();
+    return Number.isFinite(time) && !isNaN(time) ? time : null;
+  }
+
+  // Handle Firestore Timestamp or object with toDate()
+  if (typeof dateVal === 'object' && dateVal !== null) {
+    const obj = dateVal as Record<string, unknown>;
+    if (typeof obj.toDate === 'function') {
+      try {
+        const d = (obj.toDate as () => Date)();
+        if (d instanceof Date) {
+          const time = d.getTime();
+          return Number.isFinite(time) && !isNaN(time) ? time : null;
+        }
+      } catch {
+        // Fall through
+      }
+    }
+    // Handle Firestore Timestamp structure { seconds: number, nanoseconds?: number } or { _seconds, _nanoseconds }
+    const seconds = typeof obj.seconds === 'number' ? obj.seconds : (typeof obj._seconds === 'number' ? obj._seconds : null);
+    if (seconds !== null && Number.isFinite(seconds)) {
+      const nanos = typeof obj.nanoseconds === 'number' ? obj.nanoseconds : (typeof obj._nanoseconds === 'number' ? obj._nanoseconds : 0);
+      return Math.round(seconds * 1000 + Math.floor((nanos || 0) / 1e6));
+    }
+  }
+
+  // Handle string
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim();
+    if (!trimmed) return null;
+    // Check if numeric string like "1730000000000"
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num) && num > 0) {
+        if (num > 1e8 && num < 1e11) {
+          return num * 1000;
+        }
+        return num;
+      }
+    }
+    const parsed = new Date(trimmed).getTime();
+    return Number.isFinite(parsed) && !isNaN(parsed) ? parsed : null;
+  }
+
+  return null;
 };
 
 /**
@@ -747,9 +803,9 @@ export const getCourseArchivedExams = (
       return false;
     }
 
-    // Must have valid expiry strictly earlier than now
+    // Must have valid expiry strictly earlier than or at now
     const expiryTs = parseSafeTimestamp(e.expiryTime);
-    if (expiryTs === null || expiryTs >= now) {
+    if (expiryTs === null || expiryTs > now) {
       return false;
     }
 
@@ -857,7 +913,7 @@ export const getCourseArchivedExams = (
       resolvedExpiryStr = new Date(expiryTs).toISOString();
     }
 
-    if (expiryTs >= now) continue;
+    if (expiryTs > now) continue;
 
     const userAttempt = findArchivedExamAttempt({
       id: r.id,
@@ -1020,7 +1076,8 @@ export default function UserPortal({
     return (liveExams || []).filter(exam => {
       if (!exam || !exam.id) return false;
       const expiryTs = parseSafeTimestamp(exam.expiryTime);
-      return expiryTs === null || expiryTs > now;
+      if (expiryTs !== null && expiryTs <= now) return false;
+      return true;
     });
   }, [liveExams, clockTick]);
 
@@ -8367,15 +8424,23 @@ export default function UserPortal({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[...activeLiveExams]
                     .sort((a, b) => {
-                      const timeA = new Date(a.createdAt || a.startTime || 0).getTime();
-                      const timeB = new Date(b.createdAt || b.startTime || 0).getTime();
+                      const timeA = parseSafeTimestamp(a.createdAt || a.startTime) ?? 0;
+                      const timeB = parseSafeTimestamp(b.createdAt || b.startTime) ?? 0;
                       return timeB - timeA;
                     })
                     .map((exam, idx) => {
                     const alreadyTaken = attempts.some(a => a.examId === exam.id);
-                    const now = new Date();
-                    const isStarted = new Date(exam.startTime) <= now;
-                    const isExpired = new Date(exam.expiryTime) < now;
+                    const nowTs = clockTick;
+                    const expiryTs = parseSafeTimestamp(exam.expiryTime);
+                    const isExpired = expiryTs !== null ? expiryTs <= nowTs : false;
+
+                    // Hard defense-in-depth guard: do not render expired cards in regular zone
+                    if (isExpired) {
+                      return null;
+                    }
+
+                    const startTs = parseSafeTimestamp(exam.startTime);
+                    const isStarted = startTs !== null ? startTs <= nowTs : true;
 
                     return (
                       <div
@@ -8394,10 +8459,6 @@ export default function UserPortal({
                               <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
                                 ⍳ শুরু হয়নি
                               </span>
-                            ) : isExpired ? (
-                              <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0">
-                                🔒 সময় শেষ
-                              </span>
                             ) : (
                               <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg font-bold shrink-0 animate-pulse">
                                 ⍱︍ চলমান পরীক্ষা
@@ -8407,7 +8468,7 @@ export default function UserPortal({
 
                           <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-1.5">
                             <p className="text-[10.5px] text-slate-600 font-medium leading-relaxed">
-                              📅 সময়সীমা: <span className="font-bold text-slate-800">{new Date(exam.startTime).toLocaleString('bn-BD')}</span> থেকে <span className="font-bold text-slate-800">{new Date(exam.expiryTime).toLocaleString('bn-BD')}</span>
+                              📅 সময়সীমা: <span className="font-bold text-slate-800">{startTs ? new Date(startTs).toLocaleString('bn-BD') : '—'}</span> থেকে <span className="font-bold text-slate-800">{expiryTs ? new Date(expiryTs).toLocaleString('bn-BD') : '—'}</span>
                             </p>
                             <div className="flex flex-wrap gap-1.5 text-[10px] text-indigo-700 font-bold pt-0.5">
                               <span className="bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs">
@@ -8433,7 +8494,7 @@ export default function UserPortal({
                                 window.open(fbUrl, '_blank', 'width=600,height=500');
                               }}
                               className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
-                              title="ফেসব্কে শেয়ার করুন"
+                              title="ফেসবুকে শেয়ার করুন"
                             >
                               <span>📘</span> <span className="whitespace-nowrap">FB শেয়ার</span>
                             </button>
@@ -8441,7 +8502,7 @@ export default function UserPortal({
                               onClick={() => {
                                 const shareUrl = `${window.location.origin}${window.location.pathname}?examId=${exam.id}`;
                                 navigator.clipboard.writeText(shareUrl);
-                                showCustomAlert('লাইভ পরীক্ষার লিঙ্ক ক্লিপবোর্ডে কপি করা হয়েছে!\nএখন যেকোনো বন্ধ্দের সাথে বা সোশ্যাল মিডিয়ায় শেয়ার করতে পারবেন।', undefined, 'কপি সম্পন্ন!');
+                                showCustomAlert('লাইভ পরীক্ষার লিঙ্ক ক্লিপবোর্ডে কপি করা হয়েছে!\nএখন যেকোনো বন্ধুদের সাথে বা সোশ্যাল মিডিয়ায় শেয়ার করতে পারবেন।', undefined, 'কপি সম্পন্ন!');
                               }}
                               className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
                               title="লিঙ্ক কপি করুন"
@@ -8457,7 +8518,7 @@ export default function UserPortal({
                                   setChallengeModalData({ exam, score: userScore });
                                 }}
                                 className="px-1.5 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-600 to-purple-600 hover:from-amber-600 hover:to-rose-700 text-white font-extrabold text-[9.5px] sm:text-[10.5px] flex items-center gap-1 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 animate-pulse"
-                                title="আপনার প্রাপ্ত নম্বর দিয়ে বন্ধ্দের ফেসব্কে চ্যালেঞ্জ পাঠান"
+                                title="আপনার প্রাপ্ত নম্বর দিয়ে বন্ধুদের ফেসবুকে চ্যালেঞ্জ পাঠান"
                               >
                                 <span>⚔︍</span> <span className="whitespace-nowrap">চ্যালেঞ্জ</span>
                               </button>
@@ -8472,10 +8533,6 @@ export default function UserPortal({
                             ) : !isStarted ? (
                               <span className="text-[9.5px] sm:text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl font-extrabold whitespace-nowrap inline-flex items-center">
                                 শুরু হয়নি
-                              </span>
-                            ) : isExpired ? (
-                              <span className="text-[9.5px] sm:text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl font-extrabold whitespace-nowrap inline-flex items-center">
-                                সময় শেষ
                               </span>
                             ) : (
                               <button
