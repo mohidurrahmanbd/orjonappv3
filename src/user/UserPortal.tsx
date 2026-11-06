@@ -1829,6 +1829,70 @@ export default function UserPortal({
     setFavoritesMap(loadLocalFavorites(userKey));
   }, [userKey]);
 
+  /**
+   * Resolves the canonical academic subject for a Course question.
+   * Ensures questions from different routines belonging to the same academic subject
+   * (e.g. বাংলা, ইংরেজি, গণিত, সাধারণ বিজ্ঞান) are grouped into the same Subject folder
+   * in the Favorite Explorer, rather than fragmented by arbitrary routine titles.
+   */
+  const resolveCourseQuestionAcademicSubject = useCallback((q: Question, routine?: Routine | null): string => {
+    const isRootContainer = (cat?: string) => {
+      if (!cat) return false;
+      const norm = cat.trim().toLowerCase();
+      return (
+        norm.includes('বিষয়ভিত্তিক প্রস্তুতি') ||
+        norm.includes('বিষয় ভিক্তিক প্রস্তুতি') ||
+        norm.includes('বিষয় ভিত্তিক প্রস্তুতি') ||
+        norm.includes('জব সলিউশন') ||
+        norm.includes('সাল ভিত্তিক') ||
+        norm.includes('সাম্প্রতিক বিষয়াবলী') ||
+        norm === 'all' ||
+        norm === 'সব প্রশ্ন'
+      );
+    };
+
+    // 1. Question's explicit subject category (if valid and not a root container)
+    if (q.subjectCategory && q.subjectCategory.trim() && !isRootContainer(q.subjectCategory)) {
+      return q.subjectCategory.trim();
+    }
+
+    // 2. Question's CSV Category (academic subject heading)
+    if (q.csvCategory && q.csvCategory.trim() && !isRootContainer(q.csvCategory)) {
+      return q.csvCategory.trim();
+    }
+
+    // 3. Question Category (if not a generic root container)
+    if (q.category && q.category.trim() && !isRootContainer(q.category)) {
+      return q.category.trim();
+    }
+
+    // 4. Multi-categories array
+    if (Array.isArray(q.categories) && q.categories.length > 0) {
+      const validCat = q.categories.find(c => c && c.trim() && !isRootContainer(c));
+      if (validCat) return validCat.trim();
+    }
+
+    // 5. Question subcategory (e.g. "বাংলা সাহিত্য", "ইংরেজি গ্রামার")
+    if (q.subcategory && q.subcategory.trim()) {
+      return q.subcategory.trim();
+    }
+
+    // 6. Routine's selected syllabus subcategories
+    if (routine?.selectedSubcategories && routine.selectedSubcategories.length > 0) {
+      const validSub = routine.selectedSubcategories.find(s => s && s.trim() && !isRootContainer(s));
+      if (validSub) return validSub.trim();
+    }
+
+    // 7. Routine's selected syllabus categories (if non-container)
+    if (routine?.selectedCategories && routine.selectedCategories.length > 0) {
+      const validCat = routine.selectedCategories.find(c => c && c.trim() && !isRootContainer(c));
+      if (validCat) return validCat.trim();
+    }
+
+    // 8. Controlled fallback: routine title if non-empty, otherwise 'সাধারণ'
+    return routine?.title?.trim() || 'সাধারণ';
+  }, []);
+
   // Fast, instant favorite toggle with zero popups, zero network calls, and instant state update
   const handleToggleFavorite = useCallback((targetQuestion: Question, fallbackSubject?: string) => {
     setFavoritesMap(prevMap => toggleLocalFavorite(userKey, targetQuestion, fallbackSubject, prevMap));
@@ -6082,7 +6146,8 @@ export default function UserPortal({
               }
             }}
             onToggleFavorite={(targetQ: Question) => {
-              handleToggleFavorite(targetQ, viewingHierarchyRoutine.title);
+              const academicSubject = resolveCourseQuestionAcademicSubject(targetQ, viewingHierarchyRoutine);
+              handleToggleFavorite(targetQ, academicSubject);
             }}
             isQuestionFavorited={(qId: string) => isQuestionFavorited(favoritesMap, qId)}
           />
@@ -8890,7 +8955,7 @@ export default function UserPortal({
                               {!isExamActive && (
                                 <button
                                   type="button"
-                                  onClick={() => handleToggleFavorite(masterQ, selectedAttemptForView.examTitle)}
+                                  onClick={() => handleToggleFavorite(masterQ, resolveCourseQuestionAcademicSubject(masterQ) || selectedAttemptForView.examTitle)}
                                   className={`p-1.5 px-2.5 rounded-lg border text-[10px] font-bold transition cursor-pointer flex items-center gap-1 shrink-0 ${
                                     isFav
                                       ? 'bg-rose-50 text-rose-600 border-rose-300 hover:bg-rose-100 shadow-2xs'
